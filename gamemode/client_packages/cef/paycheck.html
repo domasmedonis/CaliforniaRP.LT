@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="lt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paycheck</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        #paycheck-box {
+            position: fixed;
+            bottom: 50px;
+            right: 30px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #ffffff;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-size: 18px;
+            display: none;
+        }
+
+        #paycheck-box h2 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        #paycheck-amount {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+
+        #close-text {
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="paycheck-box">
+        <h2>📩 Jūs gavote atlyginimą!</h2>
+        <p id="paycheck-amount">$0</p>
+        <p id="close-text">Spauskite <strong>E</strong> kad uždaryti</p>
+    </div>
+
+    <audio id="paycheck-sound" src="sounds/paycheck.mp3"></audio>
+
+    <script>
+        function showPaycheck(amount) {
+            document.getElementById("paycheck-amount").innerText = `+$${amount}`;
+            document.getElementById("paycheck-box").style.display = "block";
+
+            let sound = document.getElementById("paycheck-sound");
+
+
+            sound.play(); // Play sound when paycheck UI appears
+        }
+
+        function closePaycheck() {
+            document.getElementById("paycheck-box").style.display = "none";
+        }
+
+        window.addEventListener("keydown", (event) => {
+            if (event.key === "e" || event.key === "E") {
+                closePaycheck();
+            }
+        });
+    </script>
+
+</body>
+
+</html>

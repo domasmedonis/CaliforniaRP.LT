@@ -1,0 +1,222 @@
+body {
+    background-image: url('../images/background.png');
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    background-position: center;
+    color: rgb(61, 61, 61);
+    font-family: 'Roboto', sans-serif;
+}
+
+.row {
+    display: flex;
+    justify-content: center;
+}
+
+.aligneverything {
+    justify-content: center;
+    align-content: center;
+}
+
+.container {
+    background-color: rgba(243, 243, 243, 0.9);
+    padding-bottom: 50px;
+}
+
+.h70 {
+    height: 70vh;
+}
+
+.w80 {
+    width: 70vw;
+}
+
+.centruoti {
+    display: grid;
+    place-items: center;
+    /* Centers both horizontally and vertically */
+    height: 90vh;
+    /* Full viewport height */
+}
+
+h1 {
+    font-size: 2.5rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    margin-bottom: 30px;
+}
+
+.bgcolor {
+    background-color: #f3f3f3;
+}
+
+.pd70 {
+    padding: 70px;
+}
+
+.pd40 {
+    padding: 40px;
+}
+
+.pd50top {
+    padding-top: 50px;
+}
+
+.pd25top {
+    padding-top: 25px;
+}
+
+.text-shadow {
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.form-container {
+    max-width: 40%;
+    /* Adjusted for better responsiveness */
+    margin: auto;
+    padding: 20px;
+    color: #222222;
+}
+
+.form-container2 {
+    max-width: 40%;
+    /* Adjusted for better responsiveness */
+    margin: auto;
+    padding: 20px;
+    border-radius: 10px;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: #ffffff;
+}
+
+/* Remove the default red border for empty inputs */
+.form-control:invalid {
+    border-color: #ced4da;
+    /* Default border color for inputs */
+}
+
+/* Remove the red border when the input is empty */
+.form-control:invalid:focus {
+    border-color: #ced4da;
+    /* Keep the focus border consistent */
+}
+
+/* Custom styles for valid inputs */
+.form-control:valid {
+    border-color: #28a745;
+    /* Green border for valid inputs */
+}
+
+/* Optionally, customize focus styles */
+.form-control:focus {
+    border-color: #007bff;
+    /* Bootstrap primary color for focus */
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    /* Adjust focus shadow */
+}
+
+/* Override Bootstrap's invalid input styles */
+input.is-invalid {
+    border-color: #ced4da !important;
+    /* Change to default border color */
+}
+
+input:focus {
+    border-color: #80bdff;
+    /* Maintain the focus color */
+}
+
+input.is-invalid:focus {
+    border-color: #80bdff;
+    /* Maintain focus color even if invalid */
+}
+
+/* Optionally, hide the red border for empty inputs */
+input:invalid {
+    border-color: #ced4da !important;
+    /* Default border color for empty inputs */
+}
+
+.btn {
+    border-radius: 20px;
+    padding: 10px 20px;
+    transition: background-color 0.3s, transform 0.2s;
+    margin-top: 40px;
+}
+
+.btn-primary {
+    background-color: rgba(64, 102, 55, 0.589);
+    border: none;
+    outline: none;
+}
+
+.btn-primary:disabled {
+    background-color: rgba(64, 102, 55, 0.589);
+    border: none;
+    outline: none;
+}
+
+.btn-primary2 {
+    background-color: rgba(57, 97, 60, 0.589);
+    border: none;
+}
+
+.btn-primary:hover {
+    background-color: rgba(64, 121, 69, 0.589);
+    transform: scale(1.05);
+}
+
+button.btn-primary:active {
+    background-color: rgba(71, 95, 66, 0.76) !important;
+    border-color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(71, 95, 66, 0.5);
+    outline: none;
+}
+
+.btn-primary {
+    border: 0px solid transparent;
+    /* Set initial border to transparent */
+}
+
+.btn-primary:active,
+.btn-primary:focus {
+    outline: none !important;
+    /* Remove the focus outline */
+    box-shadow: none !important;
+    /* Remove the box shadow */
+    border-color: transparent !important;
+    /* Remove the border color */
+}
+
+
+.registertext {
+    color: #2b2b2b;
+}
+
+.forgotpasstext {
+    font-size: small;
+    text-decoration: none;
+}
+
+.wText {
+    color: #cc4747 !important;
+    padding-top: 20px;
+}
+
+.pendingChar {
+    margin-left: 15px;
+}
+
+.charListName {
+    font-size: 20px;
+    color: #2b2b2b;
+    padding: 10px;
+    margin-bottom: 5px;
+    text-decoration: none;
+}
+
+/* Media Queries for Responsiveness */
+@media (max-width: 768px) {
+    .form-container {
+        max-width: 95%;
+        /* Allow more width on mobile */
+    }
+}

@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: transparent;
+            overflow: hidden;
+        }
+
+        #phone {
+            position: absolute;
+            bottom: 50px;
+            right: 50px;
+            width: 350px;
+            height: 700px;
+            background: #000;
+            border-radius: 50px;
+            padding: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            border: 2px solid #333;
+        }
+
+        #screen {
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            /* White background to match iPhone */
+            border-radius: 40px;
+            padding: 15px;
+            box-sizing: border-box;
+            color: #000;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #statusBar {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 20px;
+            font-size: 14px;
+            color: #000;
+            /* Black icons for white background */
+        }
+
+        #statusBar .time {
+            font-weight: 600;
+        }
+
+        #statusBar .icons {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        #homeScreen,
+        #driveApp,
+        #callApp {
+            display: none;
+            flex-direction: column;
+            height: calc(100% - 40px);
+            margin-top: 10px;
+            margin-bottom: 20px;
+        }
+
+        #homeScreen.active,
+        #driveApp.active,
+        #callApp.active {
+            display: flex;
+        }
+
+        #appGrid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .appRow {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .appIcon {
+            background: rgba(0, 0, 0, 0.1);
+            /* Adjusted for white background */
+            border-radius: 15px;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            transition: background 0.2s;
+            flex: 1;
+        }
+
+        .appIcon:hover {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .appIcon img {
+            width: 50px;
+            height: 50px;
+        }
+
+        .appIcon span {
+            display: block;
+            margin-top: 5px;
+            font-size: 12px;
+            color: #000;
+            /* Black text for white background */
+        }
+
+        /* Call App Styling (iPhone-like) */
+        #callContent {
+            background: #fff;
+            /* White background */
+            height: calc(100% - 40px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 10px 0;
+        }
+
+        #phoneInputWrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            position: relative;
+        }
+
+        #phoneInput {
+            width: 100%;
+            padding: 10px;
+            font-size: 28px;
+            font-weight: 500;
+            text-align: center;
+            border: none;
+            background: transparent;
+            color: #000;
+        }
+
+        #deleteBtn {
+            display: none;
+            /* Hidden by default */
+            position: absolute;
+            right: 20px;
+            width: 30px;
+            height: 30px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            background-image: url('https://img.icons8.com/ios-filled/50/000000/delete-sign.png');
+            background-size: 20px;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        #deleteBtn.visible {
+            display: block;
+        }
+
+        #keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            padding: 0 20px;
+        }
+
+        .keypadBtn {
+            background: #e0e0e0;
+            /* Light gray buttons */
+            border: none;
+            border-radius: 50%;
+            width: 80px;
+            height: 80px;
+            font-size: 28px;
+            color: #000;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .keypadBtn:hover {
+            background: #d0d0d0;
+            /* Slightly darker on hover */
+        }
+
+        .keypadBtn.zero {
+            grid-column: 2;
+            /* Center the 0 button */
+        }
+
+        .keypadBtn .letters {
+            font-size: 12px;
+            color: #000;
+            margin-top: 2px;
+        }
+
+        #callBtn {
+            background: #34c759;
+            /* iPhone green call button */
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            font-size: 0;
+            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/phone.png');
+            background-size: 40px;
+            background-position: center;
+            background-repeat: no-repeat;
+            margin: 20px auto;
+        }
+
+        #callBtn:hover {
+            background-color: #28a745;
+        }
+
+
+        /* Existing button styles */
+        button {
+            padding: 12px;
+            background: #007aff;
+            border: none;
+            color: #fff;
+            border-radius: 12px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #005bb5;
+        }
+
+        #requestRideBtn {
+            background: #34c759;
+            margin-top: 30px;
+        }
+
+        #requestRideBtn:hover {
+            background: #28a745;
+        }
+
+        #backBtn {
+            background: #4e4e4e;
+            color: #fff;
+        }
+
+        #backBtn:hover {
+            background: #3d3d3d;
+        }
+
+        .displayFlexDS {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #driverStatus {
+            text-align: center;
+            font-size: 14px;
+            color: #000;
+            margin-top: 10px;
+        }
+
+        .imageScale {
+            width: 90%;
+            height: 90%;
+        }
+
+        .marginTop {
+            margin-top: 100px;
+        }
+
+        .callActionsCenter {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        #contactsApp {
+            display: none;
+            flex-direction: column;
+            height: calc(100% - 40px);
+            margin-top: 10px;
+            padding: 0 10px;
+        }
+
+        #contactsApp.active {
+            display: flex;
+        }
+
+        #contactsList {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .contactItem {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            transition: background 0.2s;
+        }
+
+        .contactItem:hover {
+            background: #e0e0e0;
+        }
+
+        .contactInfo {
+            flex: 1;
+        }
+
+        .contactName {
+            font-size: 18px;
+            font-weight: 500;
+            color: #000;
+        }
+
+        .contactNumber {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .contactActions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .actionBtn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            background-size: 20px;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        .callContactBtn {
+            background-color: #34c759;
+            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/phone.png');
+        }
+
+        .messageContactBtn {
+            background-color: #007aff;
+            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/speech-bubble.png');
+        }
+
+        .removeContactBtn {
+            background-color: #ff3b30;
+            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/trash.png');
+        }
+
+        #addContactForm {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 10px 0;
+        }
+
+        #addContactForm input {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #fff;
+            color: #000;
+        }
+
+        #addContactBtn {
+            background: #34c759;
+        }
+
+        #addContactBtn:hover {
+            background: #28a745;
+        }
+
+        #incomingCallOverlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+
+        #incomingCallOverlay.active {
+            display: flex;
+        }
+
+        #incomingCallText {
+            font-size: 24px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        #callButtons {
+            display: flex;
+            gap: 20px;
+        }
+
+        .callActionBtn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            background-size: 30px;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+
+        #answerBtn {
+            background-color: #34c759;
+            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/phone.png');
+        }
+
+        #declineBtn {
+            background-color: #ff3b30;
+            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/end-call.png');
+        }
+
+        #callApp .callStatus {
+            margin-top: 10px;
+            font-size: 16px;
+            color: #7aa164;
+            text-align: center;
+        }
+
+        #messagesApp {
+            display: none;
+            flex-direction: column;
+            height: calc(100% - 40px);
+            margin-top: 10px;
+            padding: 0 10px;
+        }
+
+        #messagesApp.active {
+            display: flex;
+        }
+
+        #conversationsList {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+
+        .conversationItem {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+
+        .conversationItem.unread {
+            background: #e0f7fa;
+        }
+
+        .conversationItem:hover {
+            background: #e0e0e0;
+        }
+
+        .conversationInfo {
+            flex: 1;
+        }
+
+        .conversationName {
+            font-size: 18px;
+            font-weight: 500;
+            color: #000;
+        }
+
+        .conversationPreview {
+            font-size: 14px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 200px;
+        }
+
+        .conversationTime {
+            font-size: 12px;
+            color: #666;
+        }
+
+        #conversationView {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        #conversationView.active {
+            display: flex;
+        }
+
+        #messagesList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            background: #fff;
+        }
+
+        .messageItem {
+            margin-bottom: 10px;
+            max-width: 70%;
+            padding: 10px;
+            border-radius: 12px;
+            font-size: 16px;
+        }
+
+        .messageItem.sent {
+            background: #007aff;
+            color: #fff;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+
+        .messageItem.received {
+            background: #e5e5ea;
+            color: #000;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+
+        .messageTime {
+            font-size: 12px;
+            color: #b4b4b4;
+            margin-top: 5px;
+            text-align: right;
+        }
+
+        #messageInputWrapper {
+            display: flex;
+            padding: 10px;
+            background: #f5f5f5;
+            border-top: 1px solid #ccc;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 10px;
+            font-size: 16px;
+            border: none;
+            border-radius: 20px;
+            background: #fff;
+            color: #000;
+            margin-right: 10px;
+        }
+
+        #sendMessageBtn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #007aff;
+            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/filled-sent.png');
+            background-size: 20px;
+            background-position: center;
+            background-repeat: no-repeat;
+            border: none;
+            cursor: pointer;
+        }
+
+        #sendMessageBtn:disabled {
+            background: #ccc;
+        }
+
+        #newMessageForm {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        #newMessageForm.active {
+            display: flex;
+        }
+
+        #newMessageNumber {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #fff;
+            color: #000;
+        }
+
+        #newMessageBtn {
+            background: #34c759;
+        }
+
+        #newMessageBtn:hover {
+            background: #28a745;
+        }
+
+        .marginMessages {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="phone">
+        <div id="screen">
+            <div id="statusBar">
+                <span class="time">9:41</span>
+                <span id="phone-number" style="font-size: 12px;"></span>
+                <div class="icons">
+                    <span>📶</span>
+                    <span>🔋</span>
+                </div>
+            </div>
+            <div id="homeScreen">
+                <div id="appGrid">
+                    <div class="appRow">
+                        <div class="appIcon" onclick="openApp('drive')">
+                            <img src="https://img.icons8.com/?size=100&id=fsoiqMUp0O4v&format=png&color=000000"
+                                alt="Drive">
+                            <span>Drive</span>
+                        </div>
+                        <div class="appIcon" onclick="openApp('messages')">
+                            <img src="https://img.icons8.com/?size=100&id=81490&format=png&color=000000" alt="Messages">
+                            <span>Žinutės</span>
+                        </div>
+                        <div class="appIcon" onclick="openApp('contacts')">
+                            <img src="https://img.icons8.com/?size=100&id=cIe827NWAnMf&format=png&color=000000"
+                                alt="Kontaktai">
+                            <span>Kontaktai</span>
+                        </div>
+                        <div class="appIcon">
+                            <img src="https://img.icons8.com/?size=100&id=kbuAJVwYUPvh&format=png&color=000000"
+                                alt="Twitter">
+                            <span>Twitter</span>
+                        </div>
+                    </div>
+                    <div class="appRow">
+                        <div class="appIcon">
+                            <img src="https://img.icons8.com/?size=100&id=12985&format=png&color=000000" alt="Bank">
+                            <span>Bankas</span>
+                        </div>
+                        <div class="appIcon" onclick="openApp('call')">
+                            <img src="https://img.icons8.com/?size=100&id=ufkkYBXJSuPy&format=png&color=000000"
+                                alt="Skambinti">
+                            <span>Skambinti</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="driveApp">
+                <div id="driveContent" class="driverAppFlex">
+                    <div>
+                        <div><img src="https://i.imgur.com/UMp6tcH.png" alt="" class="imageScale"></div>
+                        <div id="driverActions">
+                            <button onclick="toggleDriver()">Įjungti pavežėjo statusą</button>
+                        </div>
+                        <div id="passengerActions">
+                            <button id="requestRideBtn" onclick="requestRide()">Iškviesti pavežėją</button>
+                        </div>
+                    </div>
+                    <div class="displayFlexDS marginTop">
+                        <button id="backBtn" onclick="backToHome()">Atgal</button>
+                        <div id="driverStatus">Pavežėjo statusas: Off</div>
+                    </div>
+                </div>
+            </div>
+            <div id="callApp">
+                <div id="callContent">
+                    <div id="phoneInputWrapper">
+                        <input type="text" id="phoneInput" placeholder="" readonly>
+                        <button id="deleteBtn" onclick="deleteDigit()"></button>
+                    </div>
+                    <div id="keypad">
+                        <button class="keypadBtn" onclick="addDigit('1')">
+                            1
+                            <span class="letters"></span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('2')">
+                            2
+                            <span class="letters">ABC</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('3')">
+                            3
+                            <span class="letters">DEF</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('4')">
+                            4
+                            <span class="letters">GHI</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('5')">
+                            5
+                            <span class="letters">JKL</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('6')">
+                            6
+                            <span class="letters">MNO</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('7')">
+                            7
+                            <span class="letters">PQRS</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('8')">
+                            8
+                            <span class="letters">TUV</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('9')">
+                            9
+                            <span class="letters">WXYZ</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('*')">
+                            *
+                            <span class="letters"></span>
+                        </button>
+                        <button class="keypadBtn zero" onclick="addDigit('0')">
+                            0
+                            <span class="letters">+</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('#')">
+                            #
+                            <span class="letters"></span>
+                        </button>
+                    </div>
+                    <div id="callActions" class="callActionsCenter">
+                        <button id="callBtn" onclick="makeCall()"></button>
+                        <button id="backBtn" onclick="backToHome()">Atgal</button>
+                    </div>
+                </div>
+            </div>
+            <div id="contactsApp">
+                <div id="contactsList"></div>
+                <div id="addContactForm">
+                    <input type="text" id="contactNameInput" placeholder="Vardas">
+                    <input type="text" id="contactNumberInput" placeholder="Numeris (6 skaitmenys)" maxlength="6">
+                    <button id="addContactBtn" onclick="addContact()">Pridėti kontaktą</button>
+                    <button id="backBtn" onclick="backToHome()">Atgal</button>
+                </div>
+            </div>
+            <div id="messagesApp">
+                <div id="conversationsList"></div>
+                <div id="conversationView">
+                    <div id="messagesList"></div>
+                    <div id="messageInputWrapper">
+                        <input type="text" id="messageInput" placeholder="Žinutė...">
+                        <button id="sendMessageBtn" onclick="sendMessage()"></button>
+                    </div>
+                </div>
+                <div id="newMessageForm">
+                    <input type="text" id="newMessageNumber" placeholder="Telefono numeris">
+                    <button id="newMessageBtn" onclick="startNewConversation()">Pradėti pokalbį</button>
+                </div>
+                <div id="messagesFooter">
+                    <button id="newConversationBtn" onclick="showNewMessageForm()">Nauja žinutė</button>
+                    <button id="backBtn" class="marginMessages" onclick="handleBack()">Atgal</button>
+                </div>
+            </div>
+            <div id="incomingCallOverlay">
+                <div id="incomingCallText"></div>
+                <div id="callButtons">
+                    <button id="answerBtn" class="callActionBtn" onclick="answerCall()"></button>
+                    <button id="declineBtn" class="callActionBtn" onclick="declineCall()"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isDriver = false;
+        let phoneNumber = '';
+
+        let contacts = [];
+        let myPhoneNumber = '';
+        let currentCallStatus = 'idle';
+        let currentCallPartner = '';
+
+        let currentConversationNumber = null;
+        let currentView = 'conversations';
+        let lastConversationNumber = null;
+        const messageCooldown = 1000;
+        let lastMessageTime = 0;
+
+
+        // Register server events
+        mp.events.add('updateMessagesUI', (number, messagesJson) => {
+            console.log(`[DEBUG] JS - Received updateMessagesUI for ${number} with data: ${messagesJson}`);
+            updateMessagesUI(number, messagesJson);
+        });
+
+        mp.events.add('updateConversationsUI', (conversationsJson) => {
+            console.log(`[DEBUG] JS - Received updateConversationsUI with data: ${conversationsJson}`);
+            updateConversationsUI(conversationsJson);
+        });
+
+
+
+
+        function showHomeScreen(driverStatus) {
+            isDriver = driverStatus;
+            document.getElementById('homeScreen').classList.add('active');
+            document.getElementById('driveApp').classList.remove('active');
+            document.getElementById('callApp').classList.remove('active');
+            document.getElementById('contactsApp').classList.remove('active');
+            document.getElementById('incomingCallOverlay').classList.remove('active');
+        }
+
+        function openApp(appName) {
+            if (appName === 'drive') {
+                mp.trigger('openDriveApp', isDriver);
+                document.getElementById('homeScreen').classList.remove('active');
+                document.getElementById('driveApp').classList.add('active');
+                updateDriveApp();
+            } else if (appName === 'call') {
+                document.getElementById('homeScreen').classList.remove('active');
+                document.getElementById('callApp').classList.add('active');
+                document.getElementById('incomingCallOverlay').classList.remove('active');
+                phoneNumber = '';
+                document.getElementById('phoneInput').value = '';
+                updateDeleteButton();
+            } else if (appName === 'contacts') {
+                document.getElementById('homeScreen').classList.remove('active');
+                document.getElementById('contactsApp').classList.add('active');
+                document.getElementById('incomingCallOverlay').classList.remove('active');
+                console.log('[DEBUG] JS - Opening Contacts app, rendering contacts');
+                renderContacts();
+            } else if (appName === 'messages') {
+                console.log('[DEBUG] JS - Opening Messages app');
+                document.getElementById('homeScreen').classList.remove('active');
+                document.getElementById('messagesApp').classList.add('active');
+                document.getElementById('incomingCallOverlay').classList.remove('active');
+                if (lastConversationNumber && currentView === 'conversation') {
+                    openConversation(lastConversationNumber);
+                } else {
+                    showConversations();
+                }
+                mp.trigger('openMessagesApp');
+            }
+        }
+
+        function backToHome() {
+            document.getElementById('driveApp').classList.remove('active');
+            document.getElementById('callApp').classList.remove('active');
+            document.getElementById('contactsApp').classList.remove('active');
+            document.getElementById('messagesApp').classList.remove('active');
+            document.getElementById('incomingCallOverlay').classList.remove('active');
+            document.getElementById('homeScreen').classList.add('active');
+            currentConversationNumber = null;
+            currentView = 'conversations';
+            document.getElementById('messagesFooter').classList.remove('conversation');
+        }
+
+        function updateDriverStatus(status) {
+            isDriver = status;
+            document.getElementById('driverStatus').innerText = `Pavežėjo statusas: ${status ? 'On' : 'Off'}`;
+            document.getElementById('driverActions').classList.toggle('active', status);
+            document.getElementById('passengerActions').classList.toggle('active', !status);
+        }
+
+        function openDriveApp(driverStatus) {
+            isDriver = driverStatus;
+            updateDriveApp();
+        }
+
+        function toggleDriver() {
+            mp.trigger('toggleDriverStatus');
+        }
+
+        function requestRide() {
+            mp.trigger('requestRide');
+        }
+
+        function addDigit(digit) {
+            phoneNumber += digit;
+            document.getElementById('phoneInput').value = phoneNumber;
+            updateDeleteButton();
+        }
+
+        function deleteDigit() {
+            phoneNumber = phoneNumber.slice(0, -1);
+            document.getElementById('phoneInput').value = phoneNumber;
+            updateDeleteButton();
+        }
+
+        function updateDeleteButton() {
+            const deleteBtn = document.getElementById('deleteBtn');
+            if (phoneNumber.length > 0) {
+                deleteBtn.classList.add('visible');
+            } else {
+                deleteBtn.classList.remove('visible');
+            }
+        }
+
+        function makeCall() {
+            if (phoneNumber.length > 0 && /^\d+$/.test(phoneNumber)) {
+                mp.trigger('callFromUI', phoneNumber);
+                document.getElementById('phoneInput').value = 'Skambinama...';
+            } else {
+                document.getElementById('phoneInput').value = 'Įveskite tik skaitmenis';
+                setTimeout(() => {
+                    document.getElementById('phoneInput').value = phoneNumber;
+                }, 2000);
+            }
+        }
+
+        function updatePhoneNumber(number) {
+            document.getElementById('phone-number').innerText = number;
+        }
+
+        function incomingCall(callerName, callerNumber) {
+            document.getElementById('incomingCallOverlay').classList.add('active');
+            document.getElementById('homeScreen').classList.remove('active');
+            document.getElementById('callApp').classList.remove('active');
+            document.getElementById('contactsApp').classList.remove('active');
+            document.getElementById('driveApp').classList.remove('active');
+            document.getElementById('incomingCallText').innerText = `Gaunamas skambutis nuo ${callerName} (${callerNumber})`;
+            console.log(`[DEBUG] JS - Showing incoming call from ${callerName} (${callerNumber})`);
+        }
+
+        function callStarted(partnerName, partnerNumber) {
+            document.getElementById('incomingCallOverlay').classList.remove('active');
+            document.getElementById('callApp').classList.add('active');
+            document.getElementById('phoneInput').value = `Skambutyje su ${partnerName} (${partnerNumber})`;
+        }
+
+        function callEnded() {
+            document.getElementById('incomingCallOverlay').classList.remove('active');
+            document.getElementById('phoneInput').value = '';
+            phoneNumber = '';
+            updateDeleteButton();
+            backToHome();
+        }
+
+        function loadPhoneData(phoneNumber, callStatus, callPartner, contactsJson) {
+            myPhoneNumber = phoneNumber;
+            currentCallStatus = callStatus;
+            currentCallPartner = callPartner;
+            contacts = JSON.parse(contactsJson);
+            console.log(`[DEBUG] JS - Loaded phone data: phoneNumber=${phoneNumber}, callStatus=${callStatus}, callPartner=${callPartner}, contacts=`, contacts);
+            document.getElementById('phone-number').innerText = myPhoneNumber;
+            if (document.getElementById('callApp').classList.contains('active')) {
+                updateCallUI();
+            }
+        }
+
+        function updateContacts(contactsJson) {
+            contacts = JSON.parse(contactsJson);
+            console.log(`[DEBUG] JS - Updated contacts:`, contacts);
+            if (document.getElementById('contactsApp').classList.contains('active')) {
+                renderContacts();
+            } else {
+                console.log('[DEBUG] JS - Contacts updated but Contacts app not active');
+            }
+        }
+
+        function renderContacts() {
+            const contactsList = document.getElementById('contactsList');
+            console.log(`[DEBUG] JS - Rendering contacts:`, contacts);
+            contactsList.innerHTML = '';
+            if (!contacts || contacts.length === 0) {
+                contactsList.innerHTML = '<p style="text-align: center; color: #666;">Nėra kontaktų</p>';
+            } else {
+                contacts.forEach(contact => {
+                    const contactItem = document.createElement('div');
+                    contactItem.className = 'contactItem';
+                    contactItem.innerHTML = `
+                        <div class="contactInfo">
+                            <div class="contactName">${contact.name}</div>
+                            <div class="contactNumber">${contact.number}</div>
+                        </div>
+                        <div class="contactActions">
+                            <button class="actionBtn callContactBtn" onclick="callContact('${contact.number}')"></button>
+                            <button class="actionBtn messageContactBtn" onclick="messageContact('${contact.number}')"></button>
+                            <button class="actionBtn removeContactBtn" onclick="removeContact('${contact.number}')"></button>
+                        </div>
+                    `;
+                    contactsList.appendChild(contactItem);
+                });
+            }
+        }
+
+        function addContact() {
+            const name = document.getElementById('contactNameInput').value.trim();
+            const number = document.getElementById('contactNumberInput').value.trim();
+            if (!name || !number || !/^\d+$/.test(number)) {
+                document.getElementById('contactNumberInput').value = 'Įveskite tik skaitmenis';
+                setTimeout(() => {
+                    document.getElementById('contactNumberInput').value = number;
+                }, 2000);
+                return;
+            }
+            mp.trigger('addContact', name, number);
+            document.getElementById('contactNameInput').value = '';
+            document.getElementById('contactNumberInput').value = '';
+        }
+
+        function removeContact(number) {
+            mp.trigger('removeContact', number);
+        }
+
+        function callContact(number) {
+            mp.trigger('callContact', number);
+            openApp('call');
+            document.getElementById('phoneInput').value = `Skambinama ${number}...`;
+        }
+
+        // Update existing messageContact to open Messages app
+        function messageContact(number) {
+            openApp('messages');
+            openConversation(number);
+        }
+        function updateCallUI() {
+            console.log(`[DEBUG] JS - Updating call UI: status=${currentCallStatus}, partner=${currentCallPartner}`);
+        }
+
+        function showIncomingCall(callerName, callerNumber) {
+            incomingCall(callerName, callerNumber);
+        }
+
+        function answerCall() {
+            mp.trigger('acceptCall');
+            console.log('[DEBUG] JS - Call accepted');
+        }
+
+        function declineCall() {
+            mp.trigger('declineCall');
+            console.log('[DEBUG] JS - Call declined');
+        }
+
+
+
+        // Helper function to update footer button visibility
+        function updateMessagesFooter() {
+            const newConversationBtn = document.getElementById('newConversationBtn');
+            const backBtn = document.getElementById('backBtn');
+
+            if (currentView === 'conversations') {
+                newConversationBtn.style.display = 'block';
+                backBtn.style.display = 'none';
+            } else {
+                newConversationBtn.style.display = 'none';
+                backBtn.style.display = 'block';
+            }
+        }
+
+
+        function showConversations() {
+            console.log('[DEBUG] JS - Showing conversations list');
+            currentView = 'conversations';
+            document.getElementById('conversationsList').style.display = 'block';
+            document.getElementById('conversationView').classList.remove('active');
+            document.getElementById('newMessageForm').classList.remove('active');
+            document.getElementById('messagesFooter').classList.remove('conversation');
+            currentConversationNumber = null;
+            updateMessagesFooter();
+            mp.trigger('openMessagesApp');
+        }
+
+        function showNewMessageForm() {
+            currentView = 'newMessage';
+            document.getElementById('conversationsList').style.display = 'none';
+            document.getElementById('conversationView').classList.remove('active');
+            document.getElementById('newMessageForm').classList.add('active');
+            document.getElementById('messagesFooter').classList.remove('conversation');
+            document.getElementById('newMessageNumber').value = '';
+            document.getElementById('newMessageNumber').placeholder = 'Telefono numeris';
+            updateMessagesFooter();
+        }
+
+        function handleBack() {
+            if (currentView === 'conversation' || currentView === 'newMessage') {
+                showConversations();
+            } else {
+                backToHome();
+            }
+        }
+
+        function startNewConversation() {
+            const number = document.getElementById('newMessageNumber').value.trim();
+            if (!number || !/^\d+$/.test(number)) {
+                document.getElementById('newMessageNumber').value = '';
+                document.getElementById('newMessageNumber').placeholder = 'Įveskite tik skaitmenis';
+                setTimeout(() => document.getElementById('newMessageNumber').placeholder = 'Telefono numeris', 2000);
+                return;
+            }
+            console.log(`[DEBUG] JS - Starting conversation with ${number}`);
+            currentConversationNumber = number;
+            lastConversationNumber = number;
+            currentView = 'conversation';
+            document.getElementById('conversationsList').style.display = 'none';
+            document.getElementById('newMessageForm').classList.remove('active');
+            document.getElementById('conversationView').classList.add('active');
+            document.getElementById('messagesFooter').classList.add('conversation');
+            document.getElementById('messageInput').focus();
+            updateMessagesFooter();
+            mp.trigger('openConversation', number);
+        }
+
+        function updateConversationsUI(conversationsJson) {
+            console.log('[DEBUG] JS - Received updateConversationsUI');
+            const conversations = JSON.parse(conversationsJson);
+            const conversationsList = document.getElementById('conversationsList');
+            conversationsList.innerHTML = conversations.length === 0 ? '<p style="text-align: center; color: #666;">Nėra pokalbių</p>' : '';
+            conversations.forEach(conv => {
+                const item = document.createElement('div');
+                item.className = 'conversationItem';
+                if (!conv.isRead && conv.number !== myPhoneNumber) item.classList.add('unread');
+                const date = new Date(conv.timestamp);
+                const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                item.innerHTML = `
+                    <div class="conversationInfo" onclick="openConversation('${conv.number}')">
+                        <div class="conversationName">${conv.contactName}</div>
+                        <div class="conversationPreview">${conv.lastMessage}</div>
+                    </div>
+                    <div class="conversationTime">${timeString}</div>
+                `;
+                conversationsList.appendChild(item);
+            });
+        }
+
+        function openConversation(number) {
+            console.log(`[DEBUG] JS - Opening conversation with ${number}`);
+            currentConversationNumber = number;
+            lastConversationNumber = number;
+            currentView = 'conversation';
+            document.getElementById('conversationsList').style.display = 'none';
+            document.getElementById('newMessageForm').classList.remove('active');
+            document.getElementById('conversationView').classList.add('active');
+            document.getElementById('messagesFooter').classList.add('conversation');
+            document.getElementById('messageInput').focus();
+            updateMessagesFooter();
+            mp.trigger('openConversation', number);
+        }
+
+        function updateMessagesUI(number, messagesJson) {
+            console.log(`[DEBUG] JS - Updating messages for ${number}`);
+            try {
+                const messages = JSON.parse(messagesJson);
+                currentConversationNumber = number;
+                lastConversationNumber = number;
+                currentView = 'conversation';
+                const messagesList = document.getElementById('messagesList');
+                messagesList.innerHTML = '';
+                messages.forEach(msg => {
+                    const item = document.createElement('div');
+                    item.className = `messageItem ${msg.sender === myPhoneNumber ? 'sent' : 'received'}`;
+                    const date = new Date(msg.timestamp);
+                    const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    item.innerHTML = `<div>${msg.text}</div><div class="messageTime">${timeString}</div>`;
+                    messagesList.appendChild(item);
+                });
+                messagesList.scrollTop = messagesList.scrollHeight;
+                document.getElementById('conversationView').classList.add('active');
+                document.getElementById('messagesFooter').classList.add('conversation');
+            } catch (e) {
+                console.error('[ERROR] JS - Failed to parse messages JSON:', e, messagesJson);
+            }
+        }
+
+        function updateConversationsUI(conversationsJson) {
+            console.log('[DEBUG] JS - Updating conversations list');
+            try {
+                const conversations = JSON.parse(conversationsJson);
+                const conversationsList = document.getElementById('conversationsList');
+                conversationsList.innerHTML = conversations.length === 0 ? '<p style="text-align: center; color: #666;">Nėra pokalbių</p>' : '';
+                conversations.forEach(conv => {
+                    const item = document.createElement('div');
+                    item.className = 'conversationItem';
+                    if (!conv.isRead && conv.number !== myPhoneNumber) item.classList.add('unread');
+                    const date = new Date(conv.timestamp);
+                    const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    item.innerHTML = `
+                        <div class="conversationInfo" onclick="openConversation('${conv.number}')">
+                            <div class="conversationName">${conv.contactName}</div>
+                            <div class="conversationPreview">${conv.lastMessage}</div>
+                        </div>
+                        <div class="conversationTime">${timeString}</div>
+                    `;
+                    conversationsList.appendChild(item);
+                });
+            } catch (e) {
+                console.error('[ERROR] JS - Failed to parse conversations JSON:', e, conversationsJson);
+            }
+        }
+
+        function sendMessage() {
+            const now = Date.now();
+            if (now - lastMessageTime < messageCooldown) {
+                document.getElementById('messageInput').placeholder = 'Palaukite prieš siunčiant kitą žinutę';
+                setTimeout(() => document.getElementById('messageInput').placeholder = 'Žinutė...', 2000);
+                return;
+            }
+
+            const messageInput = document.getElementById('messageInput');
+            const messageText = messageInput.value.trim();
+            if (!messageText || !currentConversationNumber) {
+                console.log(`[DEBUG] JS - Send failed: text=${messageText}, conversation=${currentConversationNumber}`);
+                return;
+            }
+
+            console.log(`[DEBUG] JS - Sending message to ${currentConversationNumber}: "${messageText}"`);
+            lastMessageTime = now;
+            mp.trigger('sendMessage', currentConversationNumber, messageText);
+            messageInput.value = '';
+        }
+
+        function messageContact(number) {
+            openApp('messages');
+            openConversation(number);
+        }
+
+    </script>
+</body>
+
+</html>
