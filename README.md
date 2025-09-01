@@ -6,6 +6,7 @@ CaliforniaRP.LT is a [RageMP](https://rage.mp/) modification for Grand Theft Aut
 
 
 
+
 ## Gamemode Features
 
 - **Login & Registration**  
@@ -23,18 +24,8 @@ CaliforniaRP.LT is a [RageMP](https://rage.mp/) modification for Grand Theft Aut
 - **Admin System**  
   Minimal functionality for basic server management.
 
----
 
-## Screenshots
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/539636f3-018a-4301-b87b-c2bbe163dedd" width="400" />
-  <img src="https://github.com/user-attachments/assets/4babe680-ab8b-444b-8f15-56e885567d97" width="400" />
-  <img src="https://github.com/user-attachments/assets/26115bf1-7f0e-4954-9643-cbac2983fb1d" width="400" />
-  <img src="https://github.com/user-attachments/assets/75f245a3-3f79-4264-9e43-c4b438a26779" width="400" />
-</p>
-
----
 
 
 
