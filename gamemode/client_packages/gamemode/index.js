@@ -1,3 +1,5 @@
+let bankUI = null;
+
 mp.gui.chat.push('Hello World')
 
 
@@ -98,16 +100,15 @@ mp.keys.bind(0x45, false, function () { // 'E' key
 
 // When the bank UI is opened, the history and balance are updated
 mp.events.add('openBankUI', (balance, history) => {
-    if (typeof bankUI !== 'undefined') {
+    if (bankUI) {
         bankUI.destroy();
+        bankUI = null;
     }
 
-    // Open the bank UI browser
     bankUI = mp.browsers.new('package://cef/bankUI.html');
-    // Ensure history is passed as a stringified JSON array
+
     bankUI.execute(`updateBankBalance(${balance}); updateTransactionHistory(${JSON.stringify(history)});`);
 
-    // Show cursor
     mp.gui.cursor.show(true, true);
 });
 
@@ -128,10 +129,11 @@ mp.events.add('bankError', (message) => {
 
 // Event to close the bank UI and hide the cursor
 mp.events.add('closeBankUI', () => {
-    if (typeof bankUI !== 'undefined') {
+    if (bankUI) {
         bankUI.destroy();
-        delete bankUI;
+        bankUI = null;
     }
+
     mp.gui.cursor.show(false, false);
 });
 

@@ -2,6 +2,31 @@ const bcrypt = require('bcrypt');
 const mysql = require('mysql');
 const moment = require('moment-timezone');
 
+
+
+const activeDrivers = new Map();
+const activeRides = new Map();
+const activeCalls = new Map();
+
+const TWITTER_COOLDOWN = 3600000; // 1 hour between posts
+const lastTweetTime = new Map();
+
+function startCall(caller, target) {
+    if (!caller || !target || caller.id === target.id) return false;
+    if (!caller.charName || !target.charName) return false;
+    if (activeCalls.has(caller.id) || activeCalls.has(target.id)) return false;
+
+    const callData = { caller: caller, target: target, status: 'ringing' };
+    activeCalls.set(caller.id, callData);
+    activeCalls.set(target.id, { caller: caller, target: target, status: 'incoming' });
+
+    caller.outputChatBox(`!{#f7dc6f}Skambinate ${target.charName} (${target.phoneNumber})...`);
+    target.outputChatBox(`!{#f7dc6f}Jums skambina ${caller.charName} (${caller.phoneNumber}). Naudokite /answer arba /decline.`);
+    target.call('incomingCall', [caller.charName, caller.phoneNumber]);
+    return true;
+}
+
+
 const db = mysql.createConnection({
     host: 'localhost',
     user: 'root',
@@ -9,11 +34,32 @@ const db = mysql.createConnection({
     database: 'ragemp_mod'
 });
 
+
 db.connect((err) => {
     if (err) {
         console.error('MySQL Connection Failed:', err);
     } else {
         console.log('Connected to MySQL Database!');
+        // Ensure Twitter schema exists
+        db.query(`CREATE TABLE IF NOT EXISTS twitter_accounts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            char_id INT NOT NULL,
+            handle VARCHAR(50) UNIQUE NOT NULL,
+            FOREIGN KEY (char_id) REFERENCES characters(id)
+        )`, (err) => {
+            if (err) console.error('Error creating twitter_accounts table:', err);
+            else console.log('Twitter accounts table ready.');
+        });
+        db.query(`CREATE TABLE IF NOT EXISTS twitter_posts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            char_id INT NOT NULL,
+            handle VARCHAR(50) NOT NULL,
+            content TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`, (err) => {
+            if (err) console.error('Error creating twitter_posts table:', err);
+            else console.log('Twitter posts table ready.');
+        });
     }
 });
 
@@ -235,31 +281,6 @@ function saveCharacterData(player) {
     }
 }
 
-mp.events.add('playerQuit', (player) => {
-    if (player.timer) {
-        clearInterval(player.timer);
-        delete player.timer;
-    }
-
-    if (player.saveTimer) {
-        clearInterval(player.saveTimer);
-        delete player.saveTimer;
-    }
-
-    if (playerTimeInfo[player.id] && playerTimeInfo[player.id].interval) {
-        clearInterval(playerTimeInfo[player.id].interval);
-        delete playerTimeInfo[player.id];
-    }
-
-    saveCharacterData(player);
-
-    if (player.charId) {
-        player.outputChatBox('!{#f7dc6f}Jūsų veikėjo duomenys išsaugoti. Iki pasimatymo!');
-    } else {
-        console.log(`[INFO] Žaidėjas ${player.name} atsijungė be pasirinkto veikėjo.`);
-    }
-});
-
 // World time sync
 setInterval(() => {
     const currentHour = moment().tz('Europe/Vilnius').hour();
@@ -338,6 +359,9 @@ mp.events.addCommand('low', (player, _, ...whisperMessage) => {
 
 
 mp.events.add('playerChat', (player, text) => {
+    if (!player.charName) return;
+    if (!text || text.trim().length === 0) return;
+
     const isOnCall = activeCalls.has(player.id) && activeCalls.get(player.id).status === 'active';
     const proximityPrefix = isOnCall ? '!{#e8dc27}[Skambutis]' : '';
     const proximityMessage = `${proximityPrefix}${player.charName} sako: ${text}`;
@@ -411,24 +435,11 @@ mp.events.addCommand('pm', (player, fullText, targetIdentifier, ...messageArray)
     const message = messageArray.join(" ");
     let target;
 
-    if (!isNaN(targetIdentifier)) {
-        const targetId = parseInt(targetIdentifier);
-        target = mp.players.at(targetId);
-    } else {
-        const matchingPlayers = mp.players.toArray().filter(p => p.charName && p.charName.toLowerCase().includes(targetIdentifier.toLowerCase()));
-        if (matchingPlayers.length === 0) {
-            player.outputChatBox(`Nerastas žaidėjas vardu "${targetIdentifier}".`);
-            return;
-        } else if (matchingPlayers.length > 1) {
-            player.outputChatBox(`Rasti keli žaidėjai vardu "${targetIdentifier}":`);
-            matchingPlayers.forEach(target => {
-                player.outputChatBox(`ID: ${target.id} | Vardas: ${target.charName}`);
-            });
-            player.outputChatBox(`Įveskite tikslų vardą.`);
-            return;
-        } else {
-            target = matchingPlayers[0];
-        }
+    target = getPlayerByIDOrName(targetIdentifier);
+
+    if (!target) {
+        player.outputChatBox(`Nerastas žaidėjas vardu "${targetIdentifier}".`);
+        return;
     }
 
     if (!target.charName) {
@@ -459,6 +470,7 @@ mp.events.addCommand('stats', player => {
     player.outputChatBox(`!{#f7dc6f}===== Jūsų informacija =====`);
     player.outputChatBox(`UCP vartotojo vardas: ${player.name}, Veikėjo vardas: ${player.charName}`); // Show UCP username
     player.outputChatBox(`------------------------------------------------------`);
+    player.outputChatBox(`📱 Telefono numeris: ${player.phoneNumber || 'Nėra'}`);
     player.outputChatBox(`Gyvybės: ${player.health}, Žaidimo laikas: ${Math.floor(player.playtime / 60)} val. ${player.playtime % 60} min.`);
     player.outputChatBox(`Grynieji pinigai: $${player.money}, Banko sąskaitos balansas: $${player.bankBalance}`);
 });
@@ -506,13 +518,7 @@ mp.events.add('playerCommand', (player, command) => {
             return;
         }
 
-        let targetPlayer = null;
-        if (!isNaN(targetNameOrID)) {
-            targetPlayer = mp.players.at(parseInt(targetNameOrID));
-        } else {
-            targetPlayer = mp.players.toArray().find(p => p.charName && p.charName.toLowerCase().includes(targetNameOrID.toLowerCase()));
-        }
-
+        const targetPlayer = getPlayerByIDOrName(targetNameOrID);
         if (!targetPlayer) {
             player.outputChatBox('!{#f7dc6f}Žaidėjas nerastas!');
             return;
@@ -761,11 +767,19 @@ function isAdmin(player, level, callback) {
 }
 
 function getPlayerByIDOrName(identifier) {
-    let player = mp.players.at(Number(identifier));
-    if (!player) {
-        player = mp.players.toArray().find(p => p.charName && p.charName.toLowerCase() === identifier.toLowerCase());
+    if (!identifier) return null;
+
+    const numericId = Number(identifier);
+    if (!isNaN(numericId) && Number.isInteger(numericId)) {
+        const byId = mp.players.toArray().find(p => p.id === numericId);
+        if (byId) return byId;
     }
-    return player;
+
+    const byNameExact = mp.players.toArray().find(p => p.charName && p.charName.toLowerCase() === identifier.toLowerCase());
+    if (byNameExact) return byNameExact;
+
+    // Fallback to partial match
+    return mp.players.toArray().find(p => p.charName && p.charName.toLowerCase().includes(identifier.toLowerCase()));
 }
 
 function sendUsageInstructions(player, command) {
@@ -924,7 +938,7 @@ mp.events.addCommand('accepthelp', async (admin, playerId) => {
         return;
     }
 
-    const target = mp.players.at(parseInt(playerId));
+    const target = getPlayerByIDOrName(playerId);
     if (!target) {
         admin.outputChatBox("[HELP] Žaidėjas nerastas.");
         return;
@@ -948,7 +962,7 @@ mp.events.addCommand('declinehelp', async (admin, playerId) => {
         return;
     }
 
-    const target = mp.players.at(parseInt(playerId));
+    const target = getPlayerByIDOrName(playerId);
     if (!target) {
         admin.outputChatBox("[HELP] Žaidėjas nerastas.");
         return;
@@ -975,7 +989,7 @@ mp.events.addCommand("report", async (player, fullText, targetId, ...reasonArray
         return player.outputChatBox("Jūsų reportas jau laukia administratorių sprendimo.");
     }
 
-    const target = mp.players.at(parseInt(targetId));
+    const target = getPlayerByIDOrName(targetId);
     if (!target) {
         return player.outputChatBox("Žaidėjas su tokiu ID nerastas.");
     }
@@ -987,14 +1001,12 @@ mp.events.addCommand("report", async (player, fullText, targetId, ...reasonArray
     const reason = reasonArray.join(" ");
     reports.set(player.id, { player, target, reason });
 
-    const adminLevel = await getAdminLevelFromDB(player);
-    if (adminLevel >= 1) {
-        mp.players.forEach(admin => {
-            if (adminLevel >= 1) {
-                admin.outputChatBox(`!{#f0e237}[REPORT] ${player.charName} pranešė apie ${target.charName}: ${reason} (ID: ${player.id})`);
-            }
-        });
-    }
+    mp.players.forEach(async (admin) => {
+        const adminLvl = await getAdminLevelFromDB(admin);
+        if (adminLvl >= 1) {
+            admin.outputChatBox(`!{#f0e237}[REPORT] ${player.charName} pranešė apie ${target.charName}: ${reason} (ID: ${player.id})`);
+        }
+    });
 
     player.outputChatBox("Jūsų reportas buvo išsiųstas administracijai.");
 });
@@ -1148,6 +1160,29 @@ mp.events.addCommand('coords', (player) => {
     player.outputChatBox(`Current Coordinates: X: ${coords.x.toFixed(2)}, Y: ${coords.y.toFixed(2)}, Z: ${coords.z.toFixed(2)}`);
 });
 
+mp.events.addCommand('createtwittertables', (player) => {
+    if (!player.charName) return;
+    db.query(`CREATE TABLE IF NOT EXISTS twitter_accounts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        char_id INT NOT NULL,
+        handle VARCHAR(50) UNIQUE NOT NULL,
+        FOREIGN KEY (char_id) REFERENCES characters(id)
+    )`, (err) => {
+        if (err) console.error('Error creating twitter_accounts table:', err);
+        else console.log('Twitter accounts table ready.');
+    });
+    db.query(`CREATE TABLE IF NOT EXISTS twitter_posts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        handle VARCHAR(50) NOT NULL,
+        content TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+        if (err) console.error('Error creating twitter_posts table:', err);
+        else console.log('Twitter posts table ready.');
+    });
+    player.outputChatBox('Twitter tables created.');
+});
+
 
 
 
@@ -1164,205 +1199,172 @@ mp.events.addCommand('coords', (player) => {
 
 // Mobile Phone and Drive App System
 
-const activeDrivers = new Map();
-const rideRequests = new Map();
 
 mp.events.addCommand('ph', (player) => openPhone(player));
 mp.events.addCommand('phone', (player) => openPhone(player));
 
 // Server-side
+// ==================== OPEN PHONE FUNCTION (FIXED) ====================
+
+
+// ==================== DRIVE / PAVEŽĖJŲ SISTEMA (CLEAN & FIXED) ====================
+
 function openPhone(player) {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) {
+        return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    }
+
+    let callStatus = 'idle';
+    let callPartner = null;
+
+    if (activeCalls.has(player.id)) {
+        const callData = activeCalls.get(player.id);
+        callStatus = callData.status || 'idle';
+        callPartner = callData.caller === player
+            ? (callData.target ? callData.target.charName : null)
+            : (callData.caller ? callData.caller.charName : null);
+    }
+
     const isDriver = activeDrivers.has(player.id);
-    const callStatus = activeCalls.has(player.id) ? activeCalls.get(player.id).status : 'idle';
-    const callPartner = callStatus !== 'idle' ? (activeCalls.get(player.id).caller === player ? activeCalls.get(player.id).target.charName : activeCalls.get(player.id).caller.charName) : null;
     const contacts = player.contacts || [];
-    console.log(`[DEBUG] Opening phone for ${player.charName}, sending contacts:`, contacts);
-    player.call('openPhoneUI', [isDriver, player.phoneNumber, callStatus, callPartner, JSON.stringify(contacts)]);
+
+    console.log(`[PHONE] Opening phone for ${player.charName} | Driver: ${isDriver} | Status: ${callStatus}`);
+
+    player.call('openPhoneUI', [
+        isDriver,
+        player.phoneNumber || '',
+        callStatus,
+        callPartner || '',
+        JSON.stringify(contacts)
+    ]);
 }
 
+// Toggle driver status
 mp.events.add('toggleDriverStatus', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!player.vehicle) {
-        return player.outputChatBox('!{#e74c3c}Jums reikia transporto priemonės, kad taptumėte vairuotoju!');
-    }
+    if (!player.charName) return;
 
     if (activeDrivers.has(player.id)) {
         activeDrivers.delete(player.id);
         player.outputChatBox('!{#cd5d3c}Jūs nebesate Drive vairuotojas.');
-        player.call('updatePhoneUI', [false]);
+        player.call('updateDriverStatus', [false]);
     } else {
-        activeDrivers.set(player.id, { player, status: "available" });
-        player.outputChatBox('!{#7aa164}Jūs tapote Drive vairuotoju! Laukite užsakymų.');
-        player.call('updatePhoneUI', [true]);
-    }
-});
-
-mp.events.add('requestRide', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (rideRequests.has(player.id)) {
-        return player.outputChatBox('!{#e74c3c}Jūs jau pateikėte kelionės užklausą!');
-    }
-    if (activeDrivers.size === 0) {
-        return player.outputChatBox('!{#f7dc6f}Šiuo metu nėra laisvų Drive vairuotojų.');
-    }
-
-    rideRequests.set(player.id, { requester: player, driver: null });
-
-    activeDrivers.forEach((driverData, driverId) => {
-        const driver = driverData.player;
-        const distance = player.position.distanceTo(driver.position);
-        if (distance <= 500 && driverData.status === "available") {
-            driver.outputChatBox(`!{#f7dc6f}[Drive] ${player.charName} prašo kelionės! Priimti: /acceptdrive ${player.id}`);
+        if (!player.vehicle) {
+            return player.outputChatBox('!{#e74c3c}Jums reikia būti transporto priemonėje!');
         }
-    });
-
-    player.outputChatBox('!{#7aa164}Jūsų kelionės užklausa išsiųsta Drive vairuotojams.');
+        activeDrivers.set(player.id, { player, status: "available" });
+        player.outputChatBox('!{#7aa164}Jūs tapote Drive vairuotoju!');
+        player.call('updateDriverStatus', [true]);
+    }
 });
 
-mp.events.addCommand('acceptdrive', (driver, requesterId) => {
-    if (!driver.charName) return driver.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!activeDrivers.has(driver.id)) {
-        return driver.outputChatBox('!{#e74c3c}Jūs nesate Drive vairuotojas! Įjunkite per telefoną.');
-    }
-    const reqId = parseInt(requesterId);
-    if (!rideRequests.has(reqId)) {
-        return driver.outputChatBox('!{#f7dc6f}Ši kelionės užklausa nebegalioja.');
+// Request ride
+mp.events.add('requestRide', (player) => {
+    if (!player.charName) return;
+    if (activeRides.has(player.id)) {
+        return player.outputChatBox('!{#e74c3c}Jūs jau turite aktyvią kelionę!');
     }
 
-    const request = rideRequests.get(reqId);
-    if (request.driver) {
-        return driver.outputChatBox('!{#e74c3c}Šią užklausą jau priėmė kitas vairuotojas.');
+    if (activeDrivers.size === 0) {
+        return player.outputChatBox('!{#f7dc6f}Šiuo metu nėra laisvų vairuotojų.');
     }
 
-    request.driver = driver;
-    activeDrivers.get(driver.id).status = "busy";
-
-    // Create a blip on the driver's map at the requester's position
-    const passengerBlip = mp.blips.new(1, request.requester.position, {
-        name: `Keleivis: ${request.requester.charName}`,
-        color: 2, // Green color
-        shortRange: false,
-        scale: 1.0
+    activeRides.set(player.id, {
+        requester: player,
+        driver: null,
+        blip: null,
+        interval: null
     });
 
-    // Store the blip reference and passenger position in the driver object
-    driver.passengerBlip = passengerBlip;
-    driver.passengerPosition = request.requester.position;
-
-    driver.outputChatBox(`!{#7aa164}Priėmėte ${request.requester.charName} kelionės užklausą. Pasažierio vieta pažymėta žemėlapyje! Susisiekite su keleiviu dėl tikslo ir kainos.`);
-    request.requester.outputChatBox(`!{#7aa164}Vairuotojas ${driver.charName} priėmė jūsų užklausą! Susisiekite dėl tikslo ir kainos.`);
-});
-
-// Add an event to check driver proximity to passenger
-mp.events.add('render', () => {
-    mp.players.forEach(driver => {
-        // Check if this driver has an active passenger blip and position
-        if (driver.passengerBlip && driver.passengerPosition) {
-            const driverPos = driver.position;
-
-            // Manual distance calculation
-            const distance = Math.sqrt(
-                Math.pow(driverPos.x - driver.passengerPosition.x, 2) +
-                Math.pow(driverPos.y - driver.passengerPosition.y, 2) +
-                Math.pow(driverPos.z - driver.passengerPosition.z, 2)
-            );
-
-            // Alternative using mp.Vector3 (commented out, but left for reference)
-            // const distance = mp.Vector3.getDistanceBetweenPoints3D(driverPos, driver.passengerPosition);
-
-            // Define a reasonable pickup radius (e.g., 10 units)
-            const pickupRadius = 10.0;
-
-            if (distance <= pickupRadius) {
-                // Driver has reached their assigned passenger
-                driver.passengerBlip.destroy(); // Remove the blip
-                driver.passengerBlip = null;    // Clear the blip reference
-                driver.passengerPosition = null; // Clear the position reference
-                driver.outputChatBox('!{#7aa164}Pasiekėte keleivio vietą!');
-
-                // Find the specific ride request associated with this driver
-                const request = Array.from(rideRequests.values()).find(r => r.driver === driver);
-                if (request && request.requester) {
-                    request.requester.outputChatBox(`!{#7aa164}Vairuotojas ${driver.charName} atvyko jūsų pasiimti!`);
-                }
+    activeDrivers.forEach((data) => {
+        if (data.status === "available") {
+            const dist = player.position.distanceTo(data.player.position);
+            if (dist < 700) {
+                data.player.outputChatBox(`!{#f7dc6f}[Drive] ${player.charName} ieško pavežėjimo! /acceptdrive ${player.id}`);
             }
         }
     });
+
+    player.outputChatBox('!{#7aa164}Užklausa išsiųsta vairuotojams...');
 });
 
-
-mp.events.addCommand('cancelride', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!rideRequests.has(player.id)) {
-        return player.outputChatBox('!{#f7dc6f}Jūs neturite aktyvios kelionės užklausos.');
+// Accept ride command
+mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
+    if (!driver.charName || !activeDrivers.has(driver.id)) {
+        return driver.outputChatBox('!{#e74c3c}Jūs nesate aktyvus vairuotojas!');
     }
 
-    const request = rideRequests.get(player.id);
-    if (request.driver) {
-        request.driver.outputChatBox(`!{#cd5d3c}${player.charName} atšaukė kelionės užklausą.`);
-        activeDrivers.get(request.driver.id).status = "available";
+    const reqId = parseInt(requesterIdStr);
+    if (!activeRides.has(reqId)) {
+        return driver.outputChatBox('!{#f7dc6f}Užklausa nebegalioja.');
     }
-    rideRequests.delete(player.id);
-    player.outputChatBox('!{#cd5d3c}Jūsų kelionės užklausa atšaukta.');
-});
 
-mp.events.add('playerQuit', (player) => {
-    if (activeDrivers.has(player.id)) {
-        activeDrivers.delete(player.id);
+    const ride = activeRides.get(reqId);
+    if (ride.driver) {
+        return driver.outputChatBox('!{#e74c3c}Šią užklausą jau priėmė kitas vairuotojas.');
     }
-    if (rideRequests.has(player.id)) {
-        const request = rideRequests.get(player.id);
-        if (request.driver) {
-            request.driver.outputChatBox(`!{#cd5d3c}${player.charName} atsijungė, kelionė atšaukta.`);
-            activeDrivers.get(request.driver.id).status = "available";
+
+    ride.driver = driver;
+    activeDrivers.get(driver.id).status = "busy";
+
+    ride.blip = mp.blips.new(1, ride.requester.position, {
+        name: `Keleivis: ${ride.requester.charName}`,
+        color: 2,
+        scale: 1.2
+    });
+
+    driver.outputChatBox(`!{#7aa164}Priėmėte ${ride.requester.charName}! Važiuokite jo pasiimti.`);
+    ride.requester.outputChatBox(`!{#7aa164}Vairuotojas ${driver.charName} priėmė jūsų užklausą!`);
+
+    ride.interval = setInterval(() => {
+        if (!ride.driver || !ride.requester) {
+            clearInterval(ride.interval);
+            return;
         }
-        rideRequests.delete(player.id);
-    }
+        const dist = ride.driver.position.distanceTo(ride.requester.position);
+        if (dist <= 12) {
+            clearInterval(ride.interval);
+            ride.driver.outputChatBox('!{#7aa164}✅ Jūs pasiekėte keleivį!');
+            ride.requester.outputChatBox('!{#7aa164}✅ Vairuotojas atvyko pas jus!');
+        }
+    }, 2000);
 });
 
-
-const activeCalls = new Map(); // Tracks ongoing calls: { callerId: { caller, target, status } }
+// Tracks ongoing calls: { callerId: { caller, target, status } }
 
 // /call command
 mp.events.addCommand('call', (player, phoneNumber) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
     if (!phoneNumber) return player.outputChatBox('Naudojimas: /call [telefono numeris]');
     if (!player.phoneNumber) return player.outputChatBox('!{#e74c3c}Jūs neturite telefono numerio.');
+    if (activeCalls.has(player.id)) return player.outputChatBox('!{#e74c3c}Jūs jau esate skambutyje arba laukiate atsakymo.');
 
-    if (activeCalls.has(player.id)) {
-        return player.outputChatBox('!{#e74c3c}Jūs jau esate skambutyje arba laukiate atsakymo.');
-    }
-
-    // Find target player by phone number
     const target = mp.players.toArray().find(p => p.phoneNumber === phoneNumber);
     if (!target || !target.charName) {
         return player.outputChatBox('!{#f7dc6f}Šis telefono numeris nerastas arba žaidėjas neprisijungęs.');
     }
 
-    if (target === player) {
+    if (target.id === player.id) {
         return player.outputChatBox('!{#e74c3c}Negalite skambinti sau!');
     }
 
-    // Initiate call request
-    activeCalls.set(player.id, { caller: player, target, status: 'ringing' });
-    player.outputChatBox(`!{#f7dc6f}Skambinate ${target.charName} (${phoneNumber})...`);
-    target.outputChatBox(`!{#f7dc6f}Jums skambina ${player.charName} (${player.phoneNumber}). Naudokite /answer arba /decline.`);
-    target.call('incomingCall', [player.charName, player.phoneNumber]); // Notify phone UI
+    if (!startCall(player, target)) {
+        return player.outputChatBox('!{#e74c3c}Skambutis negali būti pradėtas.');
+    }
 });
 
 // /answer command
 mp.events.addCommand('answer', (player) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
 
-    const callRequest = Array.from(activeCalls.values()).find(call => call.target === player && call.status === 'ringing');
-    if (!callRequest) {
+    const callRequest = activeCalls.get(player.id);
+    if (!callRequest || callRequest.status !== 'incoming') {
         return player.outputChatBox('!{#f7dc6f}Šiuo metu jums niekas neskambina.');
     }
 
     const caller = callRequest.caller;
-    callRequest.status = 'active';
-    activeCalls.set(caller.id, callRequest);
+    const activeCallData = { caller, target: player, status: 'active' };
+    activeCalls.set(player.id, activeCallData);
+    activeCalls.set(caller.id, activeCallData);
 
     player.outputChatBox(`!{#7aa164}Jūs priėmėte skambutį iš ${caller.charName}.`);
     caller.outputChatBox(`!{#7aa164}${player.charName} priėmė jūsų skambutį.`);
@@ -1374,43 +1376,98 @@ mp.events.addCommand('answer', (player) => {
 mp.events.addCommand('decline', (player) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
 
-    const callRequest = Array.from(activeCalls.values()).find(call => call.target === player && call.status === 'ringing');
-    if (!callRequest) {
+    const callRequest = activeCalls.get(player.id);
+    if (!callRequest || callRequest.status !== 'incoming') {
         return player.outputChatBox('!{#f7dc6f}Šiuo metu jums niekas neskambina.');
     }
 
     const caller = callRequest.caller;
+    activeCalls.delete(player.id);
     activeCalls.delete(caller.id);
 
     player.outputChatBox(`!{#cd5d3c}Jūs atmetėte skambutį iš ${caller.charName}.`);
     caller.outputChatBox(`!{#cd5d3c}${player.charName} atmetė jūsų skambutį.`);
-    caller.call('callEnded'); // Update caller's phone UI
+    player.call('callEnded');
+    caller.call('callEnded');
 });
 
 // Handle player disconnect
 mp.events.add('playerQuit', (player) => {
+    // Character timers
+    if (player.timer) {
+        clearInterval(player.timer);
+        delete player.timer;
+    }
 
+    if (player.saveTimer) {
+        clearInterval(player.saveTimer);
+        delete player.saveTimer;
+    }
+
+    if (playerTimeInfo[player.id] && playerTimeInfo[player.id].interval) {
+        clearInterval(playerTimeInfo[player.id].interval);
+        delete playerTimeInfo[player.id];
+    }
+
+    // Save current character state
+    saveCharacterData(player);
+
+    // Clean up driver/ride state
+    if (activeDrivers.has(player.id)) {
+        activeDrivers.delete(player.id);
+    }
+
+    for (const [requesterId, ride] of activeRides.entries()) {
+        if (!ride) continue;
+        if ((ride.requester && ride.requester.id === player.id) || (ride.driver && ride.driver.id === player.id)) {
+            if (ride.interval) clearInterval(ride.interval);
+            if (ride.blip) ride.blip.destroy();
+            if (ride.requester && ride.requester.id !== player.id) {
+                ride.requester.outputChatBox('!{#e74c3c}Jūsų užsakymas atšauktas, vairuotojas išjungėsi.');
+            }
+            if (ride.driver && ride.driver.id !== player.id) {
+                ride.driver.outputChatBox('!{#e74c3c}Kelionė nutraukta, keleivis atsijungė.');
+            }
+            activeRides.delete(requesterId);
+        }
+    }
+
+    // Clean up phone state
     player.contacts = null;
     player.isPhoneOpen = false;
 
+    // Handle active calls
     if (activeCalls.has(player.id)) {
-        const call = activeCalls.get(player.id);
-        call.target.outputChatBox(`!{#cd5d3c}${player.charName} atsijungė, skambutis baigtas.`);
-        call.target.call('callEnded');
+        const callData = activeCalls.get(player.id);
+        const partner = (callData.caller && callData.caller.id === player.id) ? callData.target : callData.caller;
+
+        if (partner) {
+            partner.outputChatBox(`!{#cd5d3c}${player.charName || player.name} atsijungė, skambutis baigtas.`);
+            partner.call('callEnded');
+            activeCalls.delete(partner.id);
+        }
+
         activeCalls.delete(player.id);
     }
 
-    const incomingCall = Array.from(activeCalls.values()).find(call => call.target === player && call.status === 'ringing');
-    if (incomingCall) {
-        incomingCall.caller.outputChatBox(`!{#cd5d3c}${player.charName} atsijungė, skambutis atšauktas.`);
-        incomingCall.caller.call('callEnded');
-        activeCalls.delete(incomingCall.caller.id);
+    // Notify if player had a ringing incoming call not found by key
+    const ringingIncoming = Array.from(activeCalls.values()).find(c => c.target && c.target.id === player.id && c.status === 'ringing');
+    if (ringingIncoming && ringingIncoming.caller) {
+        ringingIncoming.caller.outputChatBox(`!{#cd5d3c}${player.charName || player.name} atsijungė, skambutis atšauktas.`);
+        ringingIncoming.caller.call('callEnded');
+        activeCalls.delete(ringingIncoming.caller.id);
+    }
+
+    if (player.charId) {
+        player.outputChatBox('!{#f7dc6f}Jūsų veikėjo duomenys išsaugoti. Iki pasimatymo!');
+    } else {
+        console.log(`[INFO] Žaidėjas ${player.name} atsijungė be pasirinkto veikėjo.`);
     }
 });
 
 mp.events.add('callFromUI', (player, phoneNumber) => {
-    if (!/^\d+$/.test(number)) return player.outputChatBox('!{#e74c3c}Numeris turi būti tik skaitmenys!');
-    mp.events.call('call', player, number); // Assuming 'call' handles any length
+    if (!/^\d+$/.test(phoneNumber)) return player.outputChatBox('!{#e74c3c}Numeris turi būti tik skaitmenys!');
+    mp.events.call('call', player, phoneNumber);
 });
 
 
@@ -1537,11 +1594,7 @@ mp.events.add('call', (player, number) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
     if (!player.phoneNumber) return player.outputChatBox('!{#e74c3c}Jūs neturite telefono numerio!');
 
-    let target = null;
-    mp.players.forEach(p => {
-        if (p.phoneNumber === number) target = p;
-    });
-
+    const target = mp.players.toArray().find(p => p.phoneNumber === number);
     if (!target) {
         player.outputChatBox('!{#e74c3c}Numeris nepasiekiamas arba neegzistuoja!');
         return;
@@ -1555,13 +1608,9 @@ mp.events.add('call', (player, number) => {
         return;
     }
 
-    activeCalls.set(player.id, { caller: player, target: target, status: 'ringing' });
-    activeCalls.set(target.id, { caller: player, target: target, status: 'incoming' });
-
-    player.outputChatBox(`!{#7aa164}Skambinate ${target.charName} (${number})...`);
-    player.call('callStarted', [target.charName, number]);
-    target.call('incomingCall', [player.charName, player.phoneNumber]);
-    console.log(`[DEBUG] Call initiated: ${player.charName} -> ${target.charName}`);
+    if (!startCall(player, target)) {
+        player.outputChatBox('!{#e74c3c}Skambutis negali būti pradėtas.');
+    }
 });
 
 mp.events.add('acceptCall', (player) => {
@@ -1607,48 +1656,77 @@ mp.events.addCommand('hangup', (player) => {
     }
 
     const callData = activeCalls.get(player.id);
-    const partner = (callData.caller === player) ? callData.target : callData.caller;
+    const partner = (callData.caller && callData.caller.id === player.id) ? callData.target : callData.caller;
 
     activeCalls.delete(player.id);
-    activeCalls.delete(partner.id);
+    if (partner && activeCalls.has(partner.id)) {
+        activeCalls.delete(partner.id);
+        partner.outputChatBox('!{#e74c3c}Skambutis baigtas kitos pusės.');
+        partner.call('callEnded');
+    }
 
     player.outputChatBox('!{#7aa164}Jūs baigėte skambutį.');
-    partner.outputChatBox('!{#e74c3c}Skambutis baigtas kitos pusės.');
     player.call('callEnded');
-    partner.call('callEnded');
     console.log(`[DEBUG] Call ended by ${player.charName}`);
 });
 
 
+
+
+
+
+// Send a message from the phone UI
+// Send a message from the phone UI
+// ==================== SMS / MESSAGES SYSTEM ====================
+
+const messageCooldowns = new Map(); // Anti-spam protection
+const MAX_MESSAGES_PER_MINUTE = 30;
+const COOLDOWN_PERIOD = 60000;
+
+
+// Helper: Send notification when someone receives a message (Phone popup only)
+function sendMessageNotification(recipient, senderNumber, senderName, messageText) {
+    if (!recipient || !recipient.phoneNumber) return;
+
+    // Trigger the nice notification popup on the phone (even if closed)
+    recipient.call('newMessageNotification', [senderNumber, senderName, messageText]);
+
+    // Refresh messages/conversations if phone is open
+    if (recipient.isPhoneOpen) {
+        loadConversationsForPlayer(recipient);
+        loadMessagesForPlayer(recipient, senderNumber);
+    }
+}
+
+// /sms command (from chat)
 mp.events.addCommand('sms', (player, fullText, targetNumber, ...messageArray) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
     if (!player.phoneNumber) return player.outputChatBox('!{#e74c3c}Jūs neturite telefono numerio!');
-    if (!targetNumber || messageArray.length === 0) return player.outputChatBox('Naudojimas: /sms [telefono numeris] [žinutė]');
-
-    const messageText = messageArray.join(' ');
-    if (messageText.length > 500) return player.outputChatBox('!{#e74c3c}Žinutė per ilga! Maksimumas 500 simbolių.');
-
-    // Find the target player by phone number
-    const target = mp.players.toArray().find(p => p.phoneNumber === targetNumber);
-    if (!target || !target.charName) {
-        // Store the message even if the recipient is offline
-        db.query(
-            'INSERT INTO messages (char_id, sender_number, recipient_number, message_text) VALUES (?, ?, ?, ?)',
-            [player.charId, player.phoneNumber, targetNumber, messageText],
-            (err) => {
-                if (err) {
-                    console.error('[KLAIDA] Nepavyko išsaugoti žinutės:', err);
-                    return player.outputChatBox('!{#e74c3c}Klaida siunčiant žinutę.');
-                }
-                player.outputChatBox(`!{#7aa164}Žinutė nusiųsta ${targetNumber} (gavėjas neprisijungęs).`);
-            }
-        );
-        return;
+    if (!targetNumber || messageArray.length === 0) {
+        return player.outputChatBox('Naudojimas: /sms [telefono numeris] [žinutė]');
     }
 
-    if (target === player) return player.outputChatBox('!{#e74c3c}Negalite siųsti žinutės sau!');
+    const messageText = messageArray.join(' ');
+    if (messageText.length > 500) {
+        return player.outputChatBox('!{#e74c3c}Žinutė per ilga! Maksimumas 500 simbolių.');
+    }
 
-    // Save the message to the database
+    // Anti-spam check
+    const now = Date.now();
+    let cooldown = messageCooldowns.get(player) || { last: 0, count: 0 };
+    if (now - cooldown.last > COOLDOWN_PERIOD) {
+        cooldown = { last: now, count: 1 };
+    } else {
+        cooldown.count++;
+        if (cooldown.count > MAX_MESSAGES_PER_MINUTE) {
+            return player.outputChatBox('!{#e74c3c}Per daug žinučių! Palaukite minutę.');
+        }
+    }
+    messageCooldowns.set(player, cooldown);
+
+    const target = mp.players.toArray().find(p => p.phoneNumber === targetNumber);
+
+    // Save message to database
     db.query(
         'INSERT INTO messages (char_id, sender_number, recipient_number, message_text) VALUES (?, ?, ?, ?)',
         [player.charId, player.phoneNumber, targetNumber, messageText],
@@ -1658,154 +1736,260 @@ mp.events.addCommand('sms', (player, fullText, targetNumber, ...messageArray) =>
                 return player.outputChatBox('!{#e74c3c}Klaida siunčiant žinutę.');
             }
 
-            // Notify both players
-            player.outputChatBox(`!{#7aa164}[Žinutė nusiųsta -> ${target.charName} (${targetNumber})]: ${messageText}`);
-            target.outputChatBox(`!{#7aa164}[Žinutė gauta iš ${player.charName} (${player.phoneNumber})]: ${messageText}`);
+            player.outputChatBox(`!{#7aa164}Žinutė nusiųsta → ${targetNumber}${target ? ` (${target.charName})` : ' (neprisijungęs)'}`);
 
-            // Update target's phone UI if Messages app is open
-            if (target.isPhoneOpen) {
-                loadMessagesForPlayer(target, targetNumber);
+            // Send notification to recipient
+            if (target && target !== player) {
+                sendMessageNotification(target, player.phoneNumber, player.charName, messageText);
             }
         }
     );
 });
 
-
-
-
-
-
-
-
-const messageCooldowns = new Map(); // Map<player, { lastMessageTime: number, messageCount: number }>
-const MAX_MESSAGES_PER_MINUTE = 30; // Limit to 10 messages per minute
-const COOLDOWN_PERIOD = 60000; // 1 minute in milliseconds
-
-
-// Send a message from the phone UI
-// Send a message from the phone UI
+// Send message from Phone UI
 mp.events.add('sendMessage', (player, recipientNumber, messageText) => {
-    console.log(`[DEBUG] UI sendMessage for ${player.name} to ${recipientNumber}: "${messageText}"`);
+    console.log(`[DEBUG] Phone UI sendMessage: ${player.charName} → ${recipientNumber}`);
 
     if (!player.charName || !player.charId) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
     if (!player.phoneNumber) return player.outputChatBox('!{#e74c3c}Jūs neturite telefono numerio!');
-    if (!recipientNumber || !messageText || messageText.trim().length === 0) return player.outputChatBox('!{#e74c3c}Įveskite gavėjo numerį ir žinutę!');
-    if (!/^\d+$/.test(recipientNumber)) return player.outputChatBox('!{#e74c3c}Numeris turi būti tik skaitmenys!');
-    if (messageText.length > 500) return player.outputChatBox('!{#e74c3c}Žinutė per ilga! Maksimumas 500 simbolių.');
+    if (!recipientNumber || !messageText || messageText.trim().length === 0) {
+        return player.outputChatBox('!{#e74c3c}Įveskite gavėją ir žinutę!');
+    }
+    if (!/^\d+$/.test(recipientNumber)) {
+        return player.outputChatBox('!{#e74c3c}Numeris turi būti tik skaitmenys!');
+    }
+    if (messageText.length > 500) {
+        return player.outputChatBox('!{#e74c3c}Žinutė per ilga! (max 500 simbolių)');
+    }
 
+    // Anti-spam
     const now = Date.now();
-    let cooldownData = messageCooldowns.get(player) || { lastMessageTime: 0, messageCount: 0 };
-    if (now - cooldownData.lastMessageTime > COOLDOWN_PERIOD) {
-        cooldownData = { lastMessageTime: now, messageCount: 1 };
+    let cooldown = messageCooldowns.get(player) || { last: 0, count: 0 };
+    if (now - cooldown.last > COOLDOWN_PERIOD) {
+        cooldown = { last: now, count: 1 };
     } else {
-        cooldownData.messageCount++;
-        if (cooldownData.messageCount > MAX_MESSAGES_PER_MINUTE) {
+        cooldown.count++;
+        if (cooldown.count > MAX_MESSAGES_PER_MINUTE) {
             return player.outputChatBox('!{#e74c3c}Per daug žinučių! Palaukite minutę.');
         }
     }
-    messageCooldowns.set(player, cooldownData);
+    messageCooldowns.set(player, cooldown);
 
     const target = mp.players.toArray().find(p => p.phoneNumber === recipientNumber);
+
+    // Save to database
     db.query(
         'INSERT INTO messages (char_id, sender_number, recipient_number, message_text) VALUES (?, ?, ?, ?)',
         [player.charId, player.phoneNumber, recipientNumber, messageText],
-        (err, result) => {
+        (err) => {
             if (err) {
                 console.error('[KLAIDA] Failed to save UI message:', err);
                 return player.outputChatBox('!{#e74c3c}Klaida siunčiant žinutę.');
             }
-            console.log(`[DEBUG] UI message saved: ID=${result.insertId}, ${player.phoneNumber} -> ${recipientNumber}`);
-            player.outputChatBox(`!{#7aa164}Žinutė nusiųsta ${recipientNumber}${target ? ` (${target.charName})` : ' (neprisijungęs)'}.`);
+
+            player.outputChatBox(`!{#7aa164}Žinutė nusiųsta → ${recipientNumber}${target ? ` (${target.charName})` : ''}`);
+
+            // Notify the recipient
             if (target && target !== player) {
-                target.outputChatBox(`!{#7aa164}[Žinutė gauta iš ${player.charName} (${player.phoneNumber})]: ${messageText}`);
-                if (target.isPhoneOpen) loadMessagesForPlayer(target, player.phoneNumber);
+                sendMessageNotification(target, player.phoneNumber, player.charName, messageText);
             }
+
+            // Refresh sender's own UI
             loadMessagesForPlayer(player, recipientNumber);
             loadConversationsForPlayer(player);
         }
     );
 });
 
-// Load message history for a specific conversation
+// Load messages for specific conversation
 function loadMessagesForPlayer(player, otherNumber) {
     if (!player.charId || !player.phoneNumber) return;
+
     db.query(
-        'SELECT id, sender_number, recipient_number, message_text, timestamp, is_read ' +
-        'FROM messages WHERE (sender_number = ? AND recipient_number = ?) OR (sender_number = ? AND recipient_number = ?) ' +
-        'ORDER BY timestamp ASC',
+        `SELECT sender_number, recipient_number, message_text, timestamp 
+         FROM messages 
+         WHERE (sender_number = ? AND recipient_number = ?) 
+            OR (sender_number = ? AND recipient_number = ?) 
+         ORDER BY timestamp ASC`,
         [player.phoneNumber, otherNumber, otherNumber, player.phoneNumber],
         (err, results) => {
-            if (err) {
-                console.error('[KLAIDA] Failed to load messages:', err);
-                return;
-            }
+            if (err) return console.error('[KLAIDA] Load messages error:', err);
+
             const messages = results.map(row => ({
-                id: row.id,
                 sender: row.sender_number,
-                recipient: row.recipient_number,
                 text: row.message_text,
-                timestamp: row.timestamp.toISOString(), // Ensure timestamp is serializable
-                isRead: row.is_read
+                timestamp: row.timestamp.toISOString()
             }));
-            console.log(`[DEBUG] Sending ${messages.length} messages to ${player.name} for ${otherNumber}`);
+
             player.call('updateMessagesUI', [otherNumber, JSON.stringify(messages)]);
         }
     );
 }
 
+// Load list of conversations
 function loadConversationsForPlayer(player) {
     if (!player.charId || !player.phoneNumber) return;
+
     db.query(
-        'SELECT DISTINCT CASE WHEN sender_number = ? THEN recipient_number ELSE sender_number END AS contact_number ' +
-        'FROM messages WHERE sender_number = ? OR recipient_number = ?',
+        `SELECT DISTINCT 
+            CASE WHEN sender_number = ? THEN recipient_number ELSE sender_number END AS contact_number 
+         FROM messages 
+         WHERE sender_number = ? OR recipient_number = ?`,
         [player.phoneNumber, player.phoneNumber, player.phoneNumber],
         (err, results) => {
-            if (err) {
-                console.error('[KLAIDA] Failed to load conversations:', err);
-                return;
-            }
-            const contactNumbers = results.map(row => row.contact_number);
-            const conversations = [];
-            const promises = contactNumbers.map(number => {
+            if (err) return console.error('[KLAIDA] Load conversations error:', err);
+
+            const promises = results.map(row => {
                 return new Promise(resolve => {
+                    const number = row.contact_number;
                     db.query(
-                        'SELECT sender_number, message_text, timestamp, is_read ' +
-                        'FROM messages WHERE (sender_number = ? AND recipient_number = ?) OR (sender_number = ? AND recipient_number = ?) ' +
-                        'ORDER BY timestamp DESC LIMIT 1',
+                        `SELECT sender_number, message_text, timestamp 
+                         FROM messages 
+                         WHERE (sender_number = ? AND recipient_number = ?) 
+                            OR (sender_number = ? AND recipient_number = ?) 
+                         ORDER BY timestamp DESC LIMIT 1`,
                         [player.phoneNumber, number, number, player.phoneNumber],
-                        (err, msgResults) => {
-                            if (err || !msgResults.length) return resolve(null);
+                        (err, msg) => {
+                            if (err || !msg.length) return resolve(null);
+
                             const contactName = (player.contacts || []).find(c => c.number === number)?.name || number;
+
                             resolve({
-                                number,
-                                contactName,
-                                lastMessage: msgResults[0].message_text,
-                                timestamp: msgResults[0].timestamp.toISOString(),
-                                isRead: msgResults[0].is_read
+                                number: number,
+                                contactName: contactName,
+                                lastMessage: msg[0].message_text,
+                                timestamp: msg[0].timestamp.toISOString()
                             });
                         }
                     );
                 });
             });
 
-            Promise.all(promises).then(results => {
-                results.filter(r => r).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).forEach(conv => conversations.push(conv));
-                console.log(`[DEBUG] Sending ${conversations.length} conversations to ${player.name}`);
-                player.call('updateConversationsUI', [JSON.stringify(conversations)]);
+            Promise.all(promises).then(conversations => {
+                const validConversations = conversations.filter(c => c !== null)
+                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+                player.call('updateConversationsUI', [JSON.stringify(validConversations)]);
             });
         }
     );
 }
 
-// Event to open Messages app and load conversations
+// Open Messages App
 mp.events.add('openMessagesApp', (player) => {
-    if (!player.charId) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charId) return;
     loadConversationsForPlayer(player);
 });
 
-// Event to open a specific conversation
 mp.events.add('openConversation', (player, number) => {
-    if (!player.charId) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!/^\d+$/.test(number)) return player.outputChatBox('!{#e74c3c}Netinkamas numeris!');
+    if (!player.charId) return;
+    if (!/^\d+$/.test(number)) return;
     loadMessagesForPlayer(player, number);
+});
+
+
+// Request data when player opens Twitter app
+mp.events.add('requestTwitterData', (player) => {
+    console.log(`[TWITTER] requestTwitterData called for playerId=${player.id}, charId=${player.charId}`);
+
+    const sendData = (handle) => {
+        db.query(`
+            SELECT t.handle, t.content, t.timestamp 
+            FROM twitter_posts t 
+            ORDER BY t.timestamp DESC LIMIT 10
+        `, (err, tweets) => {
+            if (err) {
+                console.error('[TWITTER] Error fetching tweets:', err);
+            }
+            const tweetsJson = (!err && tweets) ? JSON.stringify(tweets) : '[]';
+            console.log(`[TWITTER] send loadTwitterData handle=${handle || ''} tweetsCount=${(tweets && tweets.length) || 0}`);
+            player.call('loadTwitterData', [handle || '', tweetsJson]);
+        });
+    };
+
+    if (!player.charId) {
+        console.log('[TWITTER] No charId, returning empty twitter data');
+        sendData(null);
+        return;
+    }
+
+    db.query('SELECT handle FROM twitter_accounts WHERE char_id = ?', [player.charId], (err, rows) => {
+        if (err) {
+            console.error('[TWITTER] Error fetching handle:', err);
+            sendData(null);
+            return;
+        }
+        const handle = (rows && rows.length > 0) ? rows[0].handle : null;
+        sendData(handle);
+    });
+});
+
+// Register unique handle
+mp.events.add('registerTwitterHandle', (player, handle) => {
+    if (!player.charId) return player.outputChatBox('!{#e74c3c}Pasirinkite veikėją!');
+    if (!/^[a-zA-Z0-9_]+$/.test(handle)) {
+        return player.outputChatBox('!{#e74c3c}Leidžiami tik raidės, skaičiai ir _ !');
+    }
+
+    db.query('SELECT * FROM twitter_accounts WHERE handle = ?', [handle], (err, rows) => {
+        if (rows.length > 0) {
+            return player.outputChatBox('!{#e74c3c}Šis @slapyvardis jau užimtas!');
+        }
+
+        db.query('INSERT INTO twitter_accounts (char_id, handle) VALUES (?, ?)', [player.charId, handle], (err) => {
+            if (err) return console.error(err);
+            player.outputChatBox(`!{#7aa164}Jūsų @${handle} sėkmingai užregistruotas!`);
+            player.call('twitterHandleRegistered', [handle]);
+        });
+    });
+});
+
+// Post a tweet
+mp.events.add('postTweet', (player, content) => {
+    if (!player.charId) return;
+
+    const now = Date.now();
+    if (lastTweetTime.has(player.id) && now - lastTweetTime.get(player.id) < TWITTER_COOLDOWN) {
+        const remaining = Math.ceil((TWITTER_COOLDOWN - (now - lastTweetTime.get(player.id))) / 60000);
+        return player.outputChatBox(`!{#e74c3c}Galite skelbti tik kartą per valandą. Liko ${remaining} min.`);
+    }
+
+    db.query('SELECT handle FROM twitter_accounts WHERE char_id = ?', [player.charId], (err, rows) => {
+        if (rows.length === 0) {
+            return player.outputChatBox('!{#e74c3c}Pirmiausia užregistruokite @slapyvardį!');
+        }
+
+        const handle = rows[0].handle;
+
+        // Check count, delete oldest if >=10
+        db.query('SELECT COUNT(*) as count FROM twitter_posts', (err, results) => {
+            if (err) return console.error(err);
+            if (results[0].count >= 10) {
+                db.query('DELETE FROM twitter_posts ORDER BY timestamp ASC LIMIT 1', (err) => {
+                    if (err) return console.error(err);
+                    insertTweet();
+                });
+            } else {
+                insertTweet();
+            }
+
+            function insertTweet() {
+                db.query('INSERT INTO twitter_posts (char_id, handle, content) VALUES (?, ?, ?)',
+                    [player.charId, handle, content], (err) => {
+                        if (err) return console.error(err);
+
+                        lastTweetTime.set(player.id, now);
+                        player.outputChatBox('!{#7aa164}Skelbimas paskelbtas visiems!');
+                        player.call('twitterStatusUpdate', ['Skelbimas paskelbtas!', '#2ecc71']);
+
+                        // Refresh feed for EVERYONE who has phone open
+                        mp.players.forEach(p => {
+                            if (p.isPhoneOpen) {
+                                mp.events.call('requestTwitterData', p); // re-send fresh feed
+                            }
+                        });
+                    });
+            }
+        });
+    });
 });
