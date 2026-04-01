@@ -161,3 +161,37 @@ mp.events.add('driveBackToHome', () => {
         `);
     }
 });
+
+// ==================== TWITTER APP ====================
+
+mp.events.add('loadTwitterData', (handle, tweetsJson) => {
+    console.log(`[PHONE] loadTwitterData received in index.js - handle=${handle}, tweetsJson=${tweetsJson}`);
+    if (browser && browser.active) {
+        browser.execute(`loadTwitterData(${JSON.stringify(handle || '')}, ${JSON.stringify(tweetsJson)});`);
+    }
+});
+
+mp.events.add('requestTwitterData', () => {
+    mp.events.callRemote('requestTwitterData');
+});
+
+mp.events.add('twitterStatusUpdate', (text, color) => {
+    if (browser && browser.active) {
+        browser.execute(`setTwitterStatus(${JSON.stringify(text)}, ${JSON.stringify(color || '#2c3e50')});`);
+    }
+});
+
+mp.events.add('registerTwitterHandle', (handle) => mp.events.callRemote('registerTwitterHandle', handle));
+mp.events.add('postTweet', (content) => mp.events.callRemote('postTweet', content));
+
+mp.events.add('twitterHandleRegistered', (handle) => {
+    if (browser && browser.active) {
+        browser.execute(`loadTwitterData(${JSON.stringify(handle)}, []);`);
+    }
+});
+
+mp.events.add('twitterFeedUpdated', (tweetsJson) => {
+    if (browser && browser.active) {
+        browser.execute(`renderTwitterFeed(${JSON.stringify(tweetsJson)});`);
+    }
+});

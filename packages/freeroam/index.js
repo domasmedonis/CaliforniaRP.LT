@@ -8,6 +8,9 @@ const activeDrivers = new Map();
 const activeRides = new Map();
 const activeCalls = new Map();
 
+const TWITTER_COOLDOWN = 3600000; // 1 hour between posts
+const lastTweetTime = new Map();
+
 function startCall(caller, target) {
     if (!caller || !target || caller.id === target.id) return false;
     if (!caller.charName || !target.charName) return false;
@@ -37,6 +40,26 @@ db.connect((err) => {
         console.error('MySQL Connection Failed:', err);
     } else {
         console.log('Connected to MySQL Database!');
+        // Ensure Twitter schema exists
+        db.query(`CREATE TABLE IF NOT EXISTS twitter_accounts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            char_id INT NOT NULL,
+            handle VARCHAR(50) UNIQUE NOT NULL,
+            FOREIGN KEY (char_id) REFERENCES characters(id)
+        )`, (err) => {
+            if (err) console.error('Error creating twitter_accounts table:', err);
+            else console.log('Twitter accounts table ready.');
+        });
+        db.query(`CREATE TABLE IF NOT EXISTS twitter_posts (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            char_id INT NOT NULL,
+            handle VARCHAR(50) NOT NULL,
+            content TEXT NOT NULL,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`, (err) => {
+            if (err) console.error('Error creating twitter_posts table:', err);
+            else console.log('Twitter posts table ready.');
+        });
     }
 });
 
@@ -1137,6 +1160,29 @@ mp.events.addCommand('coords', (player) => {
     player.outputChatBox(`Current Coordinates: X: ${coords.x.toFixed(2)}, Y: ${coords.y.toFixed(2)}, Z: ${coords.z.toFixed(2)}`);
 });
 
+mp.events.addCommand('createtwittertables', (player) => {
+    if (!player.charName) return;
+    db.query(`CREATE TABLE IF NOT EXISTS twitter_accounts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        char_id INT NOT NULL,
+        handle VARCHAR(50) UNIQUE NOT NULL,
+        FOREIGN KEY (char_id) REFERENCES characters(id)
+    )`, (err) => {
+        if (err) console.error('Error creating twitter_accounts table:', err);
+        else console.log('Twitter accounts table ready.');
+    });
+    db.query(`CREATE TABLE IF NOT EXISTS twitter_posts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        handle VARCHAR(50) NOT NULL,
+        content TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+        if (err) console.error('Error creating twitter_posts table:', err);
+        else console.log('Twitter posts table ready.');
+    });
+    player.outputChatBox('Twitter tables created.');
+});
+
 
 
 
@@ -1839,4 +1885,111 @@ mp.events.add('openConversation', (player, number) => {
     if (!player.charId) return;
     if (!/^\d+$/.test(number)) return;
     loadMessagesForPlayer(player, number);
+});
+
+
+// Request data when player opens Twitter app
+mp.events.add('requestTwitterData', (player) => {
+    console.log(`[TWITTER] requestTwitterData called for playerId=${player.id}, charId=${player.charId}`);
+
+    const sendData = (handle) => {
+        db.query(`
+            SELECT t.handle, t.content, t.timestamp 
+            FROM twitter_posts t 
+            ORDER BY t.timestamp DESC LIMIT 10
+        `, (err, tweets) => {
+            if (err) {
+                console.error('[TWITTER] Error fetching tweets:', err);
+            }
+            const tweetsJson = (!err && tweets) ? JSON.stringify(tweets) : '[]';
+            console.log(`[TWITTER] send loadTwitterData handle=${handle || ''} tweetsCount=${(tweets && tweets.length) || 0}`);
+            player.call('loadTwitterData', [handle || '', tweetsJson]);
+        });
+    };
+
+    if (!player.charId) {
+        console.log('[TWITTER] No charId, returning empty twitter data');
+        sendData(null);
+        return;
+    }
+
+    db.query('SELECT handle FROM twitter_accounts WHERE char_id = ?', [player.charId], (err, rows) => {
+        if (err) {
+            console.error('[TWITTER] Error fetching handle:', err);
+            sendData(null);
+            return;
+        }
+        const handle = (rows && rows.length > 0) ? rows[0].handle : null;
+        sendData(handle);
+    });
+});
+
+// Register unique handle
+mp.events.add('registerTwitterHandle', (player, handle) => {
+    if (!player.charId) return player.outputChatBox('!{#e74c3c}Pasirinkite veikėją!');
+    if (!/^[a-zA-Z0-9_]+$/.test(handle)) {
+        return player.outputChatBox('!{#e74c3c}Leidžiami tik raidės, skaičiai ir _ !');
+    }
+
+    db.query('SELECT * FROM twitter_accounts WHERE handle = ?', [handle], (err, rows) => {
+        if (rows.length > 0) {
+            return player.outputChatBox('!{#e74c3c}Šis @slapyvardis jau užimtas!');
+        }
+
+        db.query('INSERT INTO twitter_accounts (char_id, handle) VALUES (?, ?)', [player.charId, handle], (err) => {
+            if (err) return console.error(err);
+            player.outputChatBox(`!{#7aa164}Jūsų @${handle} sėkmingai užregistruotas!`);
+            player.call('twitterHandleRegistered', [handle]);
+        });
+    });
+});
+
+// Post a tweet
+mp.events.add('postTweet', (player, content) => {
+    if (!player.charId) return;
+
+    const now = Date.now();
+    if (lastTweetTime.has(player.id) && now - lastTweetTime.get(player.id) < TWITTER_COOLDOWN) {
+        const remaining = Math.ceil((TWITTER_COOLDOWN - (now - lastTweetTime.get(player.id))) / 60000);
+        return player.outputChatBox(`!{#e74c3c}Galite skelbti tik kartą per valandą. Liko ${remaining} min.`);
+    }
+
+    db.query('SELECT handle FROM twitter_accounts WHERE char_id = ?', [player.charId], (err, rows) => {
+        if (rows.length === 0) {
+            return player.outputChatBox('!{#e74c3c}Pirmiausia užregistruokite @slapyvardį!');
+        }
+
+        const handle = rows[0].handle;
+
+        // Check count, delete oldest if >=10
+        db.query('SELECT COUNT(*) as count FROM twitter_posts', (err, results) => {
+            if (err) return console.error(err);
+            if (results[0].count >= 10) {
+                db.query('DELETE FROM twitter_posts ORDER BY timestamp ASC LIMIT 1', (err) => {
+                    if (err) return console.error(err);
+                    insertTweet();
+                });
+            } else {
+                insertTweet();
+            }
+
+            function insertTweet() {
+                db.query('INSERT INTO twitter_posts (char_id, handle, content) VALUES (?, ?, ?)',
+                    [player.charId, handle, content], (err) => {
+                        if (err) return console.error(err);
+
+                        lastTweetTime.set(player.id, now);
+                        player.outputChatBox('!{#7aa164}Skelbimas paskelbtas visiems!');
+                        player.call('twitterStatusUpdate', ['Skelbimas paskelbtas!', '#2ecc71']);
+
+                        // Refresh feed for EVERYONE who has phone open
+                        mp.players.forEach(p => {
+                            if (p.isPhoneOpen) {
+                                mp.events.call('requestTwitterData', p); // re-send fresh feed
+                            }
+                        });
+                    });
+            }
+        });
+    });
 });
