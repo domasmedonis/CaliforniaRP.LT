@@ -1340,14 +1340,17 @@ mp.events.addCommand('call', (player, phoneNumber) => {
 
     const target = mp.players.toArray().find(p => p.phoneNumber === phoneNumber);
     if (!target || !target.charName) {
+        player.call('callFailed', 'Šis telefono numeris nerastas arba žaidėjas neprisijungęs.');
         return player.outputChatBox('!{#f7dc6f}Šis telefono numeris nerastas arba žaidėjas neprisijungęs.');
     }
 
     if (target.id === player.id) {
+        player.call('callFailed', 'Negalite skambinti sau!');
         return player.outputChatBox('!{#e74c3c}Negalite skambinti sau!');
     }
 
     if (!startCall(player, target)) {
+        player.call('callFailed', 'Skambutis negali būti pradėtas.');
         return player.outputChatBox('!{#e74c3c}Skambutis negali būti pradėtas.');
     }
 });
@@ -1466,7 +1469,10 @@ mp.events.add('playerQuit', (player) => {
 });
 
 mp.events.add('callFromUI', (player, phoneNumber) => {
-    if (!/^\d+$/.test(phoneNumber)) return player.outputChatBox('!{#e74c3c}Numeris turi būti tik skaitmenys!');
+    if (!/^\d+$/.test(phoneNumber)) {
+        player.call('callFailed', 'Numeris turi būti tik skaitmenys!');
+        return player.outputChatBox('!{#e74c3c}Numeris turi būti tik skaitmenys!');
+    }
     mp.events.call('call', player, phoneNumber);
 });
 
@@ -1948,6 +1954,10 @@ mp.events.add('registerTwitterHandle', (player, handle) => {
 mp.events.add('postTweet', (player, content) => {
     if (!player.charId) return;
 
+    if (content.length > 150) {
+        return player.outputChatBox('!{#e74c3c}Skelbimas per ilgas! (max 150 simbolių)');
+    }
+
     const now = Date.now();
     if (lastTweetTime.has(player.id) && now - lastTweetTime.get(player.id) < TWITTER_COOLDOWN) {
         const remaining = Math.ceil((TWITTER_COOLDOWN - (now - lastTweetTime.get(player.id))) / 60000);
@@ -1989,6 +1999,103 @@ mp.events.add('postTweet', (player, content) => {
                             }
                         });
                     });
+            }
+        });
+    });
+});
+
+
+// ====================== MOBILE BANKING APP ======================
+
+mp.events.add('openBankApp', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+
+    // Get balance + last 5 transactions
+    db.query(`
+        SELECT balance FROM bank_accounts WHERE char_name = ?
+    `, [player.charName], (err, balanceRes) => {
+        if (err || balanceRes.length === 0) {
+            return player.call('loadBankData', [0, player.charName, '[]']);
+        }
+
+        const balance = balanceRes[0].balance;
+
+        db.query(`
+            SELECT transaction_type, amount, date 
+            FROM bank_transactions 
+            WHERE char_name = ? 
+            ORDER BY date DESC LIMIT 5
+        `, [player.charName], (err, txRes) => {
+            const transactions = txRes.map(t => ({
+                type: t.transaction_type,
+                amount: t.amount,
+                date: t.date
+            }));
+
+            player.call('loadBankData', [
+                balance,
+                player.charName,
+                JSON.stringify(transactions)
+            ]);
+        });
+    });
+});
+
+mp.events.add('bankTransfer', (player, recipientName, amountStr) => {
+    if (!player.charName) return;
+
+    const amount = parseInt(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+        return player.call('bankTransferResult', [false, 'Neteisinga suma!']);
+    }
+
+    // Check if sender has enough
+    db.query('SELECT balance FROM bank_accounts WHERE char_name = ?', [player.charName], (err, senderRes) => {
+        if (err || senderRes.length === 0) {
+            console.log('[BANK] bankTransfer failed sender lookup', player.charName, recipientName, amount, err);
+            return player.call('bankTransferResult', [false, 'Nepakanka lėšų sąskaitoje!']);
+        }
+        if (senderRes[0].balance < amount) {
+            console.log('[BANK] bankTransfer insufficient balance', player.charName, recipientName, amount);
+            return player.call('bankTransferResult', [false, 'Nepakanka lėšų sąskaitoje!']);
+        }
+
+        // Check recipient exists
+        db.query('SELECT balance FROM bank_accounts WHERE char_name = ?', [recipientName], (err, targetRes) => {
+            if (err || targetRes.length === 0) {
+                console.log('[BANK] bankTransfer recipient not found', recipientName);
+                return player.call('bankTransferResult', [false, 'Gavėjas nerastas!']);
+            }
+
+            // Only allow transfers to players who are currently online
+            const recipientPlayer = mp.players.toArray().find(p => p.charName === recipientName);
+            if (!recipientPlayer) {
+                console.log('[BANK] bankTransfer recipient offline', recipientName);
+                return player.call('bankTransferResult', [false, 'Gavėjas turi būti prisijungęs žaidėjas!']);
+            }
+
+            const newSenderBalance = senderRes[0].balance - amount;
+            const newTargetBalance = targetRes[0].balance + amount;
+
+            // Update both accounts
+            db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [newSenderBalance, player.charName]);
+            db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [newTargetBalance, recipientName]);
+
+            // Log transactions
+            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, "transfer_out", ?, NOW())', [player.charName, amount]);
+            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, "transfer_in", ?, NOW())', [recipientName, amount]);
+
+            // Notify sender
+            player.bankBalance = newSenderBalance;
+            player.call('updateBankHUD', [newSenderBalance]);
+            player.call('bankTransferResult', [true, `Sėkmingai pervesta $${amount} žaidėjui ${recipientName}`, recipientName, amount]);
+
+            // Notify recipient if online
+            const targetPlayer = mp.players.toArray().find(p => p.charName === recipientName);
+            if (targetPlayer) {
+                targetPlayer.bankBalance = newTargetBalance;
+                targetPlayer.call('updateBankHUD', [newTargetBalance]);
+                targetPlayer.outputChatBox(`!{#229954}Jūs gavote $${amount} iš ${player.charName} per mobilųjį banką.`);
             }
         });
     });

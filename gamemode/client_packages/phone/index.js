@@ -6,11 +6,19 @@ mp.events.add('openPhoneUI', (isDriver, phoneNumber, callStatus, callPartner, co
     console.log(`[PHONE] openPhoneUI called`);
     if (!isPhoneOpen) {
         browser.execute(`showHomeScreen(${isDriver});`);
-        mp.gui.cursor.show(true, true);
         browser.active = true;
+        setTimeout(() => {
+            mp.gui.cursor.show(true, true);
+            if (mp.game && mp.game.controls && typeof mp.game.controls.disableAllControls === 'function') {
+                mp.game.controls.disableAllControls(true);
+            }
+        }, 100);
         isPhoneOpen = true;
+        // Keep chat messages visible but prevent opening chat input with T while phone is open.
+        mp.gui.chat.show(true);
+        mp.gui.chat.activate(false);
     }
-    browser.execute(`loadPhoneData('${phoneNumber}', '${callStatus}', '${callPartner || ''}', '${contactsJson}');`);
+    browser.execute(`loadPhoneData(${JSON.stringify(phoneNumber || '')}, ${JSON.stringify(callStatus || 'idle')}, ${JSON.stringify(callPartner || '')}, ${JSON.stringify(contactsJson || '[]')});`);
 });
 
 mp.events.add('updatePhoneUI', (isDriver) => {
@@ -20,8 +28,13 @@ mp.events.add('updatePhoneUI', (isDriver) => {
 mp.events.add('closePhoneUI', () => {
     if (isPhoneOpen) {
         mp.gui.cursor.show(false, false);
+        if (mp.game && mp.game.controls && typeof mp.game.controls.disableAllControls === 'function') {
+            mp.game.controls.disableAllControls(false);
+        }
         browser.active = false;
         isPhoneOpen = false;
+        mp.gui.chat.show(true);
+        mp.gui.chat.activate(true);
     }
 });
 
@@ -51,6 +64,17 @@ mp.events.add('newMessageNotification', (senderNumber, senderName, messageText) 
         mp.gui.chat.push(`!{#00ff00}[Žinutė] !{#ffffff}Nauja žinutė nuo ${senderName || senderNumber}`);
     }
     browser.execute(`showMessageNotification('${senderNumber}', '${senderName || ''}', '${messageText.replace(/'/g, "\\'")}');`);
+});
+
+mp.events.add('callFailed', (message) => {
+    console.log('[PHONE] callFailed event received:', message, 'isPhoneOpen=', isPhoneOpen);
+    if (isPhoneOpen) {
+        // Keep the user in the current app but show a toast for failure.
+        // Ensure overlay is visible in case the current app has inline style override.
+        browser.execute(`showPhoneToast(${JSON.stringify(message)})`);
+    } else {
+        mp.gui.chat.push(`!{#e74c3c}${message}`);
+    }
 });
 
 mp.events.add('updateMessagesUI', (number, messagesJson) => browser.execute(`updateMessagesUI('${number}', '${messagesJson}');`));
@@ -109,7 +133,10 @@ mp.events.add('phoneTypingEnded', () => {
 });
 
 mp.keys.bind(0x54, true, () => {
-    if (isTypingInPhone) return false;
+    if (isPhoneOpen) {
+        // while phone is open, block T key from opening chat input
+        return false;
+    }
 });
 
 // ==================== DRIVE BUTTONS (FIXED) ====================
@@ -195,3 +222,35 @@ mp.events.add('twitterFeedUpdated', (tweetsJson) => {
         browser.execute(`renderTwitterFeed(${JSON.stringify(tweetsJson)});`);
     }
 });
+
+
+// ==================== BANK APP ====================
+mp.events.add('loadBankData', (balance, charName, transactionsJson) => {
+    if (browser && browser.active) {
+        browser.execute(`
+            document.getElementById('balanceDisplay').innerText = '$${parseInt(balance).toLocaleString('lt-LT')}';
+            document.getElementById('charNameDisplay').innerText = '${charName}';
+            renderTransactions(${JSON.stringify(transactionsJson)});
+        `);
+    }
+});
+
+mp.events.add('bankTransferResult', (success, message, recipientName, amount) => {
+    console.log('[BANK] bankTransferResult', success, message, recipientName, amount);
+
+    if (browser && browser.active) {
+        browser.execute(`
+            console.log('[BANK] bankTransferResult CEF callback', ${JSON.stringify(success)}, ${JSON.stringify(message)});
+            showBankNotification(${JSON.stringify(success ? 'success' : 'error')}, ${JSON.stringify(message)});
+            resetBankTransferForm();
+            ${success ? `addTransactionToHistory('transfer_out', ${JSON.stringify(amount)}, new Date().toISOString());` : ''}
+        `);
+    }
+
+    if (success) {
+        mp.events.callRemote('openBankApp');
+    }
+});
+
+// Bank helper for CEF
+mp.events.add('openBankApp', () => mp.events.callRemote('openBankApp'));
