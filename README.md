@@ -16,7 +16,7 @@ CaliforniaRP.LT is a [RageMP](https://rage.mp/) modification for Grand Theft Aut
   Manage your in-game money.
 
 - **Phone System**  
-  Contacts, calls, messages, and Drive app (unfinished).
+  Contacts, calls, messages, Drive app, Twitter app, mobile banking
 
 - **Basic Roleplay Commands**  
   Text-based interactions for RP.
@@ -24,29 +24,22 @@ CaliforniaRP.LT is a [RageMP](https://rage.mp/) modification for Grand Theft Aut
 - **Admin System**  
   Minimal functionality for basic server management.
 
+- **Vehicle dealership**
+  Buy vehicle at Los Santos dealership
+
+- **Inventor**
+  Inventory system with I button or /inv
+
+- **Barber and clothes shop**
+  You can modify your clothes and beard, hair.
 
 
-
-
-
-
-
-
-
-
-
-
-
-## User Control Panel (UCP)
-
-- Simple login and registration system using MySQL and email confirmation.
-- Roleplay quiz required to register (Can make 2 mistakes - can leave the website and does not need to re-take it).
-- Character creation system (Not connected to the gamemode).
-- [Live preview](https://californiarp.lt/ucp/)
 
 ---
 
+
+
 ## Screenshots
 
+[https://imgur.com/a/i7SdSV4](https://imgur.com/a/i7SdSV4)
 
-<img width="1273" height="637" alt="main" src="https://github.com/user-attachments/assets/5e2c6115-ff5f-44f0-929f-14bab973582f" />
