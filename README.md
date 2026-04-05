@@ -25,12 +25,15 @@ CaliforniaRP.LT is a [RageMP](https://rage.mp/) modification for Grand Theft Aut
   Minimal functionality for basic server management.
 
 - **Vehicle dealership**
+- 
   Buy vehicle at Los Santos dealership
 
 - **Inventor**
+- 
   Inventory system with I button or /inv
 
 - **Barber and clothes shop**
+- 
   You can modify your clothes and beard, hair.
 
 
