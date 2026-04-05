@@ -1277,7 +1277,7 @@ const knownCommands = new Set([
     'call', 'answer', 'decline', 'hangup',
     'sharenumber', 'sms',
     'pay', 'togglepm',
-    'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock'
+    'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock', 'scrap', 'scrapconfirm', 'sellto'
 ]);
 
 mp.events.add('playerCommand', (player, command) => {
@@ -1902,6 +1902,177 @@ mp.events.addCommand('lock', (player) => {
     }
 });
 
+mp.events.addCommand('scrap', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!player.vehicle) {
+        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte, kad jį supjautytumėte.');
+    }
+
+    if (player.seat !== -1 && player.seat !== 0) {
+        return player.outputChatBox('!{#e74c3c}Turite būti šio transporto vairuotoju.');
+    }
+
+    // Get the vehicle record
+    const record = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
+    if (!record) {
+        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+    }
+
+    // Get the vehicle model from catalog to find price
+    const catalogEntry = vehicleCatalogByKey.get(record.model);
+    if (!catalogEntry) {
+        return player.outputChatBox('!{#e74c3c}Šio transporto modelio negalima supjaustyti.');
+    }
+
+    // Calculate 40% of the dealership price
+    const scrapPrice = Math.floor(catalogEntry.price * 0.4);
+    const vehicleDisplayName = record.displayName;
+    const vehicleId = record.id;
+
+    // Store pending scrap for confirmation
+    player.pendingScrap = {
+        vehicleId: vehicleId,
+        vehicleDisplayName: vehicleDisplayName,
+        scrapPrice: scrapPrice,
+        record: record
+    };
+
+    player.outputChatBox(`!{#f7dc6f}Ar tikrai norite supjaustyt ${vehicleDisplayName} ir gauti $${scrapPrice}?`);
+    player.outputChatBox(`!{#f7dc6f}Patvirtinkite: /scrapconfirm`);
+});
+
+mp.events.addCommand('scrapconfirm', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!player.pendingScrap) {
+        return player.outputChatBox('!{#e74c3c}Jūs neturite laukiančio supjaustymo.');
+    }
+
+    const { vehicleId, vehicleDisplayName, scrapPrice, record } = player.pendingScrap;
+    player.pendingScrap = null;
+
+    // Add money to player
+    player.money += scrapPrice;
+
+    // Destroy vehicle
+    try {
+        if (player.vehicle === record.entity) {
+            player.removeFromVehicle();
+        }
+        if (record.entity) record.entity.destroy();
+    } catch (e) {
+        console.error('[VEHICLES] Scrap error:', e.message);
+    }
+
+    // Remove from inventory
+    ensureOwnedVehicleState(player);
+    player.ownedVehicles.delete(vehicleId);
+
+    db.query('DELETE FROM player_vehicles WHERE id = ?', [vehicleId]);
+    db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName]);
+
+    player.call('updateMoneyHUD', [player.money]);
+    player.outputChatBox(`!{#7aa164}Supjautėte ${vehicleDisplayName} ir gavote $${scrapPrice}.`);
+});
+
+mp.events.addCommand('sellto', (player, _, targetIdStr, priceStr) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!targetIdStr || !priceStr) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /sellto [ID] [Kaina]');
+    }
+
+    if (!player.vehicle) {
+        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte, norėdami parduoti.');
+    }
+
+    if (player.seat !== -1 && player.seat !== 0) {
+        return player.outputChatBox('!{#e74c3c}Turite būti šio transporto vairuotovu.');
+    }
+
+    // Get target player
+    const targetPlayer = getPlayerByIDOrName(targetIdStr);
+    if (!targetPlayer) {
+        return player.outputChatBox('!{#e74c3c}Žaidėjas nerastas!');
+    }
+
+    if (!targetPlayer.charName) {
+        return player.outputChatBox('!{#e74c3c}Žaidėjas dar nepasirinko veikėjo.');
+    }
+
+    if (targetPlayer === player) {
+        return player.outputChatBox('!{#f7dc6f}Negalite parduoti transporto sau!');
+    }
+
+    // Check distance
+    const distance = getDistanceBetweenPositions(player.position, targetPlayer.position);
+    if (distance > 10) {
+        return player.outputChatBox('!{#f7dc6f}Žaidėjas yra per toli. Turi būti šalia jūsų.');
+    }
+
+    // Parse price
+    const price = parseInt(priceStr);
+    if (isNaN(price) || price <= 0) {
+        return player.outputChatBox('!{#f7dc6f}Prašome nurodyti galiojančią kainą (daugiau nei 0).');
+    }
+
+    // Get vehicle record
+    const record = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
+    if (!record) {
+        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+    }
+
+    // Check if buyer has enough money
+    if (targetPlayer.money < price) {
+        return player.outputChatBox(`!{#e74c3c}Žaidėjas neturi pakankamai pinigų. Jei turi: $${targetPlayer.money}`);
+    }
+
+    // Store data before modifications
+    const vehicleDisplayName = record.displayName;
+    const vehicleId = record.id;
+
+    // Transfer money
+    player.money += price;
+    targetPlayer.money -= price;
+
+    // Update vehicle ownership
+    record.charId = targetPlayer.charId;
+
+    // Update inventories
+    ensureOwnedVehicleState(player);
+    ensureOwnedVehicleState(targetPlayer);
+    player.ownedVehicles.delete(vehicleId);
+    targetPlayer.ownedVehicles.set(vehicleId, record);
+
+    // Remove seller from vehicle and park it
+    try {
+        player.removeFromVehicle();
+    } catch (e) {
+        console.error('[VEHICLES] Sellto error:', e.message);
+    }
+    parkOwnedVehicle(record);
+
+    // Update database
+    db.query('UPDATE player_vehicles SET char_id = ? WHERE id = ?', [targetPlayer.charId, vehicleId]);
+    db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName]);
+    db.query('UPDATE characters SET money = ? WHERE char_name = ?', [targetPlayer.money, targetPlayer.charName]);
+
+    // Update HUDs
+    player.call('updateMoneyHUD', [player.money]);
+    targetPlayer.call('updateMoneyHUD', [targetPlayer.money]);
+
+    // Notify both players
+    player.outputChatBox(`!{#7aa164}Pardavėte ${vehicleDisplayName} žaidėjui ${targetPlayer.charName} už $${price}.`);
+    targetPlayer.outputChatBox(`!{#7aa164}Nusipirkote ${vehicleDisplayName} iš žaidėjo ${player.charName} už $${price}.`);
+});
+
 mp.events.addCommand('engine', (player) => {
     if (!player.charId || !player.charName) {
         return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
@@ -1911,11 +2082,19 @@ mp.events.addCommand('engine', (player) => {
         return player.outputChatBox('!{#e74c3c}Turite buti savo transporte.');
     }
 
-    if (!isPlayerDrivingVehicle(player, player.vehicle)) {
+    if (player.seat !== -1 && player.seat !== 0) {
         return player.outputChatBox('!{#e74c3c}Varikli gali valdyti tik vairuotojas.');
     }
 
+    // Check ownership
+    const record = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
+    if (!record) {
+        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+    }
+
     const currentEngineState = Number(player.vehicle.getVariable('manualEngineOn')) === 1;
+    player.outputChatBox(`!{#f7dc6f}Variklių dabartinė būsena: ${currentEngineState ? 'ĮJUNGTAS' : 'IŠJUNGTAS'}`);
+
     const nextEngineState = !currentEngineState;
     player.vehicle.engine = nextEngineState;
     player.vehicle.setVariable('manualEngineOn', nextEngineState ? 1 : 0);
@@ -1936,17 +2115,29 @@ mp.events.addCommand('lights', (player) => {
         return player.outputChatBox('!{#e74c3c}Turite buti savo transporte.');
     }
 
-    if (!isPlayerDrivingVehicle(player, player.vehicle)) {
+    if (player.seat !== -1 && player.seat !== 0) {
         return player.outputChatBox('!{#e74c3c}Sviesas gali valdyti tik vairuotojas.');
     }
 
+    // Check ownership
+    const record = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
+    if (!record) {
+        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+    }
+
     const currentLightsState = Number(player.vehicle.getVariable('manualLightsOn')) === 1;
+    player.outputChatBox(`!{#f7dc6f}Šviesos dabartinė būsena: ${currentLightsState ? 'ĮJUNGTOS' : 'IŠJUNGTOS'}`);
+
     const nextLightsState = !currentLightsState;
 
-    // Store state for sync and apply directly when property exists.
+    // Store state for sync
     player.vehicle.setVariable('manualLightsOn', nextLightsState ? 1 : 0);
-    if ('lights' in player.vehicle) {
-        try { player.vehicle.lights = nextLightsState; } catch (e) { }
+
+    // Try direct property assignment
+    try {
+        player.vehicle.lights = nextLightsState ? 1 : 0;
+    } catch (e) {
+        console.error('[VEHICLES] Lights error:', e.message);
     }
 
     if (nextLightsState) {
@@ -3146,17 +3337,31 @@ mp.events.add('playerQuit', (player) => {
 mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
     if (!player || !vehicle || !player.charId) return;
 
-    const record = getPlayerOwnedVehicleFromEntity(player, vehicle);
-    if (!record || !record.blip) return;
+    // Turn off engine when driver enters vehicle
+    if (seat === -1 || seat === 0) {
+        // Set immediately
+        try {
+            vehicle.engine = false;
+            vehicle.setVariable('manualEngineOn', 0);
+        } catch (e) {
+            console.error('[VEHICLES] Error turning off engine:', e.message);
+        }
 
-    try { record.blip.destroy(); } catch (e) { }
-    record.blip = null;
-});
+        // Set after 50ms
+        setTimeout(() => {
+            try {
+                vehicle.engine = false;
+                vehicle.setVariable('manualEngineOn', 0);
+            } catch (e) { }
+        }, 50);
 
-mp.events.add('callFromUI', (player, phoneNumber) => {
-    if (!/^\d+$/.test(phoneNumber)) {
-        player.call('callFailed', 'Numeris turi būti tik skaitmenys!');
-        return player.outputChatBox('!{#e74c3c}Numeris turi būti tik skaitmenys!');
+        // Set after 150ms to really ensure it sticks
+        setTimeout(() => {
+            try {
+                vehicle.engine = false;
+                vehicle.setVariable('manualEngineOn', 0);
+            } catch (e) { }
+        }, 150);
     }
     mp.events.call('call', player, phoneNumber);
 });
