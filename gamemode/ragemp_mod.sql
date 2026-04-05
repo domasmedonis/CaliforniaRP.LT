@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Apr 03, 2026 at 07:27 PM
+-- Generation Time: Apr 05, 2026 at 04:11 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -38,7 +38,7 @@ CREATE TABLE `bank_accounts` (
 --
 
 INSERT INTO `bank_accounts` (`id`, `char_name`, `balance`) VALUES
-(1, 'Test Test', 3100),
+(1, 'Test Test', 5800),
 (2, 'Bandom Bandom', 0);
 
 -- --------------------------------------------------------
@@ -61,7 +61,30 @@ CREATE TABLE `bank_transactions` (
 
 INSERT INTO `bank_transactions` (`id`, `char_name`, `transaction_type`, `amount`, `date`) VALUES
 (1, 'Test Test', 'withdraw', 1000, '2026-04-01 19:30:56'),
-(2, 'Test Test', 'deposit', 100, '2026-04-01 19:37:15');
+(2, 'Test Test', 'deposit', 100, '2026-04-01 19:37:15'),
+(3, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:55'),
+(4, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:56'),
+(5, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:57'),
+(6, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:57'),
+(7, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:57'),
+(8, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:57'),
+(9, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:58'),
+(10, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:58'),
+(11, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:58'),
+(12, 'Test Test', 'withdraw', 100, '2026-04-04 14:39:59'),
+(13, 'Test Test', 'deposit', 1000, '2026-04-04 14:52:10'),
+(14, 'Test Test', 'deposit', 100, '2026-04-04 14:52:36'),
+(15, 'Test Test', 'deposit', 100, '2026-04-04 14:54:20'),
+(16, 'Test Test', 'deposit', 100, '2026-04-04 14:54:22'),
+(17, 'Test Test', 'deposit', 100, '2026-04-04 14:54:23'),
+(18, 'Test Test', 'deposit', 100, '2026-04-04 14:54:24'),
+(19, 'Test Test', 'deposit', 100, '2026-04-04 14:54:25'),
+(20, 'Test Test', 'deposit', 100, '2026-04-04 14:54:26'),
+(21, 'Test Test', 'deposit', 100, '2026-04-04 14:54:26'),
+(22, 'Test Test', 'deposit', 100, '2026-04-04 14:54:27'),
+(23, 'Test Test', 'deposit', 100, '2026-04-04 14:54:27'),
+(24, 'Test Test', 'withdraw', 100, '2026-04-04 14:54:36'),
+(25, 'Test Test', 'withdraw', 100, '2026-04-04 14:54:39');
 
 -- --------------------------------------------------------
 
@@ -98,16 +121,19 @@ CREATE TABLE `characters` (
   `is_pm_enabled` tinyint(1) DEFAULT 1,
   `admin_name` varchar(255) DEFAULT NULL,
   `phone_number` varchar(6) DEFAULT NULL,
-  `twitter_handle` varchar(50) DEFAULT NULL
+  `twitter_handle` varchar(50) DEFAULT NULL,
+  `clothes` text DEFAULT NULL,
+  `barber` text DEFAULT NULL,
+  `inventory` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Dumping data for table `characters`
 --
 
-INSERT INTO `characters` (`id`, `ucp_username`, `char_name`, `money`, `bank_balance`, `playtime`, `health`, `position_x`, `position_y`, `position_z`, `admin_level`, `is_pm_enabled`, `admin_name`, `phone_number`, `twitter_handle`) VALUES
-(1, 'imu_pertrauka', 'Test Test', 900, 3100, 141, 100, -62.7989, -93.8614, 57.7663, 2, 1, NULL, '123456', NULL),
-(2, 'imu_pertrauka', 'Bandom Bandom', 0, 0, 7, 100, -29.8705, 45.4782, 72.0717, 2, 1, 'imu_pertrauka', NULL, NULL);
+INSERT INTO `characters` (`id`, `ucp_username`, `char_name`, `money`, `bank_balance`, `playtime`, `health`, `position_x`, `position_y`, `position_z`, `admin_level`, `is_pm_enabled`, `admin_name`, `phone_number`, `twitter_handle`, `clothes`, `barber`, `inventory`) VALUES
+(1, 'imu_pertrauka', 'Test Test', 246500, 5800, 188, 100, -72.2273, -1048.91, 27.8893, 2, 1, NULL, '123456', NULL, '{\"3\":{\"d\":0,\"t\":0},\"4\":{\"d\":9,\"t\":0},\"8\":{\"d\":0,\"t\":0},\"11\":{\"d\":0,\"t\":0}}', '{\"hairStyle\":7,\"hairColor\":0,\"hairHighlight\":0,\"beardStyle\":26,\"beardOpacity\":10}', '[{\"id\":\"mnkhh03q25ydm9\",\"type\":\"cigarettes\",\"name\":\"Cigaretes\",\"description\":\"Pakelis cigareciu po pertraukeles.\",\"icon\":\"cigarettes\",\"quantity\":20,\"usable\":true,\"droppable\":true,\"giveable\":true},{\"id\":\"mnkhh5ac7tgj5a\",\"type\":\"beer\",\"name\":\"Alus\",\"description\":\"Atgaivina ir nuima itampa.\",\"icon\":\"beer\",\"quantity\":1,\"usable\":true,\"droppable\":true,\"giveable\":true},{\"id\":\"mnkhqc29awqspj\",\"type\":\"water\",\"name\":\"Vanduo\",\"description\":\"Atkuria 5 gyvybes.\",\"icon\":\"water\",\"quantity\":1,\"usable\":true,\"droppable\":true,\"giveable\":true}]'),
+(2, 'imu_pertrauka', 'Bandom Bandom', 0, 0, 7, 100, -1.45924, 33.9236, 71.154, 2, 1, 'imu_pertrauka', NULL, NULL, NULL, NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -152,7 +178,8 @@ INSERT INTO `messages` (`id`, `char_id`, `sender_number`, `recipient_number`, `m
 (6, 1, '123456', '123456', 'zz', '2026-04-01 17:03:42', 0),
 (7, 1, '123456', '112', 'zz', '2026-04-01 17:03:52', 0),
 (8, 1, '123456', '415', 'nu zdarowa', '2026-04-01 18:20:43', 0),
-(9, 1, '123456', '123456', 'ww', '2026-04-01 18:20:58', 0);
+(9, 1, '123456', '123456', 'ww', '2026-04-01 18:20:58', 0),
+(10, 1, '123456', '123', 'test', '2026-04-04 10:43:00', 0);
 
 -- --------------------------------------------------------
 
@@ -172,6 +199,53 @@ CREATE TABLE `players` (
 
 INSERT INTO `players` (`id`, `name`, `password`) VALUES
 (1, 'imu_pertrauka', '$2a$10$yTsOgm8CkPB/swCF8wyWZupq0d6Jp6J0gorAJl4kNh7rHY2IFKLRC');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `player_vehicles`
+--
+
+CREATE TABLE `player_vehicles` (
+  `id` int(11) NOT NULL,
+  `char_id` int(11) NOT NULL,
+  `model` varchar(40) NOT NULL,
+  `model_hash` int(11) NOT NULL,
+  `display_name` varchar(64) NOT NULL,
+  `price` int(11) NOT NULL DEFAULT 0,
+  `primary_color` int(11) NOT NULL DEFAULT 0,
+  `secondary_color` int(11) NOT NULL DEFAULT 0,
+  `parked` tinyint(1) NOT NULL DEFAULT 1,
+  `park_x` float DEFAULT NULL,
+  `park_y` float DEFAULT NULL,
+  `park_z` float DEFAULT NULL,
+  `park_h` float DEFAULT NULL,
+  `locked` tinyint(1) NOT NULL DEFAULT 0,
+  `plate` varchar(16) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `player_vehicles`
+--
+
+INSERT INTO `player_vehicles` (`id`, `char_id`, `model`, `model_hash`, `display_name`, `price`, `primary_color`, `secondary_color`, `parked`, `park_x`, `park_y`, `park_z`, `park_h`, `locked`, `plate`, `created_at`) VALUES
+(3, 1, 'sultan', 970598228, 'Karin Sultan', 28000, 0, 0, 1, -82.2289, -1086.95, 26.5525, -23.8117, 0, 'CRP13', '2026-04-05 11:19:59');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `player_vehicle_park_locations`
+--
+
+CREATE TABLE `player_vehicle_park_locations` (
+  `vehicle_id` int(11) NOT NULL,
+  `char_id` int(11) NOT NULL,
+  `park_x` float NOT NULL,
+  `park_y` float NOT NULL,
+  `park_z` float NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
 
@@ -291,6 +365,20 @@ ALTER TABLE `players`
   ADD UNIQUE KEY `name` (`name`);
 
 --
+-- Indexes for table `player_vehicles`
+--
+ALTER TABLE `player_vehicles`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_player_vehicles_char_id` (`char_id`);
+
+--
+-- Indexes for table `player_vehicle_park_locations`
+--
+ALTER TABLE `player_vehicle_park_locations`
+  ADD PRIMARY KEY (`vehicle_id`),
+  ADD KEY `idx_player_vehicle_park_char_id` (`char_id`);
+
+--
 -- Indexes for table `tweets`
 --
 ALTER TABLE `tweets`
@@ -324,7 +412,7 @@ ALTER TABLE `bank_accounts`
 -- AUTO_INCREMENT for table `bank_transactions`
 --
 ALTER TABLE `bank_transactions`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
 
 --
 -- AUTO_INCREMENT for table `bans`
@@ -342,19 +430,25 @@ ALTER TABLE `characters`
 -- AUTO_INCREMENT for table `contacts`
 --
 ALTER TABLE `contacts`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- AUTO_INCREMENT for table `messages`
 --
 ALTER TABLE `messages`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=11;
 
 --
 -- AUTO_INCREMENT for table `players`
 --
 ALTER TABLE `players`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT for table `player_vehicles`
+--
+ALTER TABLE `player_vehicles`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `tweets`
@@ -377,6 +471,19 @@ ALTER TABLE `twitter_posts`
 --
 ALTER TABLE `contacts`
   ADD CONSTRAINT `fk_contacts_char_id` FOREIGN KEY (`char_id`) REFERENCES `characters` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
+-- Constraints for table `player_vehicles`
+--
+ALTER TABLE `player_vehicles`
+  ADD CONSTRAINT `fk_player_vehicles_char` FOREIGN KEY (`char_id`) REFERENCES `characters` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `player_vehicle_park_locations`
+--
+ALTER TABLE `player_vehicle_park_locations`
+  ADD CONSTRAINT `fk_player_vehicle_park_char` FOREIGN KEY (`char_id`) REFERENCES `characters` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_player_vehicle_park_vehicle` FOREIGN KEY (`vehicle_id`) REFERENCES `player_vehicles` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `twitter_posts`
