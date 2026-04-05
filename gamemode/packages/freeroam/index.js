@@ -8,8 +8,596 @@ const activeDrivers = new Map();
 const activeRides = new Map();
 const activeCalls = new Map();
 
+const INVENTORY_GIVE_RADIUS = 5.0;
+const INVENTORY_ITEM_DEFS = Object.freeze({
+    water: {
+        name: 'Vanduo',
+        description: 'Atkuria 5 gyvybes.',
+        icon: 'water',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    burger: {
+        name: 'Burgeris',
+        description: 'Sotus uzkandis. Atkuria 15 gyvybiu.',
+        icon: 'burger',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    bandage: {
+        name: 'Bintas',
+        description: 'Sustabdote kraujavima ir atkuriate 20 gyvybiu.',
+        icon: 'bandage',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    medkit: {
+        name: 'Vaistineles rinkinys',
+        description: 'Pilnai arba beveik pilnai atstato sveikata.',
+        icon: 'medkit',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    cigarettes: {
+        name: 'Cigaretes',
+        description: 'Pakelis cigareciu po pertraukeles.',
+        icon: 'cigarettes',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    beer: {
+        name: 'Alus',
+        description: 'Atgaivina ir nuima itampa.',
+        icon: 'beer',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+});
+
+const INVENTORY_ITEM_ALIASES = Object.freeze({
+    water: 'water',
+    vanduo: 'water',
+    burger: 'burger',
+    bandage: 'bandage',
+    bintas: 'bandage',
+    medkit: 'medkit',
+    vaistinele: 'medkit',
+    cigarettes: 'cigarettes',
+    cigarette: 'cigarettes',
+    cig: 'cigarettes',
+    cigs: 'cigarettes',
+    cigaretes: 'cigarettes',
+    beer: 'beer',
+    alus: 'beer',
+});
+
 const TWITTER_COOLDOWN = 3600000; // 1 hour between posts
 const lastTweetTime = new Map();
+
+const DEALERSHIP_POS = new mp.Vector3(-33.9, -1102.07, 26.42);
+const DEALERSHIP_DELIVERY_POS = new mp.Vector3(-23.84, -1094.95, 26.67);
+const DEALERSHIP_DELIVERY_HEADING = 69.0;
+const DEALERSHIP_INTERACT_RADIUS = 8.0;
+const DEALERSHIP_PURCHASE_SPAWN_POS = new mp.Vector3(-49.89, -1111.67, 26.44);
+
+const VEHICLE_CATALOG = Object.freeze([
+    { key: 'sultan', name: 'Karin Sultan', model: 'sultan', price: 28000 },
+    { key: 'blista', name: 'Dinka Blista', model: 'blista', price: 16000 },
+    { key: 'prairie', name: 'Bollokan Prairie', model: 'prairie', price: 21000 },
+    { key: 'premier', name: 'Declasse Premier', model: 'premier', price: 19000 },
+    { key: 'dominator', name: 'Vapid Dominator', model: 'dominator', price: 42000 },
+    { key: 'buffalo', name: 'Bravado Buffalo', model: 'buffalo', price: 39000 },
+    { key: 'tailgater', name: 'Obey Tailgater', model: 'tailgater', price: 33000 },
+    { key: 'asea', name: 'Declasse Asea', model: 'asea', price: 14500 },
+]);
+
+const vehicleCatalogByKey = new Map(VEHICLE_CATALOG.map(item => [item.key, item]));
+
+// Visual points for dealership and vehicle lot.
+mp.blips.new(225, DEALERSHIP_POS, {
+    name: 'Vehicle Dealership',
+    color: 3,
+    shortRange: true,
+    scale: 0.9,
+});
+
+mp.markers.new(1, new mp.Vector3(DEALERSHIP_POS.x, DEALERSHIP_POS.y, DEALERSHIP_POS.z - 1.0), 1.2, {
+    color: [93, 173, 226, 180],
+    visible: true,
+    dimension: 0,
+});
+
+function isNearPoint(player, point, radius) {
+    if (!player || !player.position || !point) return false;
+    return getDistanceBetweenPositions(player.position, point) <= radius;
+}
+
+function getDistanceBetweenPositions(a, b) {
+    if (!a || !b) return Number.POSITIVE_INFINITY;
+
+    const ax = Number(a.x);
+    const ay = Number(a.y);
+    const az = Number(a.z);
+    const bx = Number(b.x);
+    const by = Number(b.y);
+    const bz = Number(b.z);
+
+    if (![ax, ay, az, bx, by, bz].every(Number.isFinite)) {
+        return Number.POSITIVE_INFINITY;
+    }
+
+    const dx = ax - bx;
+    const dy = ay - by;
+    const dz = az - bz;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function parseVehicleColorIndex(input) {
+    const value = parseInt(input, 10);
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(160, value));
+}
+
+function getSpawnPointNearPlayer(player, distance = 4.5) {
+    const heading = Number.isFinite(player.heading) ? player.heading : DEALERSHIP_DELIVERY_HEADING;
+    const rad = heading * (Math.PI / 180);
+    const offsetX = Math.sin(rad) * distance;
+    const offsetY = Math.cos(rad) * distance;
+
+    return {
+        position: new mp.Vector3(player.position.x + offsetX, player.position.y + offsetY, player.position.z),
+        heading,
+    };
+}
+
+
+function makeVehiclePlate(charId, vehicleDbId) {
+    const safeChar = Math.max(0, parseInt(charId, 10) || 0).toString().slice(-3);
+    const safeVehicle = Math.max(0, parseInt(vehicleDbId, 10) || 0).toString().slice(-3);
+    return `CRP${safeChar}${safeVehicle}`.slice(0, 8);
+}
+
+function ensureOwnedVehicleState(player) {
+    if (!player) return;
+    if (!(player.ownedVehicles instanceof Map)) {
+        player.ownedVehicles = new Map();
+    }
+}
+
+function ensureParkLocationState(player) {
+    if (!player) return;
+    if (!(player.parkLocationsByVehicleId instanceof Map)) {
+        player.parkLocationsByVehicleId = new Map();
+    }
+}
+
+function getParkLocationForVehicle(player, vehicleDbId) {
+    ensureParkLocationState(player);
+    const id = parseInt(vehicleDbId, 10);
+    if (!Number.isFinite(id)) return null;
+    return player.parkLocationsByVehicleId.get(id) || null;
+}
+
+function getOwnedVehicleRecordByDbId(player, vehicleDbId) {
+    ensureOwnedVehicleState(player);
+    const id = parseInt(vehicleDbId, 10);
+    if (!Number.isFinite(id)) return null;
+    return player.ownedVehicles.get(id) || null;
+}
+
+function getPlayerOwnedVehicleFromEntity(player, vehicleEntity) {
+    if (!player || !vehicleEntity || !vehicleEntity.getVariable) return null;
+    const ownedVehicleId = vehicleEntity.getVariable('ownedVehicleId');
+    const ownedByCharId = vehicleEntity.getVariable('ownedByCharId');
+
+    // Use loose numeric comparison — getVariable may return string or number.
+    if (!ownedVehicleId || !ownedByCharId || Number(ownedByCharId) !== Number(player.charId)) {
+        return null;
+    }
+
+    return getOwnedVehicleRecordByDbId(player, ownedVehicleId);
+}
+
+function getClosestPlayerOwnedVehicle(player, maxDistance = 8.0) {
+    if (!player) return null;
+
+    if (player.vehicle) {
+        const fromSeatVehicle = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
+        if (fromSeatVehicle) return fromSeatVehicle;
+    }
+
+    ensureOwnedVehicleState(player);
+    let closest = null;
+    let closestDistance = maxDistance;
+
+    player.ownedVehicles.forEach((record) => {
+        if (!record || !record.entity || !record.entity.handle) return;
+        const dist = getDistanceBetweenPositions(player.position, record.entity.position);
+        if (dist <= closestDistance) {
+            closestDistance = dist;
+            closest = record;
+        }
+    });
+
+    return closest;
+}
+
+function getActiveOwnedVehicleRecord(player) {
+    if (!player) return null;
+    ensureOwnedVehicleState(player);
+
+    for (const record of player.ownedVehicles.values()) {
+        if (record && record.entity && record.entity.handle) {
+            return record;
+        }
+    }
+
+    return null;
+}
+
+function isPlayerDrivingVehicle(player, vehicle) {
+    if (!player || !vehicle || !vehicle.handle) return false;
+    // RAGE MP server-side: driver seat is -1. Accept 0 as well for safety.
+    // Do NOT use getPedInSeat — it returns a raw ped handle, not the player object.
+    return player.vehicle === vehicle && (player.seat === -1 || player.seat === 0);
+}
+
+function spawnOwnedVehicleForPlayer(player, record, spawnPos = DEALERSHIP_DELIVERY_POS, spawnHeading = DEALERSHIP_DELIVERY_HEADING, warpDriver = false) {
+    if (!player || !record) return null;
+    if (record.entity && record.entity.handle) return record.entity;
+
+    const modelHash = record.modelHash || (typeof mp.joaat === 'function' ? mp.joaat(record.model) : record.model);
+    const entity = mp.vehicles.new(modelHash, spawnPos, {
+        heading: spawnHeading,
+        dimension: player.dimension || 0,
+    });
+
+    entity.numberPlate = record.plate || makeVehiclePlate(player.charId, record.id);
+    entity.primaryColor = parseVehicleColorIndex(record.primaryColor);
+    entity.secondaryColor = parseVehicleColorIndex(record.secondaryColor);
+    entity.locked = Boolean(record.locked);
+    entity.engine = false;
+    entity.setVariable('manualEngineOn', 0);
+    entity.setVariable('manualLightsOn', 0);
+    entity.setVariable('ownedVehicleId', record.id);
+    entity.setVariable('ownedByCharId', player.charId);
+
+    record.entity = entity;
+    record.parked = 0;
+
+    if (warpDriver) {
+        try {
+            player.putIntoVehicle(entity, -1);
+        } catch (e) {
+            // Ignore if warp fails because seat is occupied during race condition.
+        }
+    }
+
+    return entity;
+}
+
+function persistOwnedVehicleState(record) {
+    if (!record || !record.id) return;
+    db.query(
+        'UPDATE player_vehicles SET parked = ?, park_x = ?, park_y = ?, park_z = ?, park_h = ?, locked = ?, primary_color = ?, secondary_color = ? WHERE id = ?',
+        [
+            record.parked ? 1 : 0,
+            record.parkX,
+            record.parkY,
+            record.parkZ,
+            record.parkH,
+            record.locked ? 1 : 0,
+            parseVehicleColorIndex(record.primaryColor),
+            parseVehicleColorIndex(record.secondaryColor),
+            record.id,
+        ]
+    );
+}
+
+function parkOwnedVehicle(record, parkPos, parkHeading = DEALERSHIP_DELIVERY_HEADING) {
+    if (!record) return;
+    if (!parkPos) {
+        parkPos = new mp.Vector3(DEALERSHIP_DELIVERY_POS.x, DEALERSHIP_DELIVERY_POS.y, DEALERSHIP_DELIVERY_POS.z);
+    }
+    record.parked = 1;
+    record.parkX = parkPos.x;
+    record.parkY = parkPos.y;
+    record.parkZ = parkPos.z;
+    record.parkH = parkHeading;
+
+    // Destroy blip if it exists.
+    if (record.blip) {
+        try { record.blip.destroy(); } catch (e) { }
+        record.blip = null;
+    }
+
+    if (record.entity) {
+        try { record.entity.destroy(); } catch (e) { console.error('[VEHICLES] destroy error:', e.message); }
+    }
+
+    record.entity = null;
+    persistOwnedVehicleState(record);
+}
+
+function cleanupReachedVehicleBlipsForPlayer(player, reachDistance = 20.0) {
+    if (!player || !player.charId) return;
+    ensureOwnedVehicleState(player);
+
+    for (const record of player.ownedVehicles.values()) {
+        if (!record || !record.blip || !record.entity || !record.entity.handle) continue;
+
+        const dist = getDistanceBetweenPositions(player.position, record.entity.position);
+        if (dist <= reachDistance) {
+            try { record.blip.destroy(); } catch (e) { }
+            record.blip = null;
+        }
+    }
+}
+
+function ensureVehicleMarkerCleanupTimer(player) {
+    if (!player || !player.charId) return;
+    if (player.vehicleMarkerTimer) return;
+
+    player.vehicleMarkerTimer = setInterval(() => {
+        cleanupReachedVehicleBlipsForPlayer(player, 20.0);
+    }, 2000);
+}
+
+function cleanupPlayerOwnedVehicles(player, forceParked = true) {
+    if (!player || !(player.ownedVehicles instanceof Map)) return;
+
+    player.ownedVehicles.forEach((record) => {
+        if (!record) return;
+        if (record.entity && record.entity.handle) {
+            if (forceParked) {
+                const position = record.entity.position || DEALERSHIP_DELIVERY_POS;
+                const heading = Number.isFinite(record.entity.heading) ? record.entity.heading : DEALERSHIP_DELIVERY_HEADING;
+                record.parked = 1;
+                record.parkX = position.x;
+                record.parkY = position.y;
+                record.parkZ = position.z;
+                record.parkH = heading;
+            }
+
+            record.entity.destroy();
+            record.entity = null;
+            persistOwnedVehicleState(record);
+            return;
+        }
+
+        if (forceParked) {
+            record.parked = 1;
+            persistOwnedVehicleState(record);
+        }
+    });
+}
+
+function loadOwnedVehiclesForPlayer(player) {
+    if (!player || !player.charId) return;
+    ensureOwnedVehicleState(player);
+    player.ownedVehicles.clear();
+
+    db.query('SELECT * FROM player_vehicles WHERE char_id = ? ORDER BY id ASC', [player.charId], (err, rows) => {
+        if (err) {
+            console.error('[VEHICLES] Failed to load owned vehicles:', err.message);
+            return;
+        }
+
+        rows.forEach((row) => {
+            const record = {
+                id: row.id,
+                charId: row.char_id,
+                model: row.model,
+                modelHash: row.model_hash,
+                displayName: row.display_name,
+                price: row.price,
+                primaryColor: row.primary_color,
+                secondaryColor: row.secondary_color,
+                parked: row.parked,
+                parkX: row.park_x,
+                parkY: row.park_y,
+                parkZ: row.park_z,
+                parkH: row.park_h,
+                locked: row.locked,
+                plate: row.plate,
+                entity: null,
+                blip: null,
+            };
+
+            player.ownedVehicles.set(record.id, record);
+        });
+
+        player.outputChatBox(`!{#7aa164}Jusu transportas ikeltas: ${rows.length}. Naudokite /buypark ir /get.`);
+    });
+}
+
+function loadParkLocationsForPlayer(player) {
+    if (!player || !player.charId) return;
+    ensureParkLocationState(player);
+    player.parkLocationsByVehicleId.clear();
+
+    db.query('SELECT vehicle_id, park_x, park_y, park_z FROM player_vehicle_park_locations WHERE char_id = ?', [player.charId], (err, rows) => {
+        if (err) {
+            console.error('[VEHICLES] Failed to load park locations:', err.message);
+            return;
+        }
+
+        if (!rows || rows.length === 0) return;
+        rows.forEach((row) => {
+            const vehicleId = Number(row.vehicle_id);
+            if (!Number.isFinite(vehicleId)) return;
+            player.parkLocationsByVehicleId.set(vehicleId, {
+                x: row.park_x,
+                y: row.park_y,
+                z: row.park_z,
+            });
+        });
+    });
+}
+
+function generateInventoryItemId() {
+    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function createInventoryItem(type, quantity = 1, existingId = null) {
+    const definition = INVENTORY_ITEM_DEFS[type];
+    if (!definition) return null;
+
+    return {
+        id: existingId || generateInventoryItemId(),
+        type,
+        name: definition.name,
+        description: definition.description,
+        icon: definition.icon || '📦',
+        quantity: Math.max(1, parseInt(quantity, 10) || 1),
+        usable: definition.usable !== false,
+        droppable: definition.droppable !== false,
+        giveable: definition.giveable !== false,
+    };
+}
+
+function normalizeInventoryItemType(inputType) {
+    if (!inputType || typeof inputType !== 'string') return null;
+    const key = inputType.trim().toLowerCase();
+    return INVENTORY_ITEM_ALIASES[key] || null;
+}
+
+function normalizeInventoryItems(items) {
+    if (!Array.isArray(items)) return [];
+
+    const merged = new Map();
+
+    items.forEach((rawItem) => {
+        if (!rawItem) return;
+
+        const type = typeof rawItem.type === 'string' ? rawItem.type.toLowerCase() : '';
+        const normalized = createInventoryItem(type, rawItem.quantity, rawItem.id);
+        if (!normalized) return;
+
+        if (merged.has(normalized.type)) {
+            merged.get(normalized.type).quantity += normalized.quantity;
+            return;
+        }
+
+        merged.set(normalized.type, normalized);
+    });
+
+    return Array.from(merged.values());
+}
+
+function loadInventory(rawInventory) {
+    if (rawInventory === null || rawInventory === undefined || rawInventory === '') {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(rawInventory);
+        return normalizeInventoryItems(parsed);
+    } catch (error) {
+        console.error('[INVENTORY] Failed to parse inventory JSON:', error.message);
+        return [];
+    }
+}
+
+function getInventoryJson(player) {
+    return JSON.stringify(Array.isArray(player.inventory) ? player.inventory : []);
+}
+
+function persistInventory(player) {
+    if (!player || !player.charId) return;
+
+    db.query('UPDATE characters SET inventory = ? WHERE id = ?', [getInventoryJson(player), player.charId], (err) => {
+        if (err) {
+            console.error('[INVENTORY] Failed to save inventory:', err.message);
+        }
+    });
+}
+
+function sendInventoryUpdate(player, statusText = '', success = true) {
+    if (!player) return;
+    player.call('updateInventoryUI', [getInventoryJson(player), statusText, success]);
+}
+
+function openInventory(player, statusText = '') {
+    if (!player || !player.charName) {
+        if (player) {
+            player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+        }
+        return;
+    }
+
+    if (!Array.isArray(player.inventory)) {
+        player.inventory = [];
+    }
+
+    player.call('openInventoryUI', [getInventoryJson(player), statusText]);
+}
+
+function formatInventoryAmount(itemName, amount) {
+    return `${amount}x ${itemName}`;
+}
+
+function getInventoryItemById(player, itemId) {
+    if (!player || !Array.isArray(player.inventory)) return null;
+    const index = player.inventory.findIndex(item => item && item.id === itemId);
+    if (index === -1) return null;
+    return {
+        index,
+        item: player.inventory[index],
+    };
+}
+
+function addInventoryItem(player, type, amount) {
+    if (!player || !Array.isArray(player.inventory)) return null;
+
+    const quantity = Math.max(1, parseInt(amount, 10) || 1);
+    const existingItem = player.inventory.find(item => item.type === type);
+    if (existingItem) {
+        existingItem.quantity += quantity;
+        return existingItem;
+    }
+
+    const item = createInventoryItem(type, quantity);
+    if (item) {
+        player.inventory.push(item);
+    }
+    return item;
+}
+
+function removeInventoryItemAmount(player, itemId, amount) {
+    const itemEntry = getInventoryItemById(player, itemId);
+    if (!itemEntry) return null;
+
+    const quantity = Math.max(1, parseInt(amount, 10) || 1);
+    if (itemEntry.item.quantity < quantity) return null;
+
+    itemEntry.item.quantity -= quantity;
+    if (itemEntry.item.quantity <= 0) {
+        player.inventory.splice(itemEntry.index, 1);
+    }
+
+    return itemEntry.item;
+}
+
+function broadcastInventoryAction(player, message) {
+    if (!player || !player.position || !player.charName) return;
+
+    mp.players.forEachInRange(player.position, 10, (nearbyPlayer) => {
+        nearbyPlayer.outputChatBox(`!{#f7dc6f}${message}`);
+    });
+}
 
 function startCall(caller, target) {
     if (!caller || !target || caller.id === target.id) return false;
@@ -59,6 +647,76 @@ db.connect((err) => {
         )`, (err) => {
             if (err) console.error('Error creating twitter_posts table:', err);
             else console.log('Twitter posts table ready.');
+        });
+
+        // Clothing system — add column if it didn't exist yet
+        db.query('ALTER TABLE characters ADD COLUMN clothes TEXT DEFAULT NULL', (err) => {
+            if (err && err.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[CLOTHES] Failed to add clothes column:', err.message);
+            } else {
+                console.log('[CLOTHES] Clothes column ready.');
+            }
+        });
+
+        db.query('ALTER TABLE characters ADD COLUMN barber TEXT DEFAULT NULL', (err) => {
+            if (err && err.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[BARBER] Failed to add barber column:', err.message);
+            } else {
+                console.log('[BARBER] Barber column ready.');
+            }
+        });
+
+        db.query('ALTER TABLE characters ADD COLUMN inventory TEXT DEFAULT NULL', (err) => {
+            if (err && err.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[INVENTORY] Failed to add inventory column:', err.message);
+            } else {
+                console.log('[INVENTORY] Inventory column ready.');
+            }
+        });
+
+        db.query(`CREATE TABLE IF NOT EXISTS player_vehicles (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            char_id INT NOT NULL,
+            model VARCHAR(40) NOT NULL,
+            model_hash INT NOT NULL,
+            display_name VARCHAR(64) NOT NULL,
+            price INT NOT NULL DEFAULT 0,
+            primary_color INT NOT NULL DEFAULT 0,
+            secondary_color INT NOT NULL DEFAULT 0,
+            parked TINYINT(1) NOT NULL DEFAULT 1,
+            park_x FLOAT NULL,
+            park_y FLOAT NULL,
+            park_z FLOAT NULL,
+            park_h FLOAT NULL,
+            locked TINYINT(1) NOT NULL DEFAULT 0,
+            plate VARCHAR(16) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_player_vehicles_char_id (char_id),
+            CONSTRAINT fk_player_vehicles_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE
+        )`, (createErr) => {
+            if (createErr) {
+                console.error('[VEHICLES] Failed to create player_vehicles table:', createErr.message);
+            } else {
+                console.log('[VEHICLES] player_vehicles table ready.');
+            }
+        });
+
+        db.query(`CREATE TABLE IF NOT EXISTS player_vehicle_park_locations (
+            vehicle_id INT NOT NULL PRIMARY KEY,
+            char_id INT NOT NULL,
+            park_x FLOAT NOT NULL,
+            park_y FLOAT NOT NULL,
+            park_z FLOAT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_player_vehicle_park_char_id (char_id),
+            CONSTRAINT fk_player_vehicle_park_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE,
+            CONSTRAINT fk_player_vehicle_park_vehicle FOREIGN KEY (vehicle_id) REFERENCES player_vehicles(id) ON DELETE CASCADE
+        )`, (createErr) => {
+            if (createErr) {
+                console.error('[VEHICLES] Failed to create player_vehicle_park_locations table:', createErr.message);
+            } else {
+                console.log('[VEHICLES] player_vehicle_park_locations table ready.');
+            }
         });
     }
 });
@@ -184,10 +842,18 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.money = charData.money;
         player.bankBalance = charData.bank_balance;
         player.playtime = charData.playtime;
-        player.position = new mp.Vector3(charData.position_x, charData.position_y, charData.position_z);
+        const posX = parseFloat(charData.position_x);
+        const posY = parseFloat(charData.position_y);
+        const posZ = parseFloat(charData.position_z);
+        const hasSavedPosition = Number.isFinite(posX) && Number.isFinite(posY) && Number.isFinite(posZ);
+        player.position = hasSavedPosition ? new mp.Vector3(posX, posY, posZ) : player.position;
         player.isPMEnabled = charData.is_pm_enabled;
         player.adminLevel = charData.admin_level;
         player.phoneNumber = charData.phone_number;
+        player.inventory = loadInventory(charData.inventory);
+        if (charData.inventory === null || charData.inventory === undefined || charData.inventory === '') {
+            persistInventory(player);
+        }
 
         // Load bank account (now tied to char_name)
         db.query('SELECT * FROM bank_accounts WHERE char_name = ?', [player.charName], (err, bankResults) => {
@@ -208,12 +874,49 @@ mp.events.add('selectCharacter', (player, charId) => {
 
         player.spawn(player.position);
 
+        // Apply saved clothes
+        if (charData.clothes) {
+            try {
+                const savedClothes = JSON.parse(charData.clothes);
+                player.outfitData = savedClothes;
+                for (const [comp, data] of Object.entries(savedClothes)) {
+                    player.setClothes(parseInt(comp), parseInt(data.d) || 0, parseInt(data.t) || 0, 2);
+                }
+            } catch (e) {
+                console.error('[CLOTHES] Failed to apply clothes for', charData.char_name, e.message);
+            }
+        } else {
+            player.outfitData = {};
+        }
+
+        const defaultBarber = {
+            hairStyle: 0,
+            hairColor: 0,
+            hairHighlight: 0,
+            beardStyle: -1,
+            beardOpacity: 10,
+        };
+
+        if (charData.barber) {
+            try {
+                player.barberData = JSON.parse(charData.barber);
+            } catch (e) {
+                player.barberData = defaultBarber;
+            }
+        } else {
+            player.barberData = defaultBarber;
+        }
+
+        player.call('applyBarberAppearance', [JSON.stringify(player.barberData)]);
+
         player.call('updateMoneyHUD', [player.money]);
         player.call('updateBankHUD', [player.bankBalance]);
         player.call('updatePhoneNumber', [player.phoneNumber]);
         player.outputChatBox(`!{#7aa164}Pasirinkote veikėją: ${charData.char_name}. Sveiki atvykę į CaliforniaRP.LT!`);
 
         loadCharacterContacts(player);
+        loadOwnedVehiclesForPlayer(player);
+        loadParkLocationsForPlayer(player);
 
         if (!player.timer) {
             player.timer = setInterval(() => {
@@ -236,6 +939,8 @@ mp.events.add('selectCharacter', (player, charId) => {
                 saveCharacterData(player);
             }, 300000); // 5 minutes
         }
+
+        ensureVehicleMarkerCleanupTimer(player);
 
         console.log(`[VEIKĖJAS] ${player.name} pasirinko veikėją ${charData.char_name}`);
     });
@@ -263,15 +968,35 @@ function loadCharacterContacts(player) {
 // Function to save character data
 function saveCharacterData(player) {
     if (player.charId) {
-        db.query('UPDATE characters SET playtime = ?, money = ?, bank_balance = ?, position_x = ?, position_y = ?, position_z = ?, health = ?, is_pm_enabled = ?, phone_number = ? WHERE id = ?',
-            [player.playtime || 0, player.money || 0, player.bankBalance || 0, player.position.x, player.position.y, player.position.z, player.health || 100, player.isPMEnabled ? 1 : 0, player.phoneNumber, player.charId],
-            (err) => {
-                if (err) {
-                    console.error('[KLAIDA] Nepavyko išsaugoti veikėjo duomenų:', err);
-                } else {
-                    console.log(`[VEIKĖJAS] ${player.charName} duomenys išsaugoti sėkmingai.`);
-                }
-            });
+        const currentPos = player.position;
+        const inventoryJson = getInventoryJson(player);
+        const hasValidPosition = currentPos
+            && Number.isFinite(currentPos.x)
+            && Number.isFinite(currentPos.y)
+            && Number.isFinite(currentPos.z);
+
+        if (!hasValidPosition) {
+            console.warn(`[VEIKEJAS] Invalid position for ${player.charName || player.name}, preserving last saved coordinates.`);
+            db.query('UPDATE characters SET playtime = ?, money = ?, bank_balance = ?, health = ?, is_pm_enabled = ?, phone_number = ?, inventory = ? WHERE id = ?',
+                [player.playtime || 0, player.money || 0, player.bankBalance || 0, player.health || 100, player.isPMEnabled ? 1 : 0, player.phoneNumber, inventoryJson, player.charId],
+                (err) => {
+                    if (err) {
+                        console.error('[KLAIDA] Nepavyko išsaugoti veikėjo duomenų:', err);
+                    } else {
+                        console.log(`[VEIKĖJAS] ${player.charName} duomenys išsaugoti sėkmingai.`);
+                    }
+                });
+        } else {
+            db.query('UPDATE characters SET playtime = ?, money = ?, bank_balance = ?, position_x = ?, position_y = ?, position_z = ?, health = ?, is_pm_enabled = ?, phone_number = ?, inventory = ? WHERE id = ?',
+                [player.playtime || 0, player.money || 0, player.bankBalance || 0, currentPos.x, currentPos.y, currentPos.z, player.health || 100, player.isPMEnabled ? 1 : 0, player.phoneNumber, inventoryJson, player.charId],
+                (err) => {
+                    if (err) {
+                        console.error('[KLAIDA] Nepavyko išsaugoti veikėjo duomenų:', err);
+                    } else {
+                        console.log(`[VEIKĖJAS] ${player.charName} duomenys išsaugoti sėkmingai.`);
+                    }
+                });
+        }
 
         db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance || 0, player.charName], (err) => {
             if (err) {
@@ -280,6 +1005,39 @@ function saveCharacterData(player) {
         });
     }
 }
+
+let isShutdownSaveInProgress = false;
+
+function saveAllOnlineCharacters(reason) {
+    if (isShutdownSaveInProgress) return;
+    isShutdownSaveInProgress = true;
+
+    try {
+        let savedCount = 0;
+        mp.players.forEach((player) => {
+            if (!player || !player.charId) return;
+            saveCharacterData(player);
+            savedCount += 1;
+        });
+        console.log(`[VEIKEJAS] Shutdown save (${reason}): saved ${savedCount} online characters.`);
+    } catch (err) {
+        console.error('[VEIKEJAS] Shutdown save failed:', err);
+    }
+}
+
+process.on('SIGINT', () => {
+    saveAllOnlineCharacters('SIGINT');
+    setTimeout(() => process.exit(0), 1200);
+});
+
+process.on('SIGTERM', () => {
+    saveAllOnlineCharacters('SIGTERM');
+    setTimeout(() => process.exit(0), 1200);
+});
+
+process.on('beforeExit', () => {
+    saveAllOnlineCharacters('beforeExit');
+});
 
 // World time sync
 setInterval(() => {
@@ -404,6 +1162,9 @@ mp.events.addCommand('help', (player) => {
     player.outputChatBox(`!{#ADD8E6}----- Galimos komandos -----`);
     player.outputChatBox(`ROLEPLAY KOMANDOS - /me, /do, /b, /s, /low, /pm, /id, /try`);
     player.outputChatBox(`KITOS KOMANDOS - /stats, /pay, /bank, /withdraw, /deposit`);
+    player.outputChatBox(`KITOS KOMANDOS - /togglepm, /time, /barber, /changeclothes, /inv`);
+    player.outputChatBox(`KITOS KOMANDOS - /changechar, /report, /admins`);
+    player.outputChatBox(`TRANSPORTAS - /buyvehicle, /buypark, /vehicles, /get, /park, /lock`);
     player.outputChatBox(`!{#ADD8E6}----------------------------`);
     player.outputChatBox(`Įvedus komandą gausite komandos paaiškinimą.`);
     player.outputChatBox(`Daugiau informacijos galite rasti mūsų forume arba /helpme <klausimas>.`);
@@ -470,7 +1231,7 @@ mp.events.addCommand('stats', player => {
     player.outputChatBox(`!{#f7dc6f}===== Jūsų informacija =====`);
     player.outputChatBox(`UCP vartotojo vardas: ${player.name}, Veikėjo vardas: ${player.charName}`); // Show UCP username
     player.outputChatBox(`------------------------------------------------------`);
-    player.outputChatBox(`📱 Telefono numeris: ${player.phoneNumber || 'Nėra'}`);
+    player.outputChatBox(`Telefono numeris: ${player.phoneNumber || 'Nėra'}`);
     player.outputChatBox(`Gyvybės: ${player.health}, Žaidimo laikas: ${Math.floor(player.playtime / 60)} val. ${player.playtime % 60} min.`);
     player.outputChatBox(`Grynieji pinigai: $${player.money}, Banko sąskaitos balansas: $${player.bankBalance}`);
 });
@@ -505,87 +1266,693 @@ mp.events.addCommand('time', (player) => {
     player.outputChatBox(`!{#f4f4f4}Dabartinis serverio laikas: ${serverTime}`);
 });
 
+const knownCommands = new Set([
+    'me', 'do', 's', 'low', 'b', 'help', 'id', 'pm', 'stats', 'try', 'time',
+    'bank', 'withdraw', 'deposit', 'transfer', 'inventory', 'inv',
+    'kick', 'freeze', 'goto', 'bring', 'ban', 'giveitem',
+    'helpme', 'accepthelp', 'declinehelp',
+    'report', 'acceptreport', 'declinereport',
+    'admins', 'setaname', 'changechar', 'coords', 'createtwittertables',
+    'ph', 'phone', 'acceptdrive',
+    'call', 'answer', 'decline', 'hangup',
+    'sharenumber', 'sms',
+    'pay', 'togglepm',
+    'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock'
+]);
+
 mp.events.add('playerCommand', (player, command) => {
-    const args = command.split(' ');
+    const cmd = command.trim().split(' ')[0].toLowerCase();
+    if (!knownCommands.has(cmd)) {
+        player.outputChatBox('!{#e74c3c}Ši komanda neegzistuoja. Naudokite /help arba /helpme');
+    }
+});
 
-    if (args[0] === 'pay' && args.length === 3) {
-        if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-        const targetNameOrID = args[1];
-        const amount = parseInt(args[2]);
+mp.events.addCommand('pay', (player, fullText, targetNameOrID, amountStr) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!targetNameOrID || !amountStr) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /pay [ID arba vardas] [suma]');
+    }
 
-        if (isNaN(amount) || amount <= 0) {
-            player.outputChatBox('!{#f7dc6f}Prašome nurodyti galiojančią sumą.');
+    const amount = parseInt(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+        return player.outputChatBox('!{#f7dc6f}Prašome nurodyti galiojančią sumą.');
+    }
+
+    const targetPlayer = getPlayerByIDOrName(targetNameOrID);
+    if (!targetPlayer) {
+        return player.outputChatBox('!{#f7dc6f}Žaidėjas nerastas!');
+    }
+
+    if (!targetPlayer.charName) {
+        return player.outputChatBox('!{#e74c3c}Žaidėjas dar nepasirinko veikėjo.');
+    }
+
+    if (player === targetPlayer) {
+        return player.outputChatBox('!{#f7dc6f}Negalite pervesti pinigų patys sau!');
+    }
+
+    const distance = getDistanceBetweenPositions(player.position, targetPlayer.position);
+    if (distance > 5) {
+        return player.outputChatBox('!{#f7dc6f}Jūs turite būti šalia kito žaidėjo, kad atliktumėte pervedimą.');
+    }
+
+    if (player.money < amount) {
+        return player.outputChatBox('!{#f7dc6f}Jūs neturite pakankamai pinigų!');
+    }
+
+    player.money -= amount;
+    targetPlayer.money += amount;
+
+    player.call('updateMoneyHUD', [player.money]);
+    targetPlayer.call('updateMoneyHUD', [targetPlayer.money]);
+
+    db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName], (err) => {
+        if (err) {
+            console.error(err);
+            player.outputChatBox('!{#f7dc6f}Įvyko klaida atnaujinant jūsų paskyrą.');
+        }
+    });
+
+    db.query('UPDATE characters SET money = ? WHERE char_name = ?', [targetPlayer.money, targetPlayer.charName], (err) => {
+        if (err) {
+            console.error(err);
+            player.outputChatBox('!{#f7dc6f}Įvyko klaida atnaujinant gavėjo paskyrą.');
             return;
         }
+        player.outputChatBox(`!{#f7dc6f}Jūs pervedėte $${amount} žaidėjui ${targetPlayer.charName}.`);
+        targetPlayer.outputChatBox(`!{#f7dc6f}Jūs gavote $${amount} iš žaidėjo ${player.charName}.`);
+    });
+});
 
-        const targetPlayer = getPlayerByIDOrName(targetNameOrID);
-        if (!targetPlayer) {
-            player.outputChatBox('!{#f7dc6f}Žaidėjas nerastas!');
-            return;
+mp.events.addCommand('togglepm', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    player.isPMEnabled = !player.isPMEnabled;
+
+    if (player.isPMEnabled) {
+        player.outputChatBox('!{#27AE60}Jūs įjungėte privačias žinutes.');
+    } else {
+        player.outputChatBox('!{#E74C3C}Jūs išjungėte privačias žinutes.');
+    }
+
+    db.query('UPDATE characters SET is_pm_enabled = ? WHERE char_name = ?', [player.isPMEnabled ? 1 : 0, player.charName], (err) => {
+        if (err) {
+            console.error(err);
+            player.outputChatBox('!{#E74C3C}Įvyko klaida atnaujinant jūsų privačias žinutes.');
         }
+    });
+});
 
-        if (!targetPlayer.charName) {
-            player.outputChatBox('!{#e74c3c}Žaidėjas dar nepasirinko veikėjo.');
-            return;
-        }
+function showVehicleCatalogToPlayer(player) {
+    player.outputChatBox('!{#85c1e9}===== Los Santos Dealership =====');
+    VEHICLE_CATALOG.forEach((entry, index) => {
+        player.outputChatBox(`!{#d6eaf8}[${index + 1}] ${entry.name} (${entry.model}) - $${entry.price}`);
+    });
+    player.outputChatBox('!{#f7dc6f}Naudojimas: /buyvehicle [katalogo ID] [primaryColor] [secondaryColor] [cash|bank]');
+    player.outputChatBox('!{#f7dc6f}Spalvu ribos: 0-160. Pavyzdys: /buyvehicle 1 120 120 bank');
+}
 
-        if (player === targetPlayer) {
-            player.outputChatBox('!{#f7dc6f}Negalite pervesti pinigų patys sau!');
-            return;
-        }
-
-        const distance = player.position.distanceTo(targetPlayer.position);
-        if (distance > 5) {
-            player.outputChatBox('!{#f7dc6f}Jūs turite būti šalia kito žaidėjo, kad atliktumėte pervedimą.');
-            return;
-        }
-
-        if (player.money < amount) {
-            player.outputChatBox('!{#f7dc6f}Jūs neturite pakankamai pinigų!');
-            return;
-        }
-
-        player.money -= amount;
-        targetPlayer.money += amount;
-
-        db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName], (err) => {
-            if (err) {
-                console.error(err);
-                player.outputChatBox('!{#f7dc6f}Įvyko klaida atnaujinant jūsų paskyrą.');
-                return;
-            }
-        });
-
-        db.query('UPDATE characters SET money = ? WHERE char_name = ?', [targetPlayer.money, targetPlayer.charName], (err) => {
-            if (err) {
-                console.error(err);
-                player.outputChatBox('!{#f7dc6f}Įvyko klaida atnaujinant gavėjo paskyrą.');
-                return;
-            }
-
-            player.outputChatBox(`!{#f7dc6f}Jūs pervedėte $${amount} žaidėjui ${targetPlayer.charName}.`);
-            targetPlayer.outputChatBox(`!{#f7dc6f}Jūs gavote $${amount} iš žaidėjo ${player.charName}.`);
-        });
+function openDealershipUI(player) {
+    if (!player || !player.charId || !player.charName) {
         return;
     }
 
-    if (args[0] === 'togglepm') {
-        if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-        player.isPMEnabled = !player.isPMEnabled;
+    const catalogPayload = VEHICLE_CATALOG.map((entry, index) => ({
+        id: index + 1,
+        key: entry.key,
+        name: entry.name,
+        model: entry.model,
+        price: entry.price,
+    }));
 
-        if (player.isPMEnabled) {
-            player.outputChatBox('!{#27AE60}Jūs įjungėte privačias žinutes.');
-        } else {
-            player.outputChatBox('!{#E74C3C}Jūs išjungėte privačias žinutes.');
-        }
+    player.call('openDealershipUI', [JSON.stringify(catalogPayload), player.money || 0, player.bankBalance || 0]);
+}
 
-        db.query('UPDATE characters SET is_pm_enabled = ? WHERE char_name = ?', [player.isPMEnabled ? 1 : 0, player.charName], (err) => {
-            if (err) {
-                console.error(err);
-                player.outputChatBox('!{#E74C3C}Įvyko klaida atnaujinant jūsų privačias žinutes.');
+function cleanupLegacyDealershipPreviewVehicles() {
+    try {
+        mp.vehicles.forEach((vehicle) => {
+            if (!vehicle || !vehicle.handle) return;
+            if (vehicle.numberPlate === 'PREVIEW') {
+                vehicle.destroy();
             }
         });
+    } catch (error) {
+        console.error('[VEHICLES] Failed to cleanup legacy preview vehicles:', error.message);
+    }
+}
+
+function purchaseVehicleForPlayer(player, selected, primaryColorRaw = '0', secondaryColorRaw = '0', viaUi = false, paymentMethodRaw = 'cash') {
+    if (!player || !selected) return;
+
+    const paymentMethod = String(paymentMethodRaw || 'cash').trim().toLowerCase() === 'bank' ? 'bank' : 'cash';
+    const availableFunds = paymentMethod === 'bank' ? (player.bankBalance || 0) : (player.money || 0);
+
+    if (availableFunds < selected.price) {
+        const shortLabel = paymentMethod === 'bank' ? 'banke' : 'grynuju';
+        const message = `Nepakanka pinigu (${shortLabel}). Truksta $${selected.price - availableFunds}.`;
+        if (viaUi) {
+            player.call('dealershipPurchaseResult', [false, message, player.money || 0, player.bankBalance || 0]);
+            return;
+        }
+        player.outputChatBox(`!{#e74c3c}${message}`);
         return;
+    }
+
+    const primaryColor = parseVehicleColorIndex(primaryColorRaw);
+    const secondaryColor = parseVehicleColorIndex(secondaryColorRaw);
+    const modelHash = typeof mp.joaat === 'function' ? mp.joaat(selected.model) : selected.model;
+
+    if (paymentMethod === 'bank') {
+        player.bankBalance -= selected.price;
+        player.call('updateBankHUD', [player.bankBalance]);
+        db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
+    } else {
+        player.money -= selected.price;
+        player.call('updateMoneyHUD', [player.money]);
+        db.query('UPDATE characters SET money = ? WHERE id = ?', [player.money, player.charId]);
+    }
+
+    db.query(
+        'INSERT INTO player_vehicles (char_id, model, model_hash, display_name, price, primary_color, secondary_color, parked, park_x, park_y, park_z, park_h, locked, plate) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, 0, ?)',
+        [
+            player.charId,
+            selected.model,
+            modelHash,
+            selected.name,
+            selected.price,
+            primaryColor,
+            secondaryColor,
+            DEALERSHIP_PURCHASE_SPAWN_POS.x,
+            DEALERSHIP_PURCHASE_SPAWN_POS.y,
+            DEALERSHIP_PURCHASE_SPAWN_POS.z,
+            DEALERSHIP_DELIVERY_HEADING,
+            'TEMP',
+        ],
+        (insertErr, result) => {
+            if (insertErr) {
+                console.error('[VEHICLES] Purchase insert failed:', insertErr.message);
+                if (paymentMethod === 'bank') {
+                    player.bankBalance += selected.price;
+                    player.call('updateBankHUD', [player.bankBalance]);
+                    db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
+                } else {
+                    player.money += selected.price;
+                    player.call('updateMoneyHUD', [player.money]);
+                    db.query('UPDATE characters SET money = ? WHERE id = ?', [player.money, player.charId]);
+                }
+
+                if (viaUi) {
+                    player.call('dealershipPurchaseResult', [false, 'Nepavyko nusipirkti transporto.', player.money || 0, player.bankBalance || 0]);
+                    return;
+                }
+
+                player.outputChatBox('!{#e74c3c}Nepavyko nusipirkti transporto.');
+                return;
+            }
+
+            const newVehicleId = result.insertId;
+            const plate = makeVehiclePlate(player.charId, newVehicleId);
+
+            db.query('UPDATE player_vehicles SET plate = ? WHERE id = ?', [plate, newVehicleId]);
+
+            const record = {
+                id: newVehicleId,
+                charId: player.charId,
+                model: selected.model,
+                modelHash,
+                displayName: selected.name,
+                price: selected.price,
+                primaryColor,
+                secondaryColor,
+                parked: 0,
+                parkX: DEALERSHIP_PURCHASE_SPAWN_POS.x,
+                parkY: DEALERSHIP_PURCHASE_SPAWN_POS.y,
+                parkZ: DEALERSHIP_PURCHASE_SPAWN_POS.z,
+                parkH: DEALERSHIP_DELIVERY_HEADING,
+                locked: 0,
+                plate,
+                entity: null,
+                blip: null,
+            };
+
+            ensureOwnedVehicleState(player);
+            player.ownedVehicles.set(record.id, record);
+            spawnOwnedVehicleForPlayer(player, record, DEALERSHIP_PURCHASE_SPAWN_POS, DEALERSHIP_DELIVERY_HEADING, true);
+
+            if (viaUi) {
+                player.call('dealershipPurchaseResult', [
+                    true,
+                    `Nusipirkote ${selected.name} uz $${selected.price} (${paymentMethod === 'bank' ? 'bank' : 'cash'}).`,
+                    player.money || 0,
+                    player.bankBalance || 0,
+                ]);
+                player.call('closeDealershipUI');
+                player.outputChatBox(`!{#7aa164}Nusipirkote ${selected.name} uz $${selected.price}.`);
+                player.outputChatBox(`!{#f7dc6f}Spalvos: primary ${primaryColor}, secondary ${secondaryColor}.`);
+                player.outputChatBox('!{#f7dc6f}Naudokite /park bet kur, o veliau /get [id].');
+                return;
+            }
+
+            player.outputChatBox(`!{#7aa164}Nusipirkote ${selected.name} uz $${selected.price}.`);
+            player.outputChatBox(`!{#f7dc6f}Spalvos: primary ${primaryColor}, secondary ${secondaryColor}.`);
+            player.outputChatBox('!{#f7dc6f}Naudokite /park bet kur, o veliau /get [id].');
+        }
+    );
+}
+
+function showBuyParkState(player) {
+    if (!player || !player.charId) return;
+    ensureOwnedVehicleState(player);
+    ensureParkLocationState(player);
+
+    player.outputChatBox('!{#f4d03f}===== Jusu garažas (Asmeninis) =====');
+
+    if (player.ownedVehicles.size === 0) {
+        player.outputChatBox('!{#f7dc6f}Jus dar neturite transporto. Pirkite su /buyvehicle prie dealership.');
+        return;
+    }
+
+    player.ownedVehicles.forEach((record) => {
+        const state = record.entity && record.entity.handle ? 'Isvaziuotas' : 'Pastatytas';
+        const hasParkZone = player.parkLocationsByVehicleId.has(record.id) ? 'Zona: TAIP' : 'Zona: NE';
+        player.outputChatBox(`!{#f9e79f}ID ${record.id} | ${record.displayName} | ${record.plate} | ${state} | ${hasParkZone}`);
+    });
+
+    player.outputChatBox('!{#f7dc6f}1) Sedekite savo transporte ir naudokite /buypark (kaina: $100) tos masinos zonai.');
+    player.outputChatBox('!{#f7dc6f}2) Naudokite /get [ID] norint isspawninti butent ta masina jos zonoje.');
+    player.outputChatBox('!{#f7dc6f}3) Naudokite /park sededami savo transporte jo paties zonoje.');
+}
+
+mp.events.addCommand('buyvehicle', (player, fullText) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!isNearPoint(player, DEALERSHIP_POS, DEALERSHIP_INTERACT_RADIUS)) {
+        return player.outputChatBox('!{#e74c3c}Sia komanda galite naudoti tik Los Santos Dealership vietoje.');
+    }
+
+    cleanupLegacyDealershipPreviewVehicles();
+
+    const args = String(fullText || '').trim().split(/\s+/).filter(Boolean);
+    const vehicleIdRaw = args[0];
+    const primaryColorRaw = args[1] || '0';
+    const secondaryColorRaw = args[2] || '0';
+    const paymentMethodRaw = args[3] || 'cash';
+
+    if (!vehicleIdRaw) {
+        openDealershipUI(player);
+        return;
+    }
+
+    const vehicleIndex = parseInt(vehicleIdRaw, 10);
+    if (!Number.isFinite(vehicleIndex) || vehicleIndex < 1 || vehicleIndex > VEHICLE_CATALOG.length) {
+        player.outputChatBox('!{#e74c3c}Neteisingas katalogo ID.');
+        showVehicleCatalogToPlayer(player);
+        return;
+    }
+
+    const selected = VEHICLE_CATALOG[vehicleIndex - 1] || vehicleCatalogByKey.get(vehicleIdRaw.toLowerCase());
+    if (!selected) {
+        return player.outputChatBox('!{#e74c3c}Nerastas transportas pagal nurodyta ID.');
+    }
+
+    purchaseVehicleForPlayer(player, selected, primaryColorRaw, secondaryColorRaw, false, paymentMethodRaw);
+});
+
+mp.events.add('dealershipBuyVehicle', (player, vehicleIdRaw, primaryColorRaw = '0', secondaryColorRaw = '0', paymentMethodRaw = 'cash') => {
+    if (!player.charId || !player.charName) {
+        player.call('dealershipPurchaseResult', [false, 'Pirmiausia pasirinkite veikeja.', player.money || 0, player.bankBalance || 0]);
+        return;
+    }
+
+    if (!isNearPoint(player, DEALERSHIP_POS, DEALERSHIP_INTERACT_RADIUS)) {
+        player.call('dealershipPurchaseResult', [false, 'Turite buti prie Los Santos Dealership.', player.money || 0, player.bankBalance || 0]);
+        return;
+    }
+
+    const raw = String(vehicleIdRaw || '').trim();
+    if (!raw) {
+        player.call('dealershipPurchaseResult', [false, 'Pasirinkite transporta.', player.money || 0, player.bankBalance || 0]);
+        return;
+    }
+
+    const vehicleIndex = parseInt(raw, 10);
+    let selected = null;
+
+    if (Number.isFinite(vehicleIndex) && vehicleIndex >= 1 && vehicleIndex <= VEHICLE_CATALOG.length) {
+        selected = VEHICLE_CATALOG[vehicleIndex - 1];
+    }
+
+    if (!selected) {
+        selected = vehicleCatalogByKey.get(raw.toLowerCase()) || null;
+    }
+
+    if (!selected) {
+        player.call('dealershipPurchaseResult', [false, 'Nerastas transportas pagal pasirinkima.', player.money || 0, player.bankBalance || 0]);
+        return;
+    }
+
+    purchaseVehicleForPlayer(player, selected, primaryColorRaw, secondaryColorRaw, true, paymentMethodRaw);
+});
+
+mp.events.add('requestOpenDealershipUI', (player) => {
+    if (!player.charId || !player.charName) return;
+    if (!isNearPoint(player, DEALERSHIP_POS, DEALERSHIP_INTERACT_RADIUS)) {
+        player.outputChatBox('!{#e74c3c}Sia komanda galite naudoti tik Los Santos Dealership vietoje.');
+        return;
+    }
+
+    cleanupLegacyDealershipPreviewVehicles();
+    openDealershipUI(player);
+});
+
+mp.events.addCommand('buypark', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!player.vehicle) {
+        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte.');
+    }
+
+    // Check if player owns the vehicle they're driving.
+    ensureOwnedVehicleState(player);
+    const vId = player.vehicle.id;
+    let record = null;
+
+    // Match by RAGE MP entity .id
+    for (const r of player.ownedVehicles.values()) {
+        if (r && r.entity && r.entity.id === vId) { record = r; break; }
+    }
+
+    // Fallback: scan world vehicles by id
+    if (!record) {
+        mp.vehicles.forEach((veh) => {
+            if (record || !veh || veh.id !== vId) return;
+            const charId = veh.getVariable('ownedByCharId');
+            if (Number(charId) !== Number(player.charId)) return;
+            const dbId = veh.getVariable('ownedVehicleId');
+            const r = getOwnedVehicleRecordByDbId(player, dbId);
+            if (r) { r.entity = veh; record = r; }
+        });
+    }
+
+    if (!record) {
+        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+    }
+
+    // Check if player has $100
+    const BUYPARK_COST = 100;
+    if (player.money < BUYPARK_COST) {
+        return player.outputChatBox(`!{#e74c3c}Jums reikia ${BUYPARK_COST}$ norint pazymeti parkavimo zona. Jus turite tik $${player.money}.`);
+    }
+
+    // Deduct the cost
+    player.money -= BUYPARK_COST;
+    player.call('updateMoneyHUD', [player.money]);
+    db.query('UPDATE characters SET money = ? WHERE id = ?', [player.money, player.charId]);
+
+    // Track this location as the selected vehicle's park zone.
+    ensureParkLocationState(player);
+    const parkLocation = {
+        x: player.position.x,
+        y: player.position.y,
+        z: player.position.z,
+    };
+    player.parkLocationsByVehicleId.set(record.id, parkLocation);
+
+    // Save to database.
+    db.query(
+        'INSERT INTO player_vehicle_park_locations (vehicle_id, char_id, park_x, park_y, park_z) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE park_x = ?, park_y = ?, park_z = ?, char_id = ?',
+        [record.id, player.charId, parkLocation.x, parkLocation.y, parkLocation.z, parkLocation.x, parkLocation.y, parkLocation.z, player.charId],
+        (err) => {
+            if (err) {
+                console.error('[VEHICLES] Failed to save park location:', err.message);
+                player.outputChatBox('!{#e74c3c}Nepavyko isvaugoti parkavimo zonos.');
+                return;
+            }
+            player.outputChatBox(`!{#7aa164}Sioji vieta pazymeta kaip ${record.displayName} parkavimo zona (-$${BUYPARK_COST}). Naudokite /park tik sioje zonoje.`);
+        }
+    );
+
+    showBuyParkState(player);
+});
+
+mp.events.addCommand('vehicles', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    showBuyParkState(player);
+});
+
+mp.events.addCommand('park', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!player.vehicle) {
+        return player.outputChatBox('!{#e74c3c}Turite sedeti savo transporte.');
+    }
+
+    ensureOwnedVehicleState(player);
+    const vId = player.vehicle.id;
+    const vPos = player.vehicle.position;
+    const vHeading = Number.isFinite(player.vehicle.heading) ? player.vehicle.heading : DEALERSHIP_DELIVERY_HEADING;
+
+    // Match by RAGE MP entity .id — object reference (===) is unreliable across property accesses.
+    let record = null;
+    for (const r of player.ownedVehicles.values()) {
+        if (r && r.entity && r.entity.id === vId) { record = r; break; }
+    }
+    // Fallback: scan world vehicles by id.
+    if (!record) {
+        mp.vehicles.forEach((veh) => {
+            if (record || !veh || veh.id !== vId) return;
+            const charId = veh.getVariable('ownedByCharId');
+            if (Number(charId) !== Number(player.charId)) return;
+            const dbId = veh.getVariable('ownedVehicleId');
+            const r = getOwnedVehicleRecordByDbId(player, dbId);
+            if (r) { r.entity = veh; record = r; }
+        });
+    }
+    if (!record) {
+        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+    }
+
+    // Check if player is at this specific vehicle's designated park zone.
+    const vehicleParkLocation = getParkLocationForVehicle(player, record.id);
+    if (!vehicleParkLocation) {
+        return player.outputChatBox(`!{#e74c3c}Siam transportui (${record.id}) dar nepazymeta parkavimo zona. Naudokite /buypark sededami siame transporte.`);
+    }
+    const parkDist = Math.sqrt(
+        Math.pow(player.position.x - vehicleParkLocation.x, 2) +
+        Math.pow(player.position.y - vehicleParkLocation.y, 2) +
+        Math.pow(player.position.z - vehicleParkLocation.z, 2)
+    );
+    if (parkDist > 15.0) {
+        return player.outputChatBox(`!{#e74c3c}Turite buti prie sio transporto parkavimo zonos. Dabar esate ~${Math.round(parkDist)}m nutolę.`);
+    }
+
+    player.removeFromVehicle();
+    parkOwnedVehicle(record, vPos, vHeading);
+    player.outputChatBox(`!{#7aa164}Transportas ${record.displayName} sekmingai pastatytas.`);
+});
+
+mp.events.addCommand('get', (player, _, vehicleDbIdRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    ensureVehicleMarkerCleanupTimer(player);
+
+    ensureOwnedVehicleState(player);
+    if (player.ownedVehicles.size === 0) {
+        return player.outputChatBox('!{#f7dc6f}Jus neturite nusipirkto transporto.');
+    }
+
+    const activeRecord = getActiveOwnedVehicleRecord(player);
+    if (activeRecord) {
+        return player.outputChatBox(`!{#f7dc6f}Jau turite isvaziuota transporta (ID ${activeRecord.id} - ${activeRecord.displayName}). Naudokite /park.`);
+    }
+
+    let record = null;
+    if (!vehicleDbIdRaw) {
+        showBuyParkState(player);
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /get [id] — ispawnina jusu transporta. Pavyzdys: /get 1');
+    } else {
+        record = getOwnedVehicleRecordByDbId(player, vehicleDbIdRaw);
+    }
+
+    if (!record) {
+        return player.outputChatBox('!{#e74c3c}Nerastas jusu transportas pagal nurodyta ID.');
+    }
+
+    if (record.entity && record.entity.handle) {
+        return player.outputChatBox('!{#f7dc6f}Sis transportas jau isvarytas. Naudokite /park.');
+    }
+
+    // Require this selected vehicle to have a dedicated park location.
+    const vehicleParkLocation = getParkLocationForVehicle(player, record.id);
+    if (!vehicleParkLocation) {
+        return player.outputChatBox(`!{#e74c3c}Siam transportui (${record.id}) nera parkavimo zonos. Sedekite siame transporte ir naudokite /buypark.`);
+    }
+
+    // Spawn at selected vehicle's marked park location.
+    const spawnPos = new mp.Vector3(vehicleParkLocation.x, vehicleParkLocation.y, vehicleParkLocation.z);
+    const spawnHeading = DEALERSHIP_DELIVERY_HEADING;
+
+    const entity = spawnOwnedVehicleForPlayer(player, record, spawnPos, spawnHeading, false);
+    if (!entity) {
+        return player.outputChatBox('!{#e74c3c}Nepavyko isspawninti transporto.');
+    }
+
+    entity.engine = false;
+    entity.setVariable('manualEngineOn', 0);
+
+    record.parked = 0;
+    record.parkX = spawnPos.x;
+    record.parkY = spawnPos.y;
+    record.parkZ = spawnPos.z;
+    record.parkH = spawnHeading;
+
+    // Create a blip for the vehicle on the map.
+    if (record.blip) {
+        try { record.blip.destroy(); } catch (e) { }
+    }
+    record.blip = mp.blips.new(227, spawnPos, {
+        name: `${record.displayName} (${record.id})`,
+        color: 2,
+        scale: 0.8,
+        shortRange: false,
+    });
+
+    persistOwnedVehicleState(record);
+    player.outputChatBox(`!{#7aa164}Ispawnote ${record.displayName} parkavimo zonoje. Zinokite ziurekite zemelapyje.`);
+});
+
+mp.events.addCommand('lock', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    ensureOwnedVehicleState(player);
+    let record = null;
+
+    if (player.vehicle) {
+        // Compare by RAGE MP entity .id — object reference (===) is unreliable.
+        const vId = player.vehicle.id;
+        for (const r of player.ownedVehicles.values()) {
+            if (r && r.entity && r.entity.id === vId) { record = r; break; }
+        }
+        if (!record) {
+            mp.vehicles.forEach((veh) => {
+                if (record || !veh || veh.id !== vId) return;
+                const charId = veh.getVariable('ownedByCharId');
+                if (Number(charId) !== Number(player.charId)) return;
+                const dbId = veh.getVariable('ownedVehicleId');
+                const r = getOwnedVehicleRecordByDbId(player, dbId);
+                if (r) { r.entity = veh; record = r; }
+            });
+        }
+        if (!record) {
+            return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+        }
+    } else {
+        // Outside: find closest owned vehicle by iterating records.
+        let closestDist = 10.0;
+        for (const r of player.ownedVehicles.values()) {
+            if (!r || !r.entity) continue;
+            try {
+                const dist = getDistanceBetweenPositions(player.position, r.entity.position);
+                if (dist < closestDist) { closestDist = dist; record = r; }
+            } catch (e) { }
+        }
+        // Fallback: scan all world vehicles owned by this player.
+        if (!record) {
+            let closestVeh = null;
+            let closestVehDist = 10.0;
+            mp.vehicles.forEach((veh) => {
+                if (!veh) return;
+                const charId = veh.getVariable('ownedByCharId');
+                if (Number(charId) !== Number(player.charId)) return;
+                const dist = getDistanceBetweenPositions(player.position, veh.position);
+                if (dist < closestVehDist) { closestVehDist = dist; closestVeh = veh; }
+            });
+            if (closestVeh) {
+                const dbId = closestVeh.getVariable('ownedVehicleId');
+                const worldRecord = getOwnedVehicleRecordByDbId(player, dbId);
+                if (worldRecord) { worldRecord.entity = closestVeh; record = worldRecord; }
+            }
+        }
+    }
+
+    if (!record || !record.entity) {
+        return player.outputChatBox('!{#f7dc6f}Salia nerastas jusu transportas. Ispawninkite ji su /get [id].');
+    }
+
+    record.locked = record.locked ? 0 : 1;
+    record.entity.locked = Boolean(record.locked);
+    persistOwnedVehicleState(record);
+
+    if (record.locked) {
+        player.outputChatBox(`!{#e67e22}Užrakinote ${record.displayName}.`);
+    } else {
+        player.outputChatBox(`!{#7aa164}Atrakinote ${record.displayName}.`);
+    }
+});
+
+mp.events.addCommand('engine', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!player.vehicle) {
+        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte.');
+    }
+
+    if (!isPlayerDrivingVehicle(player, player.vehicle)) {
+        return player.outputChatBox('!{#e74c3c}Varikli gali valdyti tik vairuotojas.');
+    }
+
+    const currentEngineState = Number(player.vehicle.getVariable('manualEngineOn')) === 1;
+    const nextEngineState = !currentEngineState;
+    player.vehicle.engine = nextEngineState;
+    player.vehicle.setVariable('manualEngineOn', nextEngineState ? 1 : 0);
+
+    if (nextEngineState) {
+        player.outputChatBox('!{#7aa164}Ijungote varikli.');
+    } else {
+        player.outputChatBox('!{#e67e22}Isjungote varikli.');
+    }
+});
+
+mp.events.addCommand('lights', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!player.vehicle) {
+        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte.');
+    }
+
+    if (!isPlayerDrivingVehicle(player, player.vehicle)) {
+        return player.outputChatBox('!{#e74c3c}Sviesas gali valdyti tik vairuotojas.');
+    }
+
+    const currentLightsState = Number(player.vehicle.getVariable('manualLightsOn')) === 1;
+    const nextLightsState = !currentLightsState;
+
+    // Store state for sync and apply directly when property exists.
+    player.vehicle.setVariable('manualLightsOn', nextLightsState ? 1 : 0);
+    if ('lights' in player.vehicle) {
+        try { player.vehicle.lights = nextLightsState; } catch (e) { }
+    }
+
+    if (nextLightsState) {
+        player.outputChatBox('!{#7aa164}Ijungote sviesas.');
+    } else {
+        player.outputChatBox('!{#e67e22}Isjungote sviesas.');
     }
 });
 
@@ -597,18 +1964,110 @@ mp.events.add('updateServerTime', () => {
 });
 
 const ATMsAndBanks = [
-    { x: -57.83, y: -92.48, z: 57.78 },
+    // Downtown / Vinewood / Central LS
+    { x: -386.733, y: 6045.953, z: 31.501 },
+    { x: -284.037, y: 6224.385, z: 31.187 },
+    { x: -284.037, y: 6224.385, z: 31.187 },
+    { x: -135.165, y: 6365.738, z: 31.101 },
+    { x: -110.753, y: 6467.703, z: 31.784 },
+    { x: -94.9690, y: 6455.301, z: 31.784 },
+    { x: 155.4300, y: 6641.991, z: 31.784 },
+    { x: 174.6720, y: 6637.218, z: 31.784 },
+    { x: 1703.138, y: 6426.783, z: 32.730 },
+    { x: 1735.114, y: 6411.035, z: 35.164 },
+    { x: 1702.842, y: 4933.593, z: 42.051 },
+    { x: 1967.333, y: 3744.293, z: 32.272 },
+    { x: 1821.917, y: 3683.483, z: 34.244 },
+    { x: 1174.532, y: 2705.278, z: 38.027 },
+    { x: 540.0420, y: 2671.007, z: 42.177 },
+    { x: 2564.399, y: 2585.100, z: 38.016 },
+    { x: 2558.683, y: 349.6010, z: 108.050 },
+    { x: 2558.051, y: 389.4817, z: 108.660 },
+    { x: 1077.692, y: -775.796, z: 58.218 },
+    { x: 1139.018, y: -469.886, z: 66.789 },
+    { x: 1168.975, y: -457.241, z: 66.641 },
+    { x: 1153.884, y: -326.540, z: 69.245 },
+    { x: 236.4638, y: 217.4718, z: 106.840 },
+    { x: 265.0043, y: 212.1717, z: 106.780 },
+    { x: -164.568, y: 233.5066, z: 94.919 },
+    { x: -1827.04, y: 785.5159, z: 138.020 },
+    { x: -1409.39, y: -99.2603, z: 52.473 },
+    { x: -1205.35, y: -325.579, z: 37.870 },
+    { x: -1215.64, y: -332.231, z: 37.881 },
+    { x: -2072.41, y: -316.959, z: 13.345 },
+    { x: -2975.72, y: 379.7737, z: 14.992 },
+    { x: -2962.60, y: 482.1914, z: 15.762 },
+    { x: -2955.70, y: 488.7218, z: 15.486 },
+    { x: -3044.22, y: 595.2429, z: 7.595 },
+    { x: -3144.13, y: 1127.415, z: 20.868 },
+    { x: -3241.10, y: 996.6881, z: 12.500 },
+    { x: -3241.11, y: 1009.152, z: 12.877 },
+    { x: -1305.40, y: -706.240, z: 25.352 },
+    { x: -538.225, y: -854.423, z: 29.234 },
+    { x: -711.156, y: -818.958, z: 23.768 },
+    { x: -717.614, y: -915.880, z: 19.268 },
+    { x: -526.566, y: -1222.90, z: 18.434 },
+    { x: -256.831, y: -719.646, z: 33.444 },
+    { x: -203.548, y: -861.588, z: 30.205 },
+    { x: 112.4102, y: -776.162, z: 31.427 },
+    { x: 112.9290, y: -818.710, z: 31.386 },
+    { x: 119.9000, y: -883.826, z: 31.191 },
+    { x: 149.4551, y: -1038.95, z: 29.366 },
+    { x: -846.304, y: -340.402, z: 38.687 },
+    { x: -1204.35, y: -324.391, z: 37.877 },
+    { x: -1216.27, y: -331.461, z: 37.773 },
+    { x: -56.1935, y: -1752.53, z: 29.452 },
+    { x: -261.692, y: -2012.64, z: 30.121 },
+    { x: -273.001, y: -2025.60, z: 30.197 },
+    { x: 314.1870, y: -278.621, z: 54.170 },
+    { x: -351.534, y: -49.529, z: 49.042 },
+    { x: 24.5890, y: -946.056, z: 29.357 },
+    { x: -254.112, y: -692.483, z: 33.616 },
+    { x: -1570.197, y: -546.651, z: 34.955 },
+    { x: -1415.909, y: -211.825, z: 46.500 },
+    { x: -1430.122, y: -211.014, z: 46.500 },
+    { x: 33.2320, y: -1347.849, z: 29.497 },
+    { x: 129.2160, y: -1292.347, z: 29.269 },
+    { x: 287.6450, y: -1282.646, z: 29.659 },
+    { x: 289.0120, y: -1256.545, z: 29.440 },
+    { x: 295.8390, y: -895.640, z: 29.217 },
+    { x: 1686.753, y: 4815.809, z: 42.008 },
+    { x: -302.408, y: -829.945, z: 32.417 },
+    { x: 5.1340, y: -919.949, z: 29.557 },
 ];
 
+const ATM_INTERACTION_RADIUS = 4.0;
+
+const FLEECA_BANK_LOCATIONS = [
+    { x: 149.82, y: -1040.46, z: 29.37 },   // Legion Square
+    { x: 314.19, y: -278.62, z: 54.17 },    // Hawick
+    { x: -351.53, y: -49.53, z: 49.04 },    // Burton
+    { x: -1212.98, y: -330.84, z: 37.79 },  // Rockford Hills
+    { x: -2962.59, y: 482.63, z: 15.70 },   // Great Ocean Hwy
+    { x: 1175.06, y: 2706.64, z: 38.09 },   // Harmony
+    { x: -112.20, y: 6469.30, z: 31.63 },   // Paleto Bay
+];
+
+FLEECA_BANK_LOCATIONS.forEach((pos) => {
+    mp.blips.new(108, new mp.Vector3(pos.x, pos.y, pos.z), {
+        name: 'Fleeca Bank',
+        color: 2,
+        scale: 0.8,
+        shortRange: true,
+    });
+});
+
+const BANK_AND_ATM_LOCATIONS = [...ATMsAndBanks, ...FLEECA_BANK_LOCATIONS];
+
 function isNearATMOrBank(player) {
-    for (let i = 0; i < ATMsAndBanks.length; i++) {
-        const atm = ATMsAndBanks[i];
+    for (let i = 0; i < BANK_AND_ATM_LOCATIONS.length; i++) {
+        const atm = BANK_AND_ATM_LOCATIONS[i];
         const distance = Math.sqrt(
             Math.pow(player.position.x - atm.x, 2) +
             Math.pow(player.position.y - atm.y, 2) +
             Math.pow(player.position.z - atm.z, 2)
         );
-        if (distance < 5) {
+        if (distance <= ATM_INTERACTION_RADIUS) {
             return true;
         }
     }
@@ -625,7 +2084,7 @@ mp.events.addCommand('bank', (player) => {
     db.query('SELECT transaction_type, amount, date FROM bank_transactions WHERE char_name = ? ORDER BY date DESC LIMIT 5', [player.charName], (err, results) => {
         if (err) return;
 
-        player.call('openBankUI', [player.bankBalance, JSON.stringify(results)]);
+        player.call('openBankUI', [player.bankBalance, player.money, JSON.stringify(results)]);
     });
 });
 
@@ -637,15 +2096,23 @@ mp.events.add('bankAction', (player, type, amount) => {
         return;
     }
 
+    const refreshAndNotify = (charName, balance, money) => {
+        db.query('SELECT transaction_type, amount, date FROM bank_transactions WHERE char_name = ? ORDER BY date DESC LIMIT 10', [charName], (err, results) => {
+            const history = err ? [] : results;
+            player.call('updateBankUI', [balance, money, JSON.stringify(history)]);
+            player.call('updateMoneyHUD', [money]);
+        });
+    };
+
     if (type === 'withdraw') {
         if (player.bankBalance >= amount) {
             player.bankBalance -= amount;
             player.money += amount;
             db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
             db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName]);
-            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, ?, ?, NOW())', [player.charName, 'withdraw', amount]);
-            player.call('updateBankUI', [player.bankBalance, player.money]);
-            player.call('updateMoneyHUD', [player.money]);
+            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, ?, ?, NOW())', [player.charName, 'withdraw', amount], () => {
+                refreshAndNotify(player.charName, player.bankBalance, player.money);
+            });
         } else {
             player.call('bankError', ['Nepakanka lėšų sąskaitoje.']);
         }
@@ -655,9 +2122,9 @@ mp.events.add('bankAction', (player, type, amount) => {
             player.bankBalance += amount;
             db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
             db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName]);
-            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, ?, ?, NOW())', [player.charName, 'deposit', amount]);
-            player.call('updateBankUI', [player.bankBalance, player.money]);
-            player.call('updateMoneyHUD', [player.money]);
+            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, ?, ?, NOW())', [player.charName, 'deposit', amount], () => {
+                refreshAndNotify(player.charName, player.bankBalance, player.money);
+            });
         } else {
             player.call('bankError', ['Neturite pakankamai grynųjų pinigų.']);
         }
@@ -680,6 +2147,7 @@ mp.events.addCommand('withdraw', (player, amount) => {
 
         db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
         db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName]);
+        db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, ?, ?, NOW())', [player.charName, 'withdraw', amount]);
 
         player.call('updateBankHUD', [player.bankBalance]);
         player.call('updateMoneyHUD', [player.money]);
@@ -706,6 +2174,7 @@ mp.events.addCommand('deposit', (player, amount) => {
 
         db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
         db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName]);
+        db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, ?, ?, NOW())', [player.charName, 'deposit', amount]);
 
         player.call('updateBankHUD', [player.bankBalance]);
         player.call('updateMoneyHUD', [player.money]);
@@ -789,9 +2258,46 @@ function sendUsageInstructions(player, command) {
         'goto': "[GOTO] Naudojimas: /goto [ID arba vardas] - Eiti pas žaidėją.",
         'bring': "[BRING] Naudojimas: /bring [ID arba vardas] - Atnešti žaidėją pas tave.",
         'ban': "[BAN] Naudojimas: /ban [ID arba vardas] [Priežastis] - Užblokuoti žaidėją.",
+        'giveitem': "[GIVEITEM] Naudojimas: /giveitem [ID arba vardas] [item] [kiekis]",
     };
     player.outputChatBox(instructions[command] || "Netinkamas komandos pavadinimas.");
 }
+
+mp.events.addCommand('giveitem', (admin, fullText, targetIdentifier, rawItemType, amountStr) => {
+    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!targetIdentifier || !rawItemType) {
+        return sendUsageInstructions(admin, 'giveitem');
+    }
+
+    isAdmin(admin, 1, (error, hasPermission) => {
+        if (error || !hasPermission) {
+            return admin.outputChatBox('!{#e74c3c}Neturite teisių naudoti šią komandą.');
+        }
+
+        const targetPlayer = getPlayerByIDOrName(targetIdentifier);
+        if (!targetPlayer || !targetPlayer.charName) {
+            return admin.outputChatBox('!{#e74c3c}Žaidėjas nerastas arba nepasirinko veikėjo.');
+        }
+
+        const itemType = normalizeInventoryItemType(rawItemType);
+        if (!itemType || !INVENTORY_ITEM_DEFS[itemType]) {
+            return admin.outputChatBox('!{#e74c3c}Nežinomas daiktas. Galimi: water, burger, bandage, medkit, cigarettes, beer');
+        }
+
+        const amount = Math.max(1, parseInt(amountStr, 10) || 1);
+        const addedItem = addInventoryItem(targetPlayer, itemType, amount);
+        if (!addedItem) {
+            return admin.outputChatBox('!{#e74c3c}Nepavyko pridėti daikto.');
+        }
+
+        persistInventory(targetPlayer);
+
+        const label = formatInventoryAmount(addedItem.name, amount);
+        admin.outputChatBox(`!{#7aa164}Pridėjote ${label} žaidėjui ${targetPlayer.charName}.`);
+        targetPlayer.outputChatBox(`!{#7aa164}Administratorius ${admin.charName} davė jums ${label}.`);
+        sendInventoryUpdate(targetPlayer, `Gavote ${label}.`, true);
+    });
+});
 
 mp.events.addCommand('kick', (player, targetIdentifier) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
@@ -1005,6 +2511,8 @@ mp.events.addCommand("report", async (player, fullText, targetId, ...reasonArray
         const adminLvl = await getAdminLevelFromDB(admin);
         if (adminLvl >= 1) {
             admin.outputChatBox(`!{#f0e237}[REPORT] ${player.charName} pranešė apie ${target.charName}: ${reason} (ID: ${player.id})`);
+            admin.outputChatBox(`!{#f0e237}Norint priimti reportą: /acceptreport ${player.id}`);
+            admin.outputChatBox(`!{#f0e237}Norint atmesti reportą: /declinereport ${player.id}`);
         }
     });
 
@@ -1104,6 +2612,7 @@ mp.events.addCommand('changechar', (player) => {
 
     // Save current character data
     saveCharacterData(player);
+    cleanupPlayerOwnedVehicles(player, true);
     console.log(`[DEBUG] Saved data for ${player.charName}`);
 
     // Clear timers
@@ -1114,6 +2623,10 @@ mp.events.addCommand('changechar', (player) => {
     if (player.saveTimer) {
         clearInterval(player.saveTimer);
         delete player.saveTimer;
+    }
+    if (player.vehicleMarkerTimer) {
+        clearInterval(player.vehicleMarkerTimer);
+        delete player.vehicleMarkerTimer;
     }
     if (playerTimeInfo[player.id] && playerTimeInfo[player.id].interval) {
         clearInterval(playerTimeInfo[player.id].interval);
@@ -1134,6 +2647,9 @@ mp.events.addCommand('changechar', (player) => {
     player.contacts = null;
     player.phoneNumber = null;
     player.isPhoneOpen = false;
+    player.inventory = null;
+    player.ownedVehicles = new Map();
+    player.parkLocationsByVehicleId = new Map();
 
     // Hide HUD elements
     player.call('updateMoneyHUD', [0]);
@@ -1188,6 +2704,161 @@ mp.events.addCommand('createtwittertables', (player) => {
 
 
 // TAXI and PHONE
+
+// ==================== INVENTORY SYSTEM ====================
+
+mp.events.addCommand('inventory', (player) => openInventory(player));
+mp.events.addCommand('inv', (player) => openInventory(player));
+
+mp.events.add('requestInventoryOpen', (player) => {
+    openInventory(player);
+});
+
+mp.events.add('requestInventoryRefresh', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    sendInventoryUpdate(player, 'Inventorius atnaujintas.', true);
+});
+
+mp.events.add('inventoryUseItem', (player, itemId) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+
+    const itemEntry = getInventoryItemById(player, itemId);
+    if (!itemEntry) {
+        return sendInventoryUpdate(player, 'Toks daiktas inventoriuje nerastas.', false);
+    }
+
+    const item = itemEntry.item;
+    if (!item.usable) {
+        return sendInventoryUpdate(player, 'Sio daikto naudoti negalima.', false);
+    }
+
+    const currentHealth = Math.max(1, Math.ceil(player.health || 100));
+    let nextHealth = currentHealth;
+    let statusText = '';
+
+    switch (item.type) {
+        case 'water':
+            if (currentHealth >= 100) return sendInventoryUpdate(player, 'Jusu gyvybes jau pilnos.', false);
+            nextHealth = Math.min(100, currentHealth + 5);
+            statusText = 'Isgerete vandens ir atgavote 5 gyvybes.';
+            break;
+        case 'burger':
+            if (currentHealth >= 100) return sendInventoryUpdate(player, 'Jusu gyvybes jau pilnos.', false);
+            nextHealth = Math.min(100, currentHealth + 15);
+            statusText = 'Suvalgete burgeri ir atgavote 15 gyvybiu.';
+            break;
+        case 'bandage':
+            if (currentHealth >= 100) return sendInventoryUpdate(player, 'Jusu gyvybes jau pilnos.', false);
+            nextHealth = Math.min(100, currentHealth + 20);
+            statusText = 'Apsivyniojote binta ir atgavote 20 gyvybiu.';
+            break;
+        case 'medkit':
+            if (currentHealth >= 100) return sendInventoryUpdate(player, 'Jusu gyvybes jau pilnos.', false);
+            nextHealth = Math.min(100, currentHealth + 45);
+            statusText = 'Panaudojote vaistinele ir stipriai atsistate sveikata.';
+            break;
+        case 'cigarettes':
+            nextHealth = currentHealth;
+            statusText = 'Uzsirukete cigarete.';
+            break;
+        case 'beer':
+            nextHealth = Math.min(100, currentHealth + 3);
+            statusText = 'Isgerete alaus.';
+            break;
+        default:
+            return sendInventoryUpdate(player, 'Sio daikto naudoti negalima.', false);
+    }
+
+    player.health = nextHealth;
+    removeInventoryItemAmount(player, itemId, 1);
+    persistInventory(player);
+    broadcastInventoryAction(player, `${player.charName} panaudojo ${item.name}.`);
+    player.outputChatBox(`!{#7aa164}${statusText}`);
+    sendInventoryUpdate(player, statusText, true);
+});
+
+mp.events.add('inventoryDropItem', (player, itemId, amountStr) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+
+    const amount = Math.max(1, parseInt(amountStr, 10) || 1);
+    const itemEntry = getInventoryItemById(player, itemId);
+    if (!itemEntry) {
+        return sendInventoryUpdate(player, 'Toks daiktas inventoriuje nerastas.', false);
+    }
+
+    const item = itemEntry.item;
+    if (!item.droppable) {
+        return sendInventoryUpdate(player, 'Sio daikto ismesti negalima.', false);
+    }
+
+    if (item.quantity < amount) {
+        return sendInventoryUpdate(player, 'Neturite tiek vienetu siam veiksmui.', false);
+    }
+
+    const itemName = item.name;
+    removeInventoryItemAmount(player, itemId, amount);
+    persistInventory(player);
+
+    const statusText = `Ismetete ${formatInventoryAmount(itemName, amount)}.`;
+    broadcastInventoryAction(player, `${player.charName} ismete ${formatInventoryAmount(itemName, amount)}.`);
+    player.outputChatBox(`!{#cd5d3c}${statusText}`);
+    sendInventoryUpdate(player, statusText, true);
+});
+
+mp.events.add('inventoryGiveItem', (player, itemId, targetIdentifier, amountStr) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+
+    const amount = Math.max(1, parseInt(amountStr, 10) || 1);
+    const itemEntry = getInventoryItemById(player, itemId);
+    if (!itemEntry) {
+        return sendInventoryUpdate(player, 'Toks daiktas inventoriuje nerastas.', false);
+    }
+
+    const item = itemEntry.item;
+    if (!item.giveable) {
+        return sendInventoryUpdate(player, 'Sio daikto perduoti negalima.', false);
+    }
+
+    if (item.quantity < amount) {
+        return sendInventoryUpdate(player, 'Neturite tiek vienetu siam veiksmui.', false);
+    }
+
+    if (!targetIdentifier || !String(targetIdentifier).trim()) {
+        return sendInventoryUpdate(player, 'Iveskite gavejo ID arba varda.', false);
+    }
+
+    const targetPlayer = getPlayerByIDOrName(String(targetIdentifier).trim());
+    if (!targetPlayer || !targetPlayer.charName) {
+        return sendInventoryUpdate(player, 'Gavejas nerastas arba nepasirinko veikejo.', false);
+    }
+
+    if (targetPlayer.id === player.id) {
+        return sendInventoryUpdate(player, 'Negalite perduoti daikto patys sau.', false);
+    }
+
+    if (getDistanceBetweenPositions(player.position, targetPlayer.position) > INVENTORY_GIVE_RADIUS) {
+        return sendInventoryUpdate(player, 'Turite buti salia kito zaidejo.', false);
+    }
+
+    const itemType = item.type;
+    const itemName = item.name;
+
+    removeInventoryItemAmount(player, itemId, amount);
+    addInventoryItem(targetPlayer, itemType, amount);
+    persistInventory(player);
+    persistInventory(targetPlayer);
+
+    const amountLabel = formatInventoryAmount(itemName, amount);
+    const giverMessage = `Atidavete ${amountLabel} zaidejui ${targetPlayer.charName}.`;
+    const receiverMessage = `${player.charName} jums dave ${amountLabel}.`;
+
+    player.outputChatBox(`!{#7aa164}${giverMessage}`);
+    targetPlayer.outputChatBox(`!{#7aa164}${receiverMessage}`);
+    broadcastInventoryAction(player, `${player.charName} perdave ${amountLabel} zaidejui ${targetPlayer.charName}.`);
+
+    sendInventoryUpdate(player, giverMessage, true);
+    sendInventoryUpdate(targetPlayer, receiverMessage, true);
+});
 
 // Mobile Phone and Drive App System
 
@@ -1277,7 +2948,7 @@ mp.events.add('requestRide', (player) => {
 
     activeDrivers.forEach((data) => {
         if (data.status === "available") {
-            const dist = player.position.distanceTo(data.player.position);
+            const dist = getDistanceBetweenPositions(player.position, data.player.position);
             if (dist < 700) {
                 data.player.outputChatBox(`!{#f7dc6f}[Drive] ${player.charName} ieško pavežėjimo! /acceptdrive ${player.id}`);
             }
@@ -1320,7 +2991,7 @@ mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
             clearInterval(ride.interval);
             return;
         }
-        const dist = ride.driver.position.distanceTo(ride.requester.position);
+        const dist = getDistanceBetweenPositions(ride.driver.position, ride.requester.position);
         if (dist <= 12) {
             clearInterval(ride.interval);
             ride.driver.outputChatBox('!{#7aa164}✅ Jūs pasiekėte keleivį!');
@@ -1407,6 +3078,11 @@ mp.events.add('playerQuit', (player) => {
         delete player.saveTimer;
     }
 
+    if (player.vehicleMarkerTimer) {
+        clearInterval(player.vehicleMarkerTimer);
+        delete player.vehicleMarkerTimer;
+    }
+
     if (playerTimeInfo[player.id] && playerTimeInfo[player.id].interval) {
         clearInterval(playerTimeInfo[player.id].interval);
         delete playerTimeInfo[player.id];
@@ -1414,6 +3090,7 @@ mp.events.add('playerQuit', (player) => {
 
     // Save current character state
     saveCharacterData(player);
+    cleanupPlayerOwnedVehicles(player, true);
 
     // Clean up driver/ride state
     if (activeDrivers.has(player.id)) {
@@ -1425,12 +3102,6 @@ mp.events.add('playerQuit', (player) => {
         if ((ride.requester && ride.requester.id === player.id) || (ride.driver && ride.driver.id === player.id)) {
             if (ride.interval) clearInterval(ride.interval);
             if (ride.blip) ride.blip.destroy();
-            if (ride.requester && ride.requester.id !== player.id) {
-                ride.requester.outputChatBox('!{#e74c3c}Jūsų užsakymas atšauktas, vairuotojas išjungėsi.');
-            }
-            if (ride.driver && ride.driver.id !== player.id) {
-                ride.driver.outputChatBox('!{#e74c3c}Kelionė nutraukta, keleivis atsijungė.');
-            }
             activeRides.delete(requesterId);
         }
     }
@@ -1445,8 +3116,11 @@ mp.events.add('playerQuit', (player) => {
         const partner = (callData.caller && callData.caller.id === player.id) ? callData.target : callData.caller;
 
         if (partner) {
-            partner.outputChatBox(`!{#cd5d3c}${player.charName || player.name} atsijungė, skambutis baigtas.`);
-            partner.call('callEnded');
+            try {
+                partner.call('callEnded');
+            } catch (e) {
+                // Ignore partner call failures during disconnect/shutdown.
+            }
             activeCalls.delete(partner.id);
         }
 
@@ -1456,16 +3130,27 @@ mp.events.add('playerQuit', (player) => {
     // Notify if player had a ringing incoming call not found by key
     const ringingIncoming = Array.from(activeCalls.values()).find(c => c.target && c.target.id === player.id && c.status === 'ringing');
     if (ringingIncoming && ringingIncoming.caller) {
-        ringingIncoming.caller.outputChatBox(`!{#cd5d3c}${player.charName || player.name} atsijungė, skambutis atšauktas.`);
-        ringingIncoming.caller.call('callEnded');
+        try {
+            ringingIncoming.caller.call('callEnded');
+        } catch (e) {
+            // Ignore caller call failures during disconnect/shutdown.
+        }
         activeCalls.delete(ringingIncoming.caller.id);
     }
 
-    if (player.charId) {
-        player.outputChatBox('!{#f7dc6f}Jūsų veikėjo duomenys išsaugoti. Iki pasimatymo!');
-    } else {
+    if (!player.charId) {
         console.log(`[INFO] Žaidėjas ${player.name} atsijungė be pasirinkto veikėjo.`);
     }
+});
+
+mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
+    if (!player || !vehicle || !player.charId) return;
+
+    const record = getPlayerOwnedVehicleFromEntity(player, vehicle);
+    if (!record || !record.blip) return;
+
+    try { record.blip.destroy(); } catch (e) { }
+    record.blip = null;
 });
 
 mp.events.add('callFromUI', (player, phoneNumber) => {
@@ -2064,14 +3749,14 @@ mp.events.add('bankTransfer', (player, recipientName, amountStr) => {
         db.query('SELECT balance FROM bank_accounts WHERE char_name = ?', [recipientName], (err, targetRes) => {
             if (err || targetRes.length === 0) {
                 console.log('[BANK] bankTransfer recipient not found', recipientName);
-                return player.call('bankTransferResult', [false, 'Gavėjas nerastas!']);
+                return player.call('bankTransferResult', [false, 'Banko sąskaita negalima']);
             }
 
             // Only allow transfers to players who are currently online
             const recipientPlayer = mp.players.toArray().find(p => p.charName === recipientName);
             if (!recipientPlayer) {
                 console.log('[BANK] bankTransfer recipient offline', recipientName);
-                return player.call('bankTransferResult', [false, 'Gavėjas turi būti prisijungęs žaidėjas!']);
+                return player.call('bankTransferResult', [false, 'Banko sąskaita negalima']);
             }
 
             const newSenderBalance = senderRes[0].balance - amount;
@@ -2099,4 +3784,209 @@ mp.events.add('bankTransfer', (player, recipientName, amountStr) => {
             }
         });
     });
+});
+
+// ==================== CLOTHING SYSTEM ====================
+
+const CLOTHING_STORES = [
+    { x: -710.2, y: -152.0, z: 37.4 },  // Suburban – Rockford Hills
+    { x: 121.6, y: -221.3, z: 54.5 },  // Suburban – Pillbox Hill
+    { x: 613.8, y: 2763.1, z: 42.1 },  // Suburban – Paleto Bay
+    { x: 75.4, y: -1393.4, z: 29.4 },  // Binco
+];
+
+const CLOTHING_STORE_RADIUS = 5.0;
+
+// Blips so players can find the stores on the minimap
+CLOTHING_STORES.forEach((pos) => {
+    mp.blips.new(73, new mp.Vector3(pos.x, pos.y, pos.z), {
+        name: 'Drabužių parduotuvė',
+        color: 47,
+        scale: 0.85,
+        shortRange: true,
+    });
+});
+
+function isNearClothingStore(player) {
+    const p = player.position;
+    return CLOTHING_STORES.some(store => {
+        const dx = p.x - store.x;
+        const dy = p.y - store.y;
+        const dz = p.z - store.z;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) <= CLOTHING_STORE_RADIUS;
+    });
+}
+
+mp.events.addCommand('changeclothes', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!isNearClothingStore(player)) {
+        return player.outputChatBox('!{#e74c3c}Prašome eiti į drabužių parduotuvę.');
+    }
+
+    const currentClothes = player.outfitData || {};
+    player.call('openClothingUI', [JSON.stringify(currentClothes)]);
+});
+
+// Live preview – apply clothes without saving
+mp.events.add('previewClothes', (player, compStr, drawStr, texStr) => {
+    const component = parseInt(compStr);
+    const drawable = parseInt(drawStr);
+    const texture = parseInt(texStr);
+    if (isNaN(component) || isNaN(drawable) || isNaN(texture)) return;
+    player.setClothes(component, drawable, texture, 2);
+});
+
+// Save clothes – persist to DB and keep applied
+mp.events.add('saveClothes', (player, clothesJson) => {
+    if (!player.charId) return;
+
+    if (player.money < 100) {
+        return player.call('clothingError', ['Nepakanka pinigų! Reikia $100.']);
+    }
+
+    let clothes;
+    try { clothes = JSON.parse(clothesJson); }
+    catch { return player.call('clothingError', ['Klaida: neteisingas formatas.']); }
+
+    // Validate: only allow known component IDs, sane numeric values
+    const ALLOWED = new Set([1, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    for (const [comp, data] of Object.entries(clothes)) {
+        const c = parseInt(comp);
+        const dr = parseInt(data.d);
+        const tx = parseInt(data.t);
+        if (!ALLOWED.has(c) || isNaN(dr) || isNaN(tx) || dr < 0 || tx < 0 || dr > 999 || tx > 99) {
+            return player.call('clothingError', ['Klaida: neleistinos reikšmės.']);
+        }
+        player.setClothes(c, dr, tx, 2);
+    }
+
+    player.money -= 100;
+    player.outfitData = clothes;
+
+    db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName]);
+    db.query('UPDATE characters SET clothes = ? WHERE id = ?', [JSON.stringify(clothes), player.charId], (err) => {
+        if (err) {
+            console.error('[CLOTHES] Save failed:', err.message);
+            player.call('clothingError', ['Klaida išsaugant drabužius.']);
+        } else {
+            player.call('updateMoneyHUD', [player.money]);
+            player.call('clothingSuccess', ['Drabužiai išsaugoti! Nuskaičiuota $100.']);
+        }
+    });
+});
+
+// Close UI – revert any un-saved preview changes back to outfitData
+mp.events.add('closeClothingUI', (player) => {
+    if (player.outfitData) {
+        for (const [comp, data] of Object.entries(player.outfitData)) {
+            player.setClothes(parseInt(comp), parseInt(data.d) || 0, parseInt(data.t) || 0, 2);
+        }
+    }
+    player.call('closeClothingUIBrowser');
+});
+
+// ==================== BARBER SYSTEM ====================
+
+const BARBER_SHOPS = [
+    { x: -814.3, y: -183.8, z: 37.6 },
+    { x: 137.0, y: -1708.7, z: 29.3 },
+    { x: -1282.2, y: -1116.8, z: 6.0 },
+    { x: 1932.4, y: 3729.1, z: 32.8 },
+    { x: 1212.7, y: -472.8, z: 66.2 },
+    { x: -33.2, y: -152.6, z: 57.1 },
+    { x: -278.1, y: 6228.5, z: 31.7 },
+];
+
+const BARBER_SHOP_RADIUS = 5.0;
+
+BARBER_SHOPS.forEach((pos) => {
+    mp.blips.new(71, new mp.Vector3(pos.x, pos.y, pos.z), {
+        name: 'Kirpykla',
+        color: 47,
+        scale: 0.75,
+        shortRange: true,
+    });
+});
+
+function isNearBarberShop(player) {
+    const p = player.position;
+    return BARBER_SHOPS.some(store => {
+        const dx = p.x - store.x;
+        const dy = p.y - store.y;
+        const dz = p.z - store.z;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz) <= BARBER_SHOP_RADIUS;
+    });
+}
+
+mp.events.addCommand('barber', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!isNearBarberShop(player)) {
+        return player.outputChatBox('!{#e74c3c}Prašome eiti į kirpyklą.');
+    }
+
+    const current = player.barberData || {
+        hairStyle: 0,
+        hairColor: 0,
+        hairHighlight: 0,
+        beardStyle: -1,
+        beardOpacity: 10,
+    };
+
+    player.call('openBarberUI', [JSON.stringify(current)]);
+});
+
+mp.events.add('saveBarber', (player, barberJson) => {
+    if (!player.charId) return;
+    if (!isNearBarberShop(player)) {
+        return player.call('barberError', ['Kirpykla per toli.']);
+    }
+    if (player.money < 50) {
+        return player.call('barberError', ['Nepakanka pinigų! Reikia $50.']);
+    }
+
+    let barber;
+    try {
+        barber = JSON.parse(barberJson);
+    } catch (e) {
+        return player.call('barberError', ['Neteisingi barber duomenys.']);
+    }
+
+    const normalized = {
+        hairStyle: Math.max(0, parseInt(barber.hairStyle) || 0),
+        hairColor: Math.max(0, parseInt(barber.hairColor) || 0),
+        hairHighlight: Math.max(0, parseInt(barber.hairHighlight) || 0),
+        beardStyle: parseInt(barber.beardStyle),
+        beardOpacity: Math.max(0, Math.min(10, parseInt(barber.beardOpacity) || 0)),
+    };
+
+    if (isNaN(normalized.beardStyle)) normalized.beardStyle = -1;
+
+    player.money -= 50;
+    player.barberData = normalized;
+
+    db.query('UPDATE characters SET money = ? WHERE id = ?', [player.money, player.charId]);
+    db.query('UPDATE characters SET barber = ? WHERE id = ?', [JSON.stringify(normalized), player.charId], (err) => {
+        if (err) {
+            console.error('[BARBER] Save failed:', err.message);
+            player.call('barberError', ['Nepavyko išsaugoti šukuosenos.']);
+        } else {
+            player.call('applyBarberAppearance', [JSON.stringify(normalized)]);
+            player.call('updateMoneyHUD', [player.money]);
+            player.call('barberSuccess', ['Išvaizda išsaugota. Nuskaičiuota $50.']);
+        }
+    });
+});
+
+mp.events.add('closeBarberUI', (player) => {
+    const current = player.barberData || {
+        hairStyle: 0,
+        hairColor: 0,
+        hairHighlight: 0,
+        beardStyle: -1,
+        beardOpacity: 10,
+    };
+
+    // Revert unsaved preview values.
+    player.call('applyBarberAppearance', [JSON.stringify(current)]);
+    player.call('closeBarberUIBrowser');
 });

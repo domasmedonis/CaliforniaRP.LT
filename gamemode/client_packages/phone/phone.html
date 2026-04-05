@@ -3,65 +3,80 @@
 
 <head>
     <style>
+        /* ---- RESET ---- */
+        * {
+            box-sizing: border-box;
+        }
+
+        button {
+            font-family: inherit;
+        }
+
         body {
             margin: 0;
             padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
             background: transparent;
             overflow: hidden;
-            color: #000;
+            color: #1c1c1e;
+            -webkit-font-smoothing: antialiased;
         }
 
+        /* ---- PHONE SHELL ---- */
         #phone {
             position: absolute;
             bottom: 50px;
             right: 50px;
             width: 350px;
             height: 700px;
-            background: #000;
-            border-radius: 50px;
+            background: #1c1c1e;
+            border-radius: 52px;
             padding: 10px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
-            border: 2px solid #333;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
         }
 
+        /* ---- SCREEN ---- */
         #screen {
             width: 100%;
             height: 100%;
-            background: #fff;
-            border-radius: 40px;
-            padding: 15px;
-            box-sizing: border-box;
+            background: #f2f2f7;
+            border-radius: 42px;
             position: relative;
             overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
+        /* ---- STATUS BAR ---- */
         #statusBar {
             display: flex;
             justify-content: space-between;
-            padding: 8px 20px 12px;
-            font-size: 14px;
+            align-items: center;
+            padding: 10px 22px 6px;
+            flex-shrink: 0;
+            font-size: 13px;
             font-weight: 600;
-            color: #000;
+            color: #1c1c1e;
         }
 
         #statusBar .icons {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 5px;
         }
 
-        /* ================ APP CONTAINERS ================ */
+        /* ---- APP CONTAINERS ---- */
         #homeScreen,
         #driveApp,
         #callApp,
         #contactsApp,
         #messagesApp,
-        #twitterApp {
+        #twitterApp,
+        #bankApp {
             display: none;
             flex-direction: column;
-            height: calc(100% - 50px);
-            margin-top: 10px;
+            flex: 1;
+            min-height: 0;
             overflow: hidden;
         }
 
@@ -74,232 +89,688 @@
             display: flex;
         }
 
-        #contactsApp,
-        #messagesApp {
+        /* ---- APP HEADER (shared) ---- */
+        .app-header {
             display: flex;
-            flex-direction: column;
-            height: calc(100% - 50px);
-            overflow: hidden;
-            padding: 0 20px 8px;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px 9px;
+            flex-shrink: 0;
+            border-bottom: 0.5px solid rgba(0, 0, 0, 0.12);
         }
 
-        #contactsList,
-        #conversationsList,
-        #messagesList,
-        #conversationView,
-        #newMessageForm {
-            flex: 1;
+        .app-header-back {
+            background: none;
+            border: none;
+            color: #007aff;
+            font-size: 15px;
+            font-weight: 500;
+            padding: 2px 0;
+            cursor: pointer;
+            min-width: 32px;
+        }
+
+        .app-header-title {
+            font-size: 17px;
+            font-weight: 600;
+            color: #1c1c1e;
+        }
+
+        .app-header-action {
+            background: none;
+            border: none;
+            color: #007aff;
+            font-size: 22px;
+            font-weight: 300;
+            padding: 0 2px;
+            cursor: pointer;
+        }
+
+        /* ---- HOME SCREEN ---- */
+        #homeScreen {
+            background: #f2f2f7;
+            padding: 10px 14px 16px;
             overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-            padding-bottom: 16px;
         }
 
-        #addContactForm {
-            margin-top: 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            padding-bottom: 10px;
-        }
-
-        /* Home Screen App Grid */
         #appGrid {
             display: flex;
             flex-direction: column;
-            gap: 20px;
-            margin: 20px 0;
+            gap: 14px;
+            margin-top: 6px;
         }
 
         .appRow {
             display: flex;
-            justify-content: space-between;
-            gap: 15px;
+            gap: 12px;
         }
 
         .appIcon {
-            background: rgba(0, 0, 0, 0.08);
-            border-radius: 18px;
-            padding: 12px 8px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s;
             flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 14px 6px 10px;
+            background: #fff;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: transform 0.12s, opacity 0.12s;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
         }
 
-        .appIcon:hover {
-            background: rgba(0, 0, 0, 0.15);
-            transform: scale(1.03);
+        .appIcon:active {
+            transform: scale(0.94);
+            opacity: 0.85;
         }
 
         .appIcon img {
-            width: 52px;
-            height: 52px;
+            width: 42px;
+            height: 42px;
             pointer-events: none;
+            border-radius: 12px;
         }
 
         .appIcon span {
             display: block;
-            margin-top: 8px;
-            font-size: 13px;
+            margin-top: 5px;
+            font-size: 11px;
             font-weight: 500;
-            color: #000;
+            color: #1c1c1e;
+            text-align: center;
+        }
+
+        /* ---- CONTACTS ---- */
+        #contactsApp {
+            background: #f2f2f7;
+        }
+
+        #contactsList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 14px 0;
+            min-height: 0;
+        }
+
+        #addContactForm {
+            flex-shrink: 0;
+            padding: 10px 14px 14px;
+            background: #f2f2f7;
+            border-top: 0.5px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        #contactNameInput,
+        #contactNumberInput {
+            width: 100%;
+            padding: 10px 12px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            background: #fff;
+            font-family: inherit;
+            color: #1c1c1e;
+        }
+
+        #contactNameInput:focus,
+        #contactNumberInput:focus {
+            border-color: #007aff;
+        }
+
+        #addContactBtn {
+            background: #007aff;
+            color: #fff;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
             cursor: pointer;
         }
 
-        /* ================ TWITTER APP ================ */
-        #twitterApp {
-            padding: 0 10px;
-        }
-
-        .twitterHeader {
-            font-size: 24px;
-            font-weight: 700;
-            text-align: center;
-            margin-bottom: 15px;
-            padding: 10px 0;
-            color: #000;
-            border-bottom: 1px solid #eee;
-        }
-
-        #twitterAestheticBar {
-            width: 100%;
-            background: linear-gradient(135deg, #1da1f2, #0d8ddb);
-            color: #fff;
-            text-align: center;
-            font-weight: 700;
-            padding: 8px 12px;
+        #contactsBackBtn {
+            background: #fff;
+            color: #007aff;
+            padding: 9px;
             border-radius: 10px;
-            margin-bottom: 8px;
-            letter-spacing: 0.7px;
+            font-size: 15px;
+            font-weight: 500;
+            border: 0.5px solid #c6c6c8;
+            cursor: pointer;
         }
 
-        .twitterStatus {
-            width: 100%;
-            background: #eef5fb;
-            color: #2c3e50;
-            border-radius: 12px;
-            padding: 8px 8px;
+        .contactItem {
+            background: #fff;
+            border-radius: 14px;
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            box-shadow: 0 0.5px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .contactName {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1c1c1e;
+        }
+
+        .contactNumber {
+            font-size: 13px;
+            color: #8e8e93;
+            margin-top: 1px;
+        }
+
+        .contactActions {
+            display: flex;
+            gap: 6px;
+            margin-top: 9px;
+        }
+
+        .actionBtn {
+            flex: 1;
+            padding: 7px 2px;
             font-size: 12px;
-            text-align: center;
-            margin-bottom: 10px;
-            margin-right: 10px;
-            border: 1px solid #dbe9f8;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
         }
 
-        .section-card {
-            background: #ffffff;
+        .callContactBtn {
+            background: #34c759;
+            color: #fff;
+        }
+
+        .messageContactBtn {
+            background: #007aff;
+            color: #fff;
+        }
+
+        .removeContactBtn {
+            background: #ff3b30;
+            color: #fff;
+        }
+
+        /* ---- MESSAGES ---- */
+        #messagesApp {
+            background: #f2f2f7;
+        }
+
+        #conversationsList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 14px 0;
+            min-height: 0;
+        }
+
+        .conversationItem {
+            background: #fff;
+            border-radius: 14px;
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            box-shadow: 0 0.5px 3px rgba(0, 0, 0, 0.06);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .conversationInfo {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .conversationName {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1c1c1e;
+        }
+
+        .conversationPreview {
+            font-size: 13px;
+            color: #8e8e93;
+            margin-top: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .conversationTime {
+            font-size: 11px;
+            color: #8e8e93;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+
+        #conversationView {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+
+        #conversationView.active {
+            display: flex;
+        }
+
+        #messagesList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 14px;
+            min-height: 0;
+        }
+
+        #messageInputWrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px 12px;
+            flex-shrink: 0;
+            border-top: 0.5px solid rgba(0, 0, 0, 0.1);
+            background: #f2f2f7;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 9px 14px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 20px;
+            font-size: 15px;
+            outline: none;
+            background: #fff;
+            font-family: inherit;
+        }
+
+        #messageInput:focus {
+            border-color: #007aff;
+        }
+
+        #sendMessageBtn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: #007aff;
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .messageItem {
+            max-width: 72%;
+            padding: 8px 12px;
             border-radius: 18px;
-            border: 1px solid #e6ecf4;
-            box-shadow: 0 8px 18px rgba(46, 57, 74, 0.08);
-            padding: 14px;
-            max-height: calc(100% - 30px);
+            margin-bottom: 4px;
+            font-size: 15px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .messageItem.sent {
+            background: #007aff;
+            color: #fff;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+
+        .messageItem.received {
+            background: #e5e5ea;
+            color: #1c1c1e;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+
+        .messageTime {
+            font-size: 10px;
+            opacity: 0.65;
+            margin-top: 2px;
+        }
+
+        #newMessageForm {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            padding: 10px 14px;
+            gap: 8px;
+        }
+
+        #newMessageForm.active {
+            display: flex;
+        }
+
+        #newMessageNumber {
+            flex-shrink: 0;
+            padding: 10px 12px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            background: #fff;
+            font-family: inherit;
+        }
+
+        #newMessageNumber:focus {
+            border-color: #007aff;
+        }
+
+        #newMessageText {
+            flex: 1;
+            padding: 10px 12px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            resize: none;
+            background: #fff;
+            font-family: inherit;
+            min-height: 60px;
+        }
+
+        #newMessageBtn {
+            flex-shrink: 0;
+            background: #007aff;
+            color: #fff;
+            padding: 11px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+        }
+
+        #messagesFooter {
+            flex-shrink: 0;
+            padding: 8px 14px 12px;
+        }
+
+        #newConversationBtn,
+        #messagesBackBtn {
+            width: 100%;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+        }
+
+        #newConversationBtn {
+            background: #007aff;
+            color: #fff;
+            display: block;
+        }
+
+        #messagesBackBtn {
+            background: #fff;
+            color: #007aff;
+            display: none;
+            border: 0.5px solid #c6c6c8;
+        }
+
+        .marginMessages {
+            flex: 1;
+        }
+
+        /* ---- CALL APP ---- */
+        #callApp {
+            background: #fff;
+        }
+
+        #callContent {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px 20px 16px;
+            min-height: 0;
+        }
+
+        #phoneInputWrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+
+        #phoneInput {
+            font-size: 28px;
+            font-weight: 300;
+            text-align: center;
+            border: none;
+            background: transparent;
+            color: #1c1c1e;
+            width: 100%;
+            outline: none;
+        }
+
+        #deleteBtn {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #007aff;
+            cursor: pointer;
+            padding: 6px;
+            flex-shrink: 0;
+        }
+
+        #keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+            justify-items: center;
+        }
+
+        .keypadBtn {
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            border: none;
+            background: #f2f2f7;
+            font-size: 22px;
+            font-weight: 400;
+            color: #1c1c1e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+
+        .keypadBtn:active {
+            background: #d1d1d6;
+        }
+
+        .keypadBtn.zero {
+            grid-column: 2;
+        }
+
+        .keypadBtn .letters {
+            font-size: 9px;
+            color: #8e8e93;
+            margin-top: 1px;
+            letter-spacing: 0.3px;
+        }
+
+        #callActions {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 24px;
+            margin-top: 4px;
+        }
+
+        #callBtn {
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            border: none;
+            background: #34c759 url('https://img.icons8.com/ios-filled/50/ffffff/phone.png') center/22px no-repeat;
+            cursor: pointer;
+        }
+
+        #callBackBtn {
+            background: #f2f2f7;
+            color: #007aff;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 9px 18px;
+            border-radius: 20px;
+            border: none;
+            cursor: pointer;
+        }
+
+        /* ---- SKELBIMAI (TWITTER) ---- */
+        #twitterApp {
+            background: #f2f2f7;
+            padding: 0 12px 12px;
+            min-height: 0;
             overflow: hidden;
         }
 
-        .primary-btn {
-            width: 100%;
-            background: #1da1f2;
-            color: #ffffff;
-            border: none;
-            border-radius: 12px;
-            padding: 12px;
+        .twitterHeader {
+            font-size: 18px;
             font-weight: 700;
-            margin-top: 10px;
-            cursor: pointer;
+            text-align: center;
+            padding: 10px 0 8px;
+            color: #1c1c1e;
+            border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
+            margin-bottom: 8px;
+            flex-shrink: 0;
         }
 
-        .secondary-btn {
-            width: 100%;
-            background: #f1f3f7;
-            color: #34495e;
-            border: none;
-            border-radius: 12px;
+        .twitterStatus {
+            background: #edf4fb;
+            color: #2e5c7e;
+            border-radius: 10px;
+            padding: 6px 10px;
+            font-size: 12px;
+            text-align: center;
+            margin-bottom: 8px;
+            border: 0.5px solid #c5d9ee;
+            flex-shrink: 0;
+        }
+
+        .section-card {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+            padding: 12px;
+        }
+
+        #twitterLoggedIn {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
             padding: 10px;
-            margin-top: 8px;
-            cursor: pointer;
         }
 
         #twitterFeed {
             flex: 1;
             overflow-y: auto;
-            background: #f8f9fa;
-            border-radius: 14px;
-            padding: 12px;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
+            min-height: 0;
+            padding-right: 2px;
         }
 
         .tweetItem {
             background: #fff;
-            border: 1px solid #e5e5ea;
             border-radius: 14px;
-            padding: 14px;
-            margin-bottom: 12px;
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+            padding: 10px 12px;
+            margin-bottom: 7px;
+            box-shadow: 0 0.5px 3px rgba(0, 0, 0, 0.06);
         }
 
         .tweetHandle {
             font-weight: 700;
             color: #007aff;
-            font-size: 15px;
+            font-size: 14px;
         }
 
         .tweetTime {
-            font-size: 12px;
+            font-size: 11px;
             color: #8e8e93;
-            margin-top: 2px;
         }
 
         .tweetText {
-            margin: 10px 0 6px;
-            line-height: 1.45;
-            font-size: 15.5px;
+            margin: 6px 0 3px;
+            line-height: 1.4;
+            font-size: 14px;
             color: #1c1c1e;
             white-space: pre-wrap;
-            word-wrap: break-word;
-            overflow-wrap: anywhere;
             word-break: break-word;
         }
 
         #tweetComposer {
+            flex-shrink: 0;
             background: #fff;
             border-radius: 14px;
-            padding: 12px;
-            border: 1px solid #e5e5ea;
+            padding: 9px;
+            margin-bottom: 6px;
+            box-shadow: 0 0.5px 3px rgba(0, 0, 0, 0.06);
         }
 
         #tweetInput {
             width: 100%;
-            min-height: 120px;
-            max-height: 220px;
-            padding: 14px 16px;
-            border: 1px solid #ddd;
-            border-radius: 12px;
-            font-size: 15px;
+            min-height: 56px;
+            max-height: 88px;
+            padding: 8px 11px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 10px;
+            font-size: 14px;
             resize: none;
             outline: none;
             font-family: inherit;
             box-sizing: border-box;
-            overflow-y: auto;
-            overflow-wrap: break-word;
-            word-wrap: break-word;
-            word-break: break-word;
         }
 
         #postTweetBtn {
-            margin-top: 10px;
+            margin-top: 6px;
             background: #34c759;
-            color: white;
+            color: #fff;
             border: none;
-            border-radius: 12px;
-            padding: 12px;
-            font-size: 16px;
+            border-radius: 10px;
+            padding: 8px;
+            font-size: 14px;
             font-weight: 600;
             width: 100%;
             cursor: pointer;
         }
 
-        #postTweetBtn:hover {
-            background: #2db24f;
+        .primary-btn {
+            width: 100%;
+            background: #007aff;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 10px;
+            font-weight: 600;
+            margin-top: 7px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        .secondary-btn {
+            width: 100%;
+            background: #f2f2f7;
+            color: #007aff;
+            border: none;
+            border-radius: 10px;
+            padding: 8px;
+            margin-top: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            flex-shrink: 0;
         }
 
         #registerTwitterForm {
@@ -314,304 +785,20 @@
 
         #registerTwitterForm input {
             width: 100%;
-            max-width: 260px;
-            padding: 14px;
-            font-size: 17px;
-            border: 1px solid #ccc;
+            max-width: 240px;
+            padding: 11px;
+            font-size: 15px;
+            border: 0.5px solid #c6c6c8;
             border-radius: 10px;
-            margin-bottom: 18px;
+            margin-bottom: 12px;
             text-align: center;
-        }
-
-        /* ================ EXISTING APPS (cleaned & consistent) ================ */
-
-        #callApp,
-        #contactsApp,
-        #messagesApp {
-            padding: 0 20px 20px;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-
-        #callContent {
-            padding-top: 20px;
-        }
-
-        #phoneInputWrapper {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 30px;
-        }
-
-        #phoneInput {
-            font-size: 32px;
-            font-weight: 300;
-            text-align: center;
-            border: none;
-            background: transparent;
-            color: #000;
-            width: 100%;
             outline: none;
         }
 
-        #deleteBtn {
-            background: none;
-            border: none;
-            font-size: 20px;
-            color: #007aff;
-            cursor: pointer;
-            padding: 10px;
-        }
-
-        #keypad {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
-            margin-bottom: 30px;
-        }
-
-        .keypadBtn {
-            width: 70px;
-            height: 70px;
-            border-radius: 50%;
-            border: none;
-            background: #f2f2f7;
-            font-size: 24px;
-            font-weight: 400;
-            color: #000;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .keypadBtn:hover {
-            background: #e5e5ea;
-        }
-
-        .keypadBtn.zero {
-            grid-column: 2;
-        }
-
-        .keypadBtn .letters {
-            font-size: 10px;
-            color: #8e8e93;
-            margin-top: 2px;
-        }
-
-        #callActions {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 20px;
-        }
-
-        #callBtn {
-            width: 70px;
-            height: 70px;
-            border-radius: 50%;
-            border: none;
-            background: #34c759;
-            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/phone.png');
-            background-size: 24px;
-            background-position: center;
-            background-repeat: no-repeat;
-            cursor: pointer;
-        }
-
-        #addContactForm {
-            margin-top: 20px;
-        }
-
-        #contactNameInput,
-        #contactNumberInput {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 10px;
-            border: 1px solid #c6c6c8;
-            border-radius: 10px;
-            font-size: 16px;
-            outline: none;
-        }
-
-        #contactNameInput:focus,
-        #contactNumberInput:focus {
-            border-color: #007aff;
-        }
-
-        #callContent,
-        #contactsList,
-        #conversationsList,
-        #messagesList {
-            flex: 1;
-            overflow-y: auto;
-            padding-top: 10px;
-        }
-
-        #conversationView {
-            display: none;
-            flex-direction: column;
-            height: 100%;
-        }
-
-        #newMessageForm {
-            display: none;
-            margin-top: 20px;
-        }
-
-        #newMessageNumber {
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 10px;
-            border: 1px solid #c6c6c8;
-            border-radius: 10px;
-            font-size: 16px;
-            outline: none;
-        }
-
-        #newMessageNumber:focus {
-            border-color: #007aff;
-        }
-
-        #messageInputWrapper {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-top: 10px;
-        }
-
-        #messageInput {
-            flex: 1;
-            padding: 12px;
-            border: 1px solid #c6c6c8;
-            border-radius: 20px;
-            font-size: 16px;
-            outline: none;
-        }
-
-        #messageInput:focus {
-            border-color: #007aff;
-        }
-
-        #sendMessageBtn {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            border: none;
-            background: #007aff;
-            color: white;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        #messagesFooter {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 20px;
-        }
-
-        #newConversationBtn {
-            flex: 1;
-            margin-right: 10px;
-        }
-
-        .marginMessages {
-            flex: 1;
-        }
-
-        .contactItem,
-        .conversationItem {
-            background: #fff;
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 8px;
-            border: 1px solid #e5e5ea;
-            transition: background 0.2s;
-            cursor: pointer;
-        }
-
-        .contactItem:hover,
-        .conversationItem:hover {
-            background: #f2f2f7;
-        }
-
-        .messageItem {
-            max-width: 75%;
-            padding: 12px 16px;
-            border-radius: 18px;
-            margin-bottom: 8px;
-            font-size: 16px;
-            line-height: 1.4;
-            word-wrap: break-word;
-        }
-
-        .messageItem.sent {
-            background: #007aff;
-            color: #fff;
-            margin-left: auto;
-            border-bottom-right-radius: 4px;
-        }
-
-        .messageItem.received {
-            background: #e5e5ea;
-            color: #000;
-            margin-right: auto;
-            border-bottom-left-radius: 4px;
-        }
-
-        /* Buttons */
-        button {
-            padding: 13px;
-            font-size: 16px;
-            font-weight: 600;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        #addContactBtn,
-        #requestRideBtn,
-        #postTweetBtn,
-        #newMessageBtn {
-            background: #007aff;
-            color: white;
-            padding: 12px;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 500;
-        }
-
-        #addContactBtn:hover,
-        #requestRideBtn:hover,
-        #postTweetBtn:hover,
-        #newMessageBtn:hover {
-            background: #0056cc;
-        }
-
-        #backBtn,
-        #newConversationBtn {
-            background: #f2f2f7;
-            color: #007aff;
-            padding: 12px;
-            border-radius: 10px;
-            font-size: 16px;
-            font-weight: 500;
-        }
-
-        #backBtn:hover,
-        #newConversationBtn:hover {
-            background: #e5e5ea;
-        }
-
-        /* Bank App Fixes */
+        /* ---- BANK APP ---- */
         #bankApp {
-            overflow: hidden;
-            position: relative;
+            background: #f2f2f7;
+            overflow-y: auto;
         }
 
         #bankApp .section-card {
@@ -630,7 +817,7 @@
             z-index: 2;
         }
 
-        /* Incoming Call Overlay */
+        /* ---- INCOMING CALL ---- */
         #incomingCallOverlay {
             display: none;
             position: absolute;
@@ -638,28 +825,41 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.92);
-            color: white;
+            background: linear-gradient(180deg, #1c1c1e 0%, #2c2c2e 100%);
+            color: #fff;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             z-index: 100;
-            border-radius: 40px;
+            border-radius: 42px;
         }
 
         #incomingCallOverlay.active {
             display: flex;
         }
 
+        #incomingCallText {
+            text-align: center;
+            padding: 0 30px;
+            margin-bottom: 60px;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        #callButtons {
+            display: flex;
+            gap: 50px;
+        }
+
         .callActionBtn {
-            width: 68px;
-            height: 68px;
+            width: 62px;
+            height: 62px;
             border-radius: 50%;
             border: none;
-            background-size: 32px;
+            background-size: 26px;
             background-position: center;
             background-repeat: no-repeat;
-            margin: 0 20px;
+            cursor: pointer;
         }
 
         #answerBtn {
@@ -672,18 +872,17 @@
             background-image: url('https://img.icons8.com/ios-filled/50/ffffff/end-call.png');
         }
 
-        /* Scrollbar styling (optional but nice) */
-        #twitterFeed::-webkit-scrollbar,
-        #contactsList::-webkit-scrollbar,
-        #conversationsList::-webkit-scrollbar,
-        #messagesList::-webkit-scrollbar {
-            width: 5px;
+        /* ---- DRIVE APP ---- */
+        #driveApp {
+            background: #f2f2f7;
         }
 
-        #twitterFeed::-webkit-scrollbar-thumb,
-        #contactsList::-webkit-scrollbar-thumb,
-        #conversationsList::-webkit-scrollbar-thumb,
-        #messagesList::-webkit-scrollbar-thumb {
+        /* ---- SCROLLBARS ---- */
+        ::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
             background: #c7c7cc;
             border-radius: 10px;
         }
@@ -704,40 +903,40 @@
             </div>
 
             <!-- BANK APP -->
-            <div id="bankApp"
-                style="display:none; flex-direction:column; height:calc(100% - 50px); padding:15px; overflow-y:auto;">
-                <div style="text-align:center; margin-bottom:20px;">
-                    <h2 style="margin:0; font-weight:700;">Bankas</h2>
-                    <div id="balanceDisplay" style="font-size:42px; font-weight:700; color:#2ecc71; margin:25px 0;">
-                        $0
+            <div id="bankApp" style="display:none; flex-direction:column; flex:1; min-height:0; overflow-y:auto;">
+                <div class="app-header" style="flex-shrink:0;">
+                    <button class="app-header-back" onclick="backToHome()">← Atgal</button>
+                    <span class="app-header-title">Bankas</span>
+                    <span style="min-width:48px;"></span>
+                </div>
+                <div style="padding:16px;">
+                    <div style="text-align:center; margin-bottom:16px;">
+                        <div id="balanceDisplay"
+                            style="font-size:38px; font-weight:700; color:#34c759; margin:18px 0 4px;">
+                            $0
+                        </div>
+                        <small id="charNameDisplay" style="color:#8e8e93; font-size:13px;"></small>
                     </div>
-                    <small id="charNameDisplay" style="color:#555;"></small>
-                </div>
 
-                <!-- Transfer Form -->
-                <div class="section-card"
-                    style="margin-bottom:20px; padding-bottom:10px; min-height:220px; overflow:visible;">
-                    <h3 style="margin:0 0 12px 0; font-size:16px;">Siųsti pinigus</h3>
-                    <input type="text" id="recipientInput" placeholder="Gavėjo vardas (char_name)"
-                        style="width:100%; padding:14px; margin-bottom:10px; border-radius:12px; border:1px solid #ddd; box-sizing:border-box;">
-                    <input type="number" id="amountInput" placeholder="Suma"
-                        style="width:100%; padding:14px; margin-bottom:15px; border-radius:12px; border:1px solid #ddd; box-sizing:border-box;">
-                    <button id="sendBankBtn" type="button" onclick="sendBankTransfer()"
-                        style="width:100%; background:#34c759; color:white; padding:14px; border:none; border-radius:12px; font-weight:600; font-size:16px; box-sizing:border-box;">
-                        Siųsti
-                    </button>
-                </div>
+                    <!-- Transfer Form -->
+                    <div class="section-card" style="margin-bottom:14px;">
+                        <h3 style="margin:0 0 10px 0; font-size:15px; font-weight:600;">Siųsti pinigus</h3>
+                        <input type="text" id="recipientInput" placeholder="Gavėjo vardas (char_name)"
+                            style="width:100%; padding:11px 12px; margin-bottom:8px; border-radius:10px; border:0.5px solid #c6c6c8; font-size:14px; box-sizing:border-box; outline:none; font-family:inherit;">
+                        <input type="number" id="amountInput" placeholder="Suma"
+                            style="width:100%; padding:11px 12px; margin-bottom:12px; border-radius:10px; border:0.5px solid #c6c6c8; font-size:14px; box-sizing:border-box; outline:none; font-family:inherit;">
+                        <button id="sendBankBtn" type="button" onclick="sendBankTransfer()"
+                            style="width:100%; background:#34c759; color:white; padding:12px; border:none; border-radius:12px; font-weight:600; font-size:15px; box-sizing:border-box;">
+                            Siųsti
+                        </button>
+                    </div>
 
-                <!-- Recent Transactions -->
-                <div class="section-card">
-                    <h3 style="margin:0 0 12px 0; font-size:16px;">Paskutiniai pavedimai</h3>
-                    <div id="transactionsList" style="max-height:280px; overflow-y:auto;"></div>
+                    <!-- Recent Transactions -->
+                    <div class="section-card">
+                        <h3 style="margin:0 0 10px 0; font-size:15px; font-weight:600;">Paskutiniai pavedimai</h3>
+                        <div id="transactionsList"></div>
+                    </div>
                 </div>
-
-                <button onclick="backToHome()"
-                    style="margin-top:20px; background:#8e8e93; color:white; padding:12px; border:none; border-radius:12px; width:100%;">
-                    Atgal
-                </button>
             </div>
 
             <!-- Home Screen -->
@@ -794,8 +993,7 @@
                 </div>
 
                 <!-- FEED + COMPOSER -->
-                <div id="twitterLoggedIn" style="display:none; flex-direction:column; height:100%;"
-                    class="section-card">
+                <div id="twitterLoggedIn" style="display:none;" class="section-card">
                     <div id="twitterFeed" class="feed"></div>
 
                     <div id="tweetComposer" class="composer">
@@ -813,38 +1011,34 @@
             </div>
 
 
-            <!-- DRIVE APP - FIXED -->
-            <!-- DRIVE APP - FIXED -->
             <div id="driveApp">
+                <div class="app-header">
+                    <button class="app-header-back" id="driveBackBtn">← Atgal</button>
+                    <span class="app-header-title">Drive</span>
+                    <span style="min-width:48px;"></span>
+                </div>
                 <div
-                    style="height:100%; padding:30px 20px; display:flex; flex-direction:column; justify-content:space-between;">
-                    <div style="text-align:center; margin-top:40px;">
+                    style="flex:1; padding:20px 20px; display:flex; flex-direction:column; justify-content:space-between; overflow-y:auto;">
+                    <div style="text-align:center; margin-top:20px;">
                         <img src="https://i.imgur.com/UMp6tcH.png" alt="Drive"
-                            style="max-width:180px; margin-bottom:40px;">
+                            style="max-width:140px; margin-bottom:30px;">
                         <button id="toggleDriverBtn"
-                            style="width:100%; padding:16px; margin:15px 0; background:#007aff; color:white; border:none; border-radius:10px; font-size:16px;">
+                            style="width:100%; padding:14px; margin:10px 0; background:#007aff; color:white; border:none; border-radius:12px; font-size:15px; font-weight:600;">
                             Įjungti / Išjungti pavežėjo statusą
                         </button>
                         <button id="requestRideBtn"
-                            style="width:100%; padding:16px; margin:15px 0; background:#34c759; color:white; border:none; border-radius:10px; font-size:16px;">
+                            style="width:100%; padding:14px; margin:10px 0; background:#34c759; color:white; border:none; border-radius:12px; font-size:15px; font-weight:600;">
                             Iškviesti pavežėją
-                        </button>
-                    </div>
-                    <div>
-                        <button id="driveBackBtn"
-                            style="width:100%; padding:12px; background:#4e4e4e; color:white; border:none; border-radius:10px;">
-                            Atgal
                         </button>
                     </div>
                 </div>
             </div>
 
             <div id="callApp">
-                <div style="display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #e5e5ea;">
-                    <button onclick="backToHome()"
-                        style="background: none; border: none; font-size: 18px; color: #007aff; margin-right: 10px;">←</button>
-                    <div style="flex: 1; text-align: center; font-size: 18px; font-weight: 600; color: #000;">Skambinti
-                    </div>
+                <div class="app-header">
+                    <button class="app-header-back" onclick="backToHome()">← Atgal</button>
+                    <span class="app-header-title">Skambinti</span>
+                    <span style="min-width:48px;"></span>
                 </div>
                 <div id="callContent">
                     <div id="phoneInputWrapper">
@@ -903,17 +1097,14 @@
                     </div>
                     <div id="callActions">
                         <button id="callBtn" onclick="makeCall()"></button>
-                        <button id="callBackBtn" onclick="backToHome()">Atgal</button>
                     </div>
                 </div>
             </div>
             <div id="contactsApp">
-                <div
-                    style="display:flex; align-items:center; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #e5e5ea;">
-                    <button onclick="backToHome()"
-                        style="background:none;border:none;color:#007aff;font-weight:700;">←</button>
-                    <div style="font-size:18px;font-weight:600;color:#000;">Kontaktai</div>
-                    <span style="width:32px;"></span>
+                <div class="app-header">
+                    <button class="app-header-back" onclick="backToHome()">← Atgal</button>
+                    <span class="app-header-title">Kontaktai</span>
+                    <span style="min-width:48px;"></span>
                 </div>
                 <div id="contactsList"></div>
                 <div id="addContactForm">
@@ -924,12 +1115,10 @@
                 </div>
             </div>
             <div id="messagesApp">
-                <div
-                    style="display:flex; align-items:center; justify-content:space-between; padding: 10px 0; border-bottom: 1px solid #e5e5ea;">
-                    <button onclick="handleBack()"
-                        style="background:none;border:none;color:#007aff;font-weight:700;">←</button>
-                    <div style="font-size:18px;font-weight:600;color:#000;">Žinutės</div>
-                    <span style="width:32px;"></span>
+                <div class="app-header">
+                    <button class="app-header-back" onclick="handleBack()">← Atgal</button>
+                    <span class="app-header-title">Žinutės</span>
+                    <button id="newMsgHeaderBtn" class="app-header-action" onclick="showNewMessageForm()">＋</button>
                 </div>
                 <div id="conversationsList"></div>
                 <div id="conversationView">
@@ -941,13 +1130,15 @@
                     </div>
                 </div>
                 <div id="newMessageForm">
-                    <input type="text" id="newMessageNumber" placeholder="Telefono numeris">
+                    <input type="tel" id="newMessageNumber" placeholder="Telefono numeris" inputmode="numeric"
+                        pattern="[0-9]*" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
                     <textarea id="newMessageText" placeholder="Žinutės tekstas"
                         style="width:100%; min-height:80px; border:1px solid #c6c6c8; border-radius:10px; padding:10px; resize:vertical;"></textarea>
                     <button id="newMessageBtn" onclick="sendNewMessage()">Siųsti žinutę</button>
                 </div>
                 <div id="messagesFooter">
-                    <button id="newConversationBtn" onclick="showNewMessageForm()">Nauja žinutė</button>
+                    <button id="newConversationBtn" onclick="showNewMessageForm()" style="display:none;">Nauja
+                        žinutė</button>
                     <button id="messagesBackBtn" class="marginMessages" onclick="handleBack()">Atgal</button>
                 </div>
             </div>
@@ -1188,9 +1379,10 @@
 
         function updateDriverStatus(status) {
             isDriver = status;
-            document.getElementById('driverStatus').innerText = `Pavežėjo statusas: ${status ? 'On' : 'Off'}`;
-            document.getElementById('driverActions').classList.toggle('active', status);
-            document.getElementById('passengerActions').classList.toggle('active', !status);
+        }
+
+        function updateDriveApp() {
+            // Drive UI is simple — no dynamic elements to update
         }
 
         function openDriveApp(driverStatus) {
@@ -1309,13 +1501,13 @@
                     contactItem.className = 'contactItem';
                     contactItem.innerHTML = `
                         <div class="contactInfo">
-                            <div class="contactName">${contact.name}</div>
-                            <div class="contactNumber">${contact.number}</div>
+                            <div class="contactName" style="font-weight:600;font-size:15px;">${contact.name}</div>
+                            <div class="contactNumber" style="color:#8e8e93;font-size:13px;margin-top:2px;">${contact.number}</div>
                         </div>
                         <div class="contactActions">
-                            <button class="actionBtn callContactBtn" onclick="callContact('${contact.number}')"></button>
-                            <button class="actionBtn messageContactBtn" onclick="messageContact('${contact.number}')"></button>
-                            <button class="actionBtn removeContactBtn" onclick="removeContact('${contact.number}')"></button>
+                            <button class="actionBtn callContactBtn" onclick="callContact('${contact.number}')">📞 Skambinti</button>
+                            <button class="actionBtn messageContactBtn" onclick="messageContact('${contact.number}')">💬 Žinutė</button>
+                            <button class="actionBtn removeContactBtn" onclick="removeContact('${contact.number}')">🗑️ Ištrinti</button>
                         </div>
                     `;
                     contactsList.appendChild(contactItem);
@@ -1377,15 +1569,22 @@
         function updateMessagesFooter() {
             const newConversationBtn = document.getElementById('newConversationBtn');
             const backBtn = document.getElementById('messagesBackBtn');
+            const headerPlusBtn = document.getElementById('newMsgHeaderBtn');
 
             if (!newConversationBtn || !backBtn) return;
 
             if (currentView === 'conversations') {
                 newConversationBtn.style.display = 'block';
                 backBtn.style.display = 'none';
+                if (headerPlusBtn) headerPlusBtn.style.display = 'block';
+            } else if (currentView === 'newMessage') {
+                newConversationBtn.style.display = 'none';
+                backBtn.style.display = 'block';
+                if (headerPlusBtn) headerPlusBtn.style.display = 'none';
             } else {
                 newConversationBtn.style.display = 'none';
                 backBtn.style.display = 'block';
+                if (headerPlusBtn) headerPlusBtn.style.display = 'block';
             }
         }
 
@@ -1840,9 +2039,26 @@
             const amountInput = document.getElementById('amountInput');
             const recipient = recipientInput.value.trim();
             const amount = amountInput.value.trim();
-            if (!recipient || !amount) return alert('Įveskite gavėją ir sumą!');
+            const parsedAmount = parseInt(amount, 10);
 
-            console.log('[BANK] sendBankTransfer start', recipient, amount);
+            if (!recipient || !amount) {
+                showBankNotification('error', 'Įveskite gavėją ir sumą.');
+                if (!recipient) {
+                    recipientInput.focus();
+                } else {
+                    amountInput.focus();
+                }
+                return;
+            }
+
+            if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+                showBankNotification('error', 'Įveskite teisingą sumą.');
+                amountInput.focus();
+                amountInput.select();
+                return;
+            }
+
+            console.log('[BANK] sendBankTransfer start', recipient, parsedAmount);
 
             const sendBtn = document.getElementById('sendBankBtn');
             if (sendBtn) {
@@ -1853,7 +2069,7 @@
             amountInput.disabled = true;
 
             bankTransferPending = true;
-            mp.trigger('bankTransfer', recipient, amount);
+            mp.trigger('bankTransfer', recipient, String(parsedAmount));
 
             bankTransferTimeout = setTimeout(() => {
                 if (bankTransferPending) {

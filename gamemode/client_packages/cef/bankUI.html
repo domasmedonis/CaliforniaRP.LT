@@ -6,290 +6,540 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Banko Sistema</title>
     <style>
+        :root {
+            --bg-start: #171d2f;
+            --bg-end: #101521;
+            --panel: #f4f7fb;
+            --text-primary: #141a29;
+            --text-secondary: #68718b;
+            --accent: #27d6ad;
+            --accent-deep: #15b18c;
+            --danger: #f05d65;
+            --ink: #111827;
+            --line: #dbe3ef;
+            --card-dark: #1b243a;
+            --radius-lg: 24px;
+            --radius-md: 14px;
+            --shadow: 0 24px 60px rgba(4, 10, 25, 0.45);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: 'Roboto', sans-serif;
-            text-align: center;
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
             margin: 0;
+            min-height: 100vh;
+            font-family: "Bahnschrift", "Segoe UI", "Tahoma", sans-serif;
+            color: var(--text-primary);
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 100vh;
-        }
-
-        .bank-container {
-            width: 400px;
-            padding: 25px;
-            background: #2c3e50;
-            border-radius: 15px;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.6);
+            padding: 20px;
+            background: transparent;
             overflow: hidden;
         }
 
-        h2 {
-            font-size: 24px;
-            margin-bottom: 15px;
-            font-weight: 600;
+        .bank-shell {
+            width: min(980px, 98vw);
+            min-height: min(88vh, 760px);
+            border-radius: 32px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+            display: grid;
+            grid-template-columns: 1.2fr 0.95fr;
+            overflow: hidden;
+            transform: translateY(10px);
+            animation: enter 420ms ease-out forwards;
         }
 
-        p {
-            font-size: 18px;
-            margin-bottom: 20px;
+        .left {
+            padding: 26px;
+            background: linear-gradient(180deg, #f7f9fd 0%, #eef3f9 100%);
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
         }
 
-        #balance {
-            font-size: 24px;
-            font-weight: bold;
-            color: #27ae60;
+        .right {
+            padding: 24px;
+            background: linear-gradient(180deg, #1b243a 0%, #131b2f 100%);
+            color: #e7edf9;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
         }
 
-        input {
-            width: 90%;
-            padding: 12px;
-            margin: 15px 0;
-            border-radius: 8px;
-            background-color: #1c2833;
-            color: white;
+        .balance-card {
+            position: relative;
+            border-radius: var(--radius-lg);
+            background:
+                radial-gradient(circle at 90% 5%, rgba(255, 255, 255, 0.2), transparent 36%),
+                linear-gradient(130deg, #21d8af 0%, #32b3f0 120%);
+            color: #073227;
+            padding: 24px;
+            min-height: 190px;
+            overflow: hidden;
+        }
+
+        .balance-card::after {
+            content: "";
+            position: absolute;
+            right: -40px;
+            bottom: -60px;
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.22);
+        }
+
+        .bank-title {
+            margin: 0;
             font-size: 16px;
-            border: none;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.75;
         }
 
-        input:focus {
-            outline: none;
-            background-color: #34495e;
+        .total-amount {
+            margin: 14px 0 2px;
+            font-size: clamp(36px, 6vw, 48px);
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            color: #08251f;
         }
 
-        button {
-            width: 30%;
-            padding: 12px;
-            margin: 10px 1%;
-            border-radius: 8px;
-            font-size: 16px;
-            color: #ecf0f1;
-            cursor: pointer;
-            transition: background 0.3s ease;
-            border: none;
+        .cash-line {
+            margin: 0;
+            font-size: 15px;
+            color: rgba(7, 50, 39, 0.76);
+            position: relative;
+            z-index: 1;
         }
 
-        button:hover {
-            opacity: 0.9;
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
         }
 
-        button.deposit {
-            background: #27ae60;
-        }
-
-        button.deposit:hover {
-            background: #2ecc71;
-        }
-
-        button.withdraw {
-            background: #e74c3c;
-        }
-
-        button.withdraw:hover {
-            background: #c0392b;
-        }
-
-        button.close {
-            background: #7f8c8d;
-            color: #ecf0f1;
-        }
-
-        button.close:hover {
-            background: #95a5a6;
-        }
-
-        .error {
-            color: #e74c3c;
-            margin-top: 15px;
+        .quick-btn {
+            border: 0;
+            border-radius: var(--radius-md);
+            padding: 12px 14px;
             font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            transition: transform 180ms ease, box-shadow 180ms ease;
+        }
+
+        .quick-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 18px rgba(18, 29, 54, 0.18);
+        }
+
+        .quick-btn.deposit {
+            background: #e6fff8;
+            color: #0a6d57;
+        }
+
+        .quick-btn.withdraw {
+            background: #ffeef0;
+            color: #a7323c;
+        }
+
+        .quick-btn.close {
+            background: #1c2946;
+            color: #d7e0f5;
+        }
+
+        .quick-btn.ghost {
+            background: #dfe7f4;
+            color: #28334f;
+        }
+
+        .card-block {
+            background: #ffffff;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            padding: 16px;
+        }
+
+        .block-title {
+            margin: 0 0 10px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+
+        .input,
+        .action-btn {
+            width: 100%;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            padding: 12px;
+            font-size: 15px;
+            font-family: inherit;
+        }
+
+        .input {
+            background: #fbfcff;
+            color: var(--ink);
+        }
+
+        .input:focus {
+            outline: none;
+            border-color: #8fb1ea;
+            box-shadow: 0 0 0 3px rgba(76, 126, 214, 0.15);
+        }
+
+        .action-btn {
+            border: 0;
+            cursor: pointer;
+            font-weight: 700;
+            transition: filter 180ms ease;
+        }
+
+        .action-btn:hover {
+            filter: brightness(1.05);
+        }
+
+        .action-btn.transfer {
+            background: linear-gradient(130deg, var(--accent), var(--accent-deep));
+            color: #08251f;
+        }
+
+        .tx-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 6px;
+        }
+
+        .tx-head h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .tx-count {
+            font-size: 13px;
+            color: #9fb2dd;
         }
 
         .history {
-            display: none;
-            background: #34495e;
-            padding: 15px;
-            margin-top: 20px;
-            border-radius: 8px;
-            max-height: 300px;
+            border-radius: 16px;
+            padding: 4px;
+            background: rgba(255, 255, 255, 0.03);
+            height: 100%;
             overflow-y: auto;
         }
 
-        .transaction {
-            padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 8px;
-            transition: background-color 0.3s ease;
-        }
-
-        .transaction:hover {
-            background-color: #2c3e50;
-        }
-
-        .transaction-date {
+        .empty {
+            margin: 14px 4px;
+            color: #9cadce;
             font-size: 14px;
-            color: #bdc3c7;
+        }
+
+        .transaction {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 11px 12px;
+            margin-bottom: 8px;
+            animation: reveal 240ms ease both;
+        }
+
+        .transaction-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
         }
 
         .transaction-type {
-            font-size: 16px;
-            font-weight: bold;
+            font-weight: 700;
+            font-size: 14px;
+            color: #f0f4ff;
+        }
+
+        .transaction-date {
+            font-size: 12px;
+            color: #a8b6d7;
+            margin-top: 3px;
         }
 
         .transaction-amount {
-            font-size: 18px;
+            font-size: 15px;
+            font-weight: 700;
         }
 
-        .deposit .transaction-type {
-            color: #27ae60;
+        .transaction.deposit .transaction-amount,
+        .transaction.transfer_in .transaction-amount {
+            color: #65f0ca;
         }
 
-        .withdraw .transaction-type {
-            color: #e74c3c;
+        .transaction.withdraw .transaction-amount,
+        .transaction.transfer_out .transaction-amount {
+            color: #ff8f98;
         }
 
-        .transaction:nth-child(odd) {
-            background: #2c3e50;
+        .status {
+            min-height: 20px;
+            margin: 0;
+            font-size: 13px;
+            font-weight: 700;
+            color: #ff9199;
         }
 
-        .transaction:nth-child(even) {
-            background: #34495e;
+        .status.success {
+            color: #6df0c9;
         }
 
-        .history.show {
-            animation: fadeIn 0.3s ease-out;
-        }
-
-        @keyframes fadeIn {
-            0% {
-                opacity: 0;
-            }
-
-            100% {
-                opacity: 1;
-            }
-        }
-
-        /* Grid layout for buttons */
-        .button-group {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-        }
-
-        .button-group button {
-            width: 48%;
-        }
-
-        .topMg {
-            margin-top: 100px;
-        }
-
-        .textColor {
-            color: #444444;
-        }
-
-        /* Remove arrows in number input on webkit-based browsers (Chrome, Safari) */
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
         }
+
+        @keyframes enter {
+            from {
+                opacity: 0;
+                transform: translateY(24px) scale(0.98);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes reveal {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 920px) {
+            body {
+                padding: 10px;
+            }
+
+            .bank-shell {
+                grid-template-columns: 1fr;
+                min-height: 94vh;
+                border-radius: 24px;
+            }
+
+            .right {
+                min-height: 42vh;
+            }
+
+            .quick-actions {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
     </style>
 </head>
 
 <body>
-    <div class="bank-container">
-        <h2>Jūsų Banko Sąskaita</h2>
-        <p>Balansas: <span id="balance">$0</span></p>
-        <input type="number" id="amount" placeholder="Įveskite sumą">
+    <div class="bank-shell">
+        <section class="left">
+            <article class="balance-card">
+                <p class="bank-title">Jusu balansas</p>
+                <p class="total-amount" id="balance">$0</p>
+                <p class="cash-line">Grynieji: <span id="cash">$0</span></p>
+            </article>
 
-        <div class="button-group">
-            <button class="deposit" onclick="bankAction('deposit')">Įnešti</button>
-            <button class="withdraw" onclick="bankAction('withdraw')">Išsiimti</button>
-        </div>
+            <div class="card-block">
+                <p class="block-title">Grynuju operacijos</p>
+                <div class="form-grid">
+                    <input class="input" type="number" id="amount" placeholder="Suma, pvz. 500" min="1" step="1">
+                    <div class="quick-actions">
+                        <button class="quick-btn deposit" onclick="bankAction('deposit')">Inesti</button>
+                        <button class="quick-btn withdraw" onclick="bankAction('withdraw')">Issiimti</button>
+                    </div>
+                </div>
+            </div>
 
-        <div class="button-group topMg">
-            <button class="textColor" onclick="toggleHistory()">Istorija</button>
-            <button class="close" onclick="closeBankUI()">Uždaryti</button>
-        </div>
+            <div class="card-block">
+                <p class="block-title">Pervedimas</p>
+                <div class="form-grid">
+                    <input class="input" type="text" id="recipient" placeholder="Gavejo vardas">
+                    <input class="input" type="number" id="transferAmount" placeholder="Suma pervedimui" min="1"
+                        step="1">
+                    <button class="action-btn transfer" onclick="sendTransfer()">Siusti pinigus</button>
+                </div>
+            </div>
 
-        <p class="error" id="error"></p>
-        <div class="history" id="history"></div>
+            <div class="quick-actions">
+                <button class="quick-btn ghost" onclick="refreshTransactionView()">Atnaujinti istorija</button>
+                <button class="quick-btn close" onclick="closeBankUI()">Uzdaryti</button>
+            </div>
+        </section>
+
+        <section class="right">
+            <div class="tx-head">
+                <h3>Paskutines operacijos</h3>
+                <span class="tx-count" id="txCount">0 irasu</span>
+            </div>
+            <p class="status" id="error"></p>
+            <div class="history" id="history">
+                <p class="empty">Dar nera operaciju.</p>
+            </div>
+        </section>
     </div>
 
     <script>
-        // Update the bank balance displayed in the UI
+        let cachedTransactions = [];
+
+        function formatMoney(value) {
+            return `$${Number(value || 0).toLocaleString('en-US')}`;
+        }
+
         function updateBankBalance(balance) {
-            document.getElementById('balance').innerText = `$${balance}`;
+            document.getElementById('balance').innerText = formatMoney(balance);
         }
 
-        // Show error message in the UI
-        function showBankError(message) {
-            document.getElementById('error').innerText = message;
+        function updateCash(cash) {
+            const cashEl = document.getElementById('cash');
+            if (cashEl) {
+                cashEl.innerText = formatMoney(cash);
+            }
         }
 
-        // Update the transaction history displayed in the UI
-        function updateTransactionHistory(history) {
+        function showBankError(message, success = false) {
+            const errorEl = document.getElementById('error');
+            errorEl.innerText = message || '';
+            errorEl.classList.toggle('success', Boolean(success));
+        }
+
+        function getTypeLabel(type) {
+            if (type === 'deposit') return 'Inesta';
+            if (type === 'withdraw') return 'Issiimta';
+            if (type === 'transfer_in') return 'Gauta';
+            if (type === 'transfer_out') return 'Issiusta';
+            return 'Operacija';
+        }
+
+        function getAmountPrefix(type) {
+            if (type === 'withdraw' || type === 'transfer_out') return '-';
+            return '+';
+        }
+
+        function renderHistory(transactions) {
             const historyDiv = document.getElementById('history');
-            const transactions = JSON.parse(history);
-
-            // Clear previous history content
+            const txCount = document.getElementById('txCount');
             historyDiv.innerHTML = '';
 
-            transactions.forEach(transaction => {
-                const transactionDate = new Date(transaction.date);
-                const formattedDate = transactionDate.toLocaleString(); // Format date to local style (e.g., 2025-03-21 17:04:56)
+            if (!transactions.length) {
+                historyDiv.innerHTML = '<p class="empty">Dar nera operaciju.</p>';
+                txCount.innerText = '0 irasu';
+                return;
+            }
 
-                // Create transaction HTML
+            txCount.innerText = `${transactions.length} irasu`;
+
+            transactions.slice(0, 30).forEach((transaction, index) => {
+                const transactionDate = new Date(transaction.date || Date.now());
+                const formattedDate = transactionDate.toLocaleString('lt-LT');
+                const type = transaction.transaction_type || 'deposit';
+
                 const transactionElement = document.createElement('div');
-                transactionElement.classList.add('transaction');
-
-                // Add classes based on transaction type (deposit or withdraw)
-                if (transaction.transaction_type === 'deposit') {
-                    transactionElement.classList.add('deposit');
-                } else if (transaction.transaction_type === 'withdraw') {
-                    transactionElement.classList.add('withdraw');
-                }
-
-                // Set the innerHTML with the formatted text in Lithuanian
+                transactionElement.className = `transaction ${type}`;
+                transactionElement.style.animationDelay = `${Math.min(index * 28, 220)}ms`;
                 transactionElement.innerHTML = `
-                    <p class="transaction-date">${formattedDate}</p>
-                    <p class="transaction-type">${transaction.transaction_type === 'deposit' ? 'Įnešta' : 'Išimta'}</p>
-                    <p class="transaction-amount">$${transaction.amount}</p>
+                    <div class="transaction-row">
+                        <span class="transaction-type">${getTypeLabel(type)}</span>
+                        <span class="transaction-amount">${getAmountPrefix(type)}${formatMoney(transaction.amount)}</span>
+                    </div>
+                    <div class="transaction-date">${formattedDate}</div>
                 `;
 
-                // Append transaction element to history
                 historyDiv.appendChild(transactionElement);
             });
         }
 
-        // Toggle transaction history visibility
-        function toggleHistory() {
-            const historyDiv = document.getElementById('history');
-            historyDiv.classList.toggle('show');
-            historyDiv.style.display = historyDiv.style.display === 'none' ? 'block' : 'none';
+        function updateTransactionHistory(history) {
+            let transactions = history;
+            if (typeof history === 'string') {
+                try {
+                    transactions = JSON.parse(history);
+                } catch (err) {
+                    transactions = [];
+                }
+            }
+
+            if (!Array.isArray(transactions)) {
+                transactions = [];
+            }
+
+            cachedTransactions = transactions;
+            renderHistory(cachedTransactions);
         }
 
-        // Handle Deposit/Withdraw action
+        function refreshTransactionView() {
+            renderHistory(cachedTransactions);
+            showBankError('Istorija atnaujinta.', true);
+        }
+
         function bankAction(type) {
-            const amount = document.getElementById('amount').value;
-            if (amount && !isNaN(amount) && amount > 0) {
-                mp.trigger('bankAction', type, amount);  // Correct usage of mp.trigger
-            } else {
-                showBankError("Įveskite teisingą sumą.");
+            const amount = Number(document.getElementById('amount').value);
+            if (!amount || amount <= 0) {
+                showBankError('Iveskite teisinga suma.');
+                return;
+            }
+
+            showBankError('Vykdoma operacija...');
+            mp.trigger('bankAction', type, String(amount));
+        }
+
+        function sendTransfer() {
+            const recipient = document.getElementById('recipient').value.trim();
+            const amount = Number(document.getElementById('transferAmount').value);
+
+            if (!recipient) {
+                showBankError('Iveskite gavejo varda.');
+                return;
+            }
+
+            if (!amount || amount <= 0) {
+                showBankError('Iveskite teisinga pervedimo suma.');
+                return;
+            }
+
+            showBankError('Pervedimas vykdomas...');
+            mp.trigger('bankTransfer', recipient, String(amount));
+        }
+
+        function onTransferResult(success, message) {
+            showBankError(message || '', Boolean(success));
+            if (success) {
+                document.getElementById('recipient').value = '';
+                document.getElementById('transferAmount').value = '';
             }
         }
 
-        // Close the bank UI
         function closeBankUI() {
             mp.trigger('closeBankUI');
+        }
+
+        function toggleHistory() {
+            refreshTransactionView();
         }
     </script>
 </body>

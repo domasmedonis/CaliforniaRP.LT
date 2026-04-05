@@ -1,220 +1,589 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Character Selection</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700&display=swap"
+        rel="stylesheet">
     <style>
+        html,
         body {
+            width: 100%;
+            height: 100%;
             margin: 0;
             padding: 0;
-            font-family: 'Roboto', sans-serif;
-            color: #333;
-            background: transparent;
-            /* Los Santos camera */
-            overflow: hidden;
+            background: rgba(240, 249, 244, 0.18) !important;
+            background-color: rgba(240, 249, 244, 0.18) !important;
         }
 
-        .wrapper {
-            display: flex;
-            height: 100vh;
-        }
-
-        .sidebar {
-            width: 250px;
-            background: #1a252f;
-            /* Dark blue-gray like the image */
-            padding: 20px;
-            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.2);
-        }
-
-        .sidebar h2 {
-            color: #fff;
-            font-size: 24px;
-            font-weight: 500;
-            margin: 0 0 20px;
-            text-align: center;
-        }
-
-        .sidebar p {
-            color: #a0a0a0;
-            font-size: 14px;
-            text-align: center;
-        }
-
-        .main-content {
-            flex: 1;
-            padding: 20px;
-            position: relative;
-        }
-
-        .character-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 20px;
-            max-height: 80vh;
-            overflow-y: auto;
-            padding: 10px;
-        }
-
-        .character-card {
-            background: #fff;
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .character-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        }
-
-        .character-card.selected {
-            border: 2px solid #f7dc6f;
-            /* Highlight selected card */
-        }
-
-        .character-card h3 {
-            margin: 0 0 10px;
-            font-size: 18px;
-            font-weight: 500;
-            color: #333;
-        }
-
-        .character-card p {
-            margin: 5px 0;
-            font-size: 14px;
-            color: #666;
-        }
-
-        .detail-panel {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 300px;
-            background: #fff;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-            padding: 20px;
-            display: none;
-        }
-
-        .detail-panel h3 {
-            margin: 0 0 15px;
-            font-size: 20px;
-            font-weight: 500;
-            color: #333;
-        }
-
-        .detail-panel p {
-            margin: 5px 0;
-            font-size: 14px;
-            color: #666;
-        }
-
-        .detail-panel .select-btn {
-            display: block;
-            width: 100%;
-            padding: 10px;
-            margin-top: 15px;
-            background: #f7dc6f;
-            /* Your gold accent */
-            border: none;
-            border-radius: 5px;
-            color: #333;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-
-        .detail-panel .select-btn:hover {
-            background: #e6c95d;
-        }
-
-        .character-grid::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .character-grid::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.3);
-        }
-
-        .character-grid::-webkit-scrollbar-thumb {
-            background: #f7dc6f;
-            border-radius: 3px;
+        :root {
+            --panel: rgba(245, 253, 249, 0.96);
+            --panel-strong: rgba(235, 248, 241, 0.97);
+            --line: rgba(114, 149, 132, 0.28);
+            --text: #192d23;
+            --muted: #5e746a;
         }
 
         * {
-            cursor: default;
+            box-sizing: border-box;
         }
 
-        .character-card,
+        body {
+            font-family: 'Manrope', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: var(--text);
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ── OUTER LAYOUT ── */
+
+        .wrap {
+            width: 1100px;
+            height: 680px;
+            max-width: calc(100vw - 48px);
+            max-height: calc(100vh - 48px);
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 14px;
+        }
+
+        /* ── LEFT COLUMN ── */
+        .left {
+            min-width: 0;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 10px;
+        }
+
+        .topbar {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 12px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .topbar-title {
+            font-family: 'Syne', sans-serif;
+            font-size: 21px;
+            margin: 0;
+            line-height: 1.15;
+        }
+
+        .topbar-sub {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 3px;
+        }
+
+        .pills {
+            display: flex;
+            gap: 8px;
+        }
+
+        .pill {
+            border: 1px solid var(--line);
+            background: var(--panel-strong);
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #2e5041;
+            white-space: nowrap;
+        }
+
+        /* ── CARD LIST ── */
+        .char-list {
+            min-height: 0;
+            display: grid;
+            gap: 8px;
+            grid-auto-rows: 90px;
+            align-content: start;
+            overflow-y: auto;
+            padding-right: 2px;
+        }
+
+        /* ── INDIVIDUAL CARD (horizontal) ── */
+        .char-card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            cursor: pointer;
+            display: grid;
+            grid-template-columns: 64px 1fr auto;
+            overflow: hidden;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            height: 90px;
+        }
+
+        .char-card:hover {
+            border-color: rgba(160, 210, 185, 0.8);
+        }
+
+        .char-card.selected {
+            border-color: rgba(243, 199, 108, 0.9);
+            box-shadow: 0 0 0 2px rgba(243, 199, 108, 0.22);
+        }
+
+        /* Colored identity stripe */
+        .card-band {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Syne', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.92);
+        }
+
+        .card-body {
+            padding: 10px 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .card-name {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .card-stats {
+            display: flex;
+            gap: 12px;
+            flex-wrap: nowrap;
+        }
+
+        .card-stat {
+            font-size: 12px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .card-stat strong {
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .card-arrow {
+            padding: 0 14px;
+            display: flex;
+            align-items: center;
+            color: rgba(114, 149, 132, 0.45);
+            font-size: 16px;
+            font-weight: 300;
+        }
+
+        /* ── RIGHT PANEL ── */
+        .right-panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            display: grid;
+            grid-template-rows: 220px 1fr auto;
+            overflow: hidden;
+        }
+
+        /* Hero / gradient header */
+        .panel-hero {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: linear-gradient(155deg, #6bb88e 0%, #4a926d 100%);
+            transition: background 0.5s ease;
+            overflow: hidden;
+        }
+
+        /* Large decorative letter behind avatar */
+        .panel-hero::before {
+            content: attr(data-initial);
+            position: absolute;
+            font-family: 'Syne', sans-serif;
+            font-size: 200px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.07);
+            line-height: 1;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            user-select: none;
+        }
+
+        .panel-avatar {
+            width: 88px;
+            height: 88px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Syne', sans-serif;
+            font-size: 38px;
+            font-weight: 700;
+            color: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.18);
+            border: 2px solid rgba(255, 255, 255, 0.38);
+            flex-shrink: 0;
+            position: relative;
+            z-index: 1;
+        }
+
+        .panel-hero-meta {
+            margin-top: 12px;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .panel-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: rgba(255, 255, 255, 0.62);
+        }
+
+        .panel-name {
+            font-family: 'Syne', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+            margin: 5px 0 0;
+            line-height: 1.1;
+        }
+
+        /* Body */
+        .panel-body {
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+        }
+
+        /* Stat bar row */
+        .stat-section {}
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--muted);
+            margin-bottom: 5px;
+        }
+
+        .stat-header span {
+            color: var(--text);
+            font-weight: 700;
+        }
+
+        .stat-bar {
+            height: 6px;
+            border-radius: 99px;
+            background: rgba(114, 149, 132, 0.18);
+            overflow: hidden;
+        }
+
+        .stat-fill {
+            height: 100%;
+            border-radius: 99px;
+            transition: width 0.45s ease;
+        }
+
+        .divider {
+            height: 1px;
+            background: var(--line);
+        }
+
+        /* Info chips 2x2 */
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .info-chip {
+            background: var(--panel-strong);
+            border: 1px solid var(--line);
+            border-radius: 11px;
+            padding: 9px 10px;
+        }
+
+        .info-chip-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            color: var(--muted);
+        }
+
+        .info-chip-value {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text);
+            margin-top: 3px;
+        }
+
+        /* Placeholder in body */
+        .panel-placeholder {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            gap: 10px;
+            color: var(--muted);
+            padding: 20px;
+        }
+
+        .placeholder-icon {
+            font-size: 34px;
+            opacity: 0.35;
+        }
+
+        .placeholder-text {
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        /* Footer */
+        .panel-footer {
+            padding: 14px 18px;
+            border-top: 1px solid var(--line);
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
         .select-btn {
-            cursor: pointer !important;
+            width: 100%;
+            padding: 13px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(145deg, #f3c76c, #e8b957);
+            color: #24311f;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: 'Manrope', sans-serif;
+            letter-spacing: 0.02em;
+        }
+
+        .select-btn:hover {
+            filter: brightness(1.04);
+        }
+
+        .status-hint {
+            font-size: 11px;
+            color: var(--muted);
+            text-align: center;
+            margin: 0;
+        }
+
+        /* CaliforniaRP watermark */
+        .watermark {
+            position: fixed;
+            bottom: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            color: rgba(255, 255, 255, 0.72);
+            pointer-events: none;
         }
     </style>
 </head>
 
 <body>
-    <div class="wrapper">
-        <div class="sidebar">
-            <h2>Veikėjų Pasirinkimas</h2>
-            <p>Pasirinkite veikėją, su kuriuo žaisite CaliforniaRP.LT serveryje.</p>
-        </div>
-        <div class="main-content">
-            <div class="character-grid" id="characterGrid"></div>
-            <div class="detail-panel" id="detailPanel">
-                <h3 id="detailName"></h3>
-                <p id="detailMoney"></p>
-                <p id="detailBank"></p>
-                <p id="detailPlaytime"></p>
-                <p id="detailHealth"></p>
-                <button class="select-btn" id="selectBtn">Pasirinkti</button>
+    <div class="wrap">
+
+        <!-- LEFT: header + card list -->
+        <section class="left">
+            <div class="topbar">
+                <div>
+                    <h1 class="topbar-title">Veikeju Pasirinkimas</h1>
+                    <div class="topbar-sub">Pasirinkite veikeju prisijungti prie California RP.</div>
+                </div>
+                <div class="pills">
+                    <div class="pill" id="pillCount">Veikejai: 0</div>
+                    <div class="pill" id="pillSelected">Pasirinktas: –</div>
+                </div>
             </div>
-        </div>
+
+            <div class="char-list" id="charList"></div>
+        </section>
+
+        <!-- RIGHT: detail panel -->
+        <aside class="right-panel">
+            <div class="panel-hero" id="panelHero">
+                <div class="panel-avatar" id="panelAvatar">?</div>
+                <div class="panel-hero-meta">
+                    <div class="panel-label">Veikejo informacija</div>
+                    <div class="panel-name" id="panelName">Pasirinkite…</div>
+                </div>
+            </div>
+
+            <div class="panel-body" id="panelBody">
+                <div class="panel-placeholder">
+                    <div class="placeholder-icon">◈</div>
+                    <div class="placeholder-text">Paspauskite ant korteles kaireje kad matytumete detales ir
+                        prisijungtumete.</div>
+                </div>
+            </div>
+
+            <div class="panel-footer" id="panelFooter" style="display:none;">
+                <button class="select-btn" id="selectBtn">Pasirinkti ir prisijungti</button>
+                <p class="status-hint" id="statusHint">Paruosta jungtis.</p>
+            </div>
+        </aside>
+
     </div>
 
+    <div class="watermark" id="watermark"></div>
+
     <script>
-        let selectedCharId = null;
-        let lastSelectedCard = null;
+        // Colour palettes for character identity bands & hero gradient
+        const PALETTES = [
+            ['#4e9e72', '#3a8060'],
+            ['#6b7fcf', '#5063b8'],
+            ['#b86b6b', '#994d4d'],
+            ['#c2913a', '#a5762c'],
+            ['#6fb0b0', '#4c9898'],
+            ['#9b73c2', '#7d55a8'],
+            ['#c27e5b', '#a86240'],
+            ['#7abc6a', '#5aa34e'],
+        ];
+
+        let lastCard = null;
+        let currentChar = null;
+        let currentPal = null;
+
+        // Live clock
+        (function clock() {
+            const el = document.getElementById('watermark');
+            function tick() {
+                const now = new Date();
+                const h = String(now.getHours()).padStart(2, '0');
+                const m = String(now.getMinutes()).padStart(2, '0');
+                el.innerText = `${h}:${m}  |  CaliforniaRP.LT`;
+            }
+            tick();
+            setInterval(tick, 10000);
+        })();
 
         function displayCharacters(characters) {
-            const grid = document.getElementById('characterGrid');
-            grid.innerHTML = '';
-            characters.forEach(char => {
+            const list = document.getElementById('charList');
+            list.innerHTML = '';
+            lastCard = null;
+            currentChar = null;
+
+            document.getElementById('pillCount').innerText = `Veikejai: ${characters.length}`;
+            document.getElementById('pillSelected').innerText = 'Pasirinktas: –';
+
+            characters.forEach((char, i) => {
+                const pal = PALETTES[i % PALETTES.length];
+                const initial = (char.name || '?')[0].toUpperCase();
                 const div = document.createElement('div');
-                div.className = 'character-card';
+                div.className = 'char-card';
                 div.innerHTML = `
-                    <h3>${char.name}</h3>
-                    <p>Grynieji: $${char.money}</p>
-                    <p>Bankas: $${char.bankBalance}</p>
+                    <div class="card-band" style="background:linear-gradient(160deg,${pal[0]},${pal[1]});">${initial}</div>
+                    <div class="card-body">
+                        <p class="card-name">${char.name}</p>
+                        <div class="card-stats">
+                            <div class="card-stat">Grynieji <strong>$${(char.money ?? 0).toLocaleString()}</strong></div>
+                            <div class="card-stat">Bankas <strong>$${(char.bankBalance ?? 0).toLocaleString()}</strong></div>
+                            <div class="card-stat">Gyvybes <strong>${char.health ?? 100}</strong></div>
+                        </div>
+                    </div>
+                    <div class="card-arrow">›</div>
                 `;
-                div.onclick = () => {
-                    selectedCharId = char.id;
-                    showDetails(char, div);
-                };
-                grid.appendChild(div);
+                div.onclick = () => selectCard(char, div, pal, initial);
+                list.appendChild(div);
             });
+
+            resetPanel();
         }
 
-        function showDetails(char, card) {
-            // Remove 'selected' class from previously selected card
-            if (lastSelectedCard) {
-                lastSelectedCard.classList.remove('selected');
-            }
-            // Add 'selected' class to the clicked card
-            card.classList.add('selected');
-            lastSelectedCard = card;
+        function resetPanel() {
+            const hero = document.getElementById('panelHero');
+            hero.style.background = 'linear-gradient(155deg,#6bb88e 0%,#4a926d 100%)';
+            hero.setAttribute('data-initial', '');
+            document.getElementById('panelAvatar').innerText = '?';
+            document.getElementById('panelName').innerText = 'Pasirinkite…';
+            document.getElementById('panelBody').innerHTML = `
+                <div class="panel-placeholder">
+                    <div class="placeholder-icon">◈</div>
+                    <div class="placeholder-text">Paspauskite ant korteles kaireje kad matytumete detales ir prisijungtumete.</div>
+                </div>`;
+            document.getElementById('panelFooter').style.display = 'none';
+        }
 
-            // Show the detail panel
-            const panel = document.getElementById('detailPanel');
-            document.getElementById('detailName').innerText = char.name;
-            document.getElementById('detailMoney').innerText = `Grynieji: $${char.money}`;
-            document.getElementById('detailBank').innerText = `Bankas: $${char.bankBalance}`;
-            document.getElementById('detailPlaytime').innerText = `Žaidimo laikas: ${char.playtimeFormatted}`;
-            document.getElementById('detailHealth').innerText = `Gyvybės: ${char.health}`;
-            panel.style.display = 'block';
+        function selectCard(char, card, pal, initial) {
+            if (lastCard) lastCard.classList.remove('selected');
+            card.classList.add('selected');
+            lastCard = card;
+            currentChar = char;
+            currentPal = pal;
+
+            document.getElementById('pillSelected').innerText = `Pasirinktas: ${char.name}`;
+            const hero = document.getElementById('panelHero');
+            hero.style.background = `linear-gradient(155deg,${pal[0]} 0%,${pal[1]} 100%)`;
+            hero.setAttribute('data-initial', initial);
+            document.getElementById('panelAvatar').innerText = initial;
+            document.getElementById('panelName').innerText = char.name;
+
+            const hpPct = Math.min(100, Math.round(((char.health ?? 100) / 200) * 100));
+            const moneyNum = char.money ?? 0;
+            const bankNum = char.bankBalance ?? 0;
+            const playtime = char.playtimeFormatted ?? '0 val.';
+
+            document.getElementById('panelBody').innerHTML = `
+                <div class="stat-section">
+                    <div class="stat-header">Gyvybes <span>${char.health ?? 100} / 200</span></div>
+                    <div class="stat-bar">
+                        <div class="stat-fill" style="width:${hpPct}%;background:linear-gradient(90deg,#74c99a,#55b280);"></div>
+                    </div>
+                </div>
+                <div class="divider"></div>
+                <div class="info-grid">
+                    <div class="info-chip">
+                        <div class="info-chip-label">Grynieji</div>
+                        <div class="info-chip-value">$${moneyNum.toLocaleString()}</div>
+                    </div>
+                    <div class="info-chip">
+                        <div class="info-chip-label">Bankas</div>
+                        <div class="info-chip-value">$${bankNum.toLocaleString()}</div>
+                    </div>
+                    <div class="info-chip">
+                        <div class="info-chip-label">Zaidimo laikas</div>
+                        <div class="info-chip-value">${playtime}</div>
+                    </div>
+                    <div class="info-chip">
+                        <div class="info-chip-label">Busena</div>
+                        <div class="info-chip-value" style="color:#3a8a5c;">Aktyvi ✓</div>
+                    </div>
+                </div>`;
+
+            const footer = document.getElementById('panelFooter');
+            footer.style.display = 'flex';
+            document.getElementById('statusHint').innerText = `Paruosta jungtis su ${char.name}`;
             document.getElementById('selectBtn').onclick = () => mp.trigger('selectCharacter', char.id);
         }
     </script>

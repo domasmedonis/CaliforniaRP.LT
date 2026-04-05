@@ -2,6 +2,8 @@ const browser = mp.browsers.new('package://phone/phone.html');
 browser.active = false;
 let isPhoneOpen = false;
 
+globalThis.__isPhoneOpen = false;
+
 mp.events.add('openPhoneUI', (isDriver, phoneNumber, callStatus, callPartner, contactsJson) => {
     console.log(`[PHONE] openPhoneUI called`);
     if (!isPhoneOpen) {
@@ -14,6 +16,7 @@ mp.events.add('openPhoneUI', (isDriver, phoneNumber, callStatus, callPartner, co
             }
         }, 100);
         isPhoneOpen = true;
+        globalThis.__isPhoneOpen = true;
         // Keep chat messages visible but prevent opening chat input with T while phone is open.
         mp.gui.chat.show(true);
         mp.gui.chat.activate(false);
@@ -33,6 +36,7 @@ mp.events.add('closePhoneUI', () => {
         }
         browser.active = false;
         isPhoneOpen = false;
+        globalThis.__isPhoneOpen = false;
         mp.gui.chat.show(true);
         mp.gui.chat.activate(true);
     }
@@ -48,6 +52,7 @@ mp.events.add('incomingCall', (callerName, callerNumber) => {
         mp.gui.cursor.show(true, true);
         browser.active = true;
         isPhoneOpen = true;
+        globalThis.__isPhoneOpen = true;
     }
     browser.execute(`incomingCall('${callerName}', '${callerNumber}');`);
     playFaceTimeRingtone();
@@ -90,6 +95,7 @@ mp.events.add('loadContacts', (contactsJson, isDriver, phoneNumber) => {
         mp.gui.cursor.show(true, true);
         browser.active = true;
         isPhoneOpen = true;
+        globalThis.__isPhoneOpen = true;
     }
     browser.execute(`loadContacts('${contactsJson}', '${phoneNumber}');`);
 });
@@ -183,8 +189,16 @@ mp.events.add('driveBackToHome', () => {
     console.log("[PHONE] driveBackToHome received");
     if (isPhoneOpen && browser) {
         browser.execute(`
-            document.getElementById('driveApp').classList.remove('active');
-            document.getElementById('homeScreen').classList.add('active');
+            const drive = document.getElementById('driveApp');
+            if (drive) {
+                drive.classList.remove('active');
+                drive.style.display = 'none';
+            }
+            const home = document.getElementById('homeScreen');
+            if (home) {
+                home.classList.add('active');
+                home.style.display = 'flex';
+            }
         `);
     }
 });
@@ -236,12 +250,19 @@ mp.events.add('loadBankData', (balance, charName, transactionsJson) => {
 });
 
 mp.events.add('bankTransferResult', (success, message, recipientName, amount) => {
-    console.log('[BANK] bankTransferResult', success, message, recipientName, amount);
+    const normalizedMessage = !success && (
+        message === 'Gavėjas nerastas!' ||
+        message === 'Gavėjas turi būti prisijungęs žaidėjas!'
+    )
+        ? 'Banko sąskaita negalima'
+        : message;
+
+    console.log('[BANK] bankTransferResult', success, normalizedMessage, recipientName, amount);
 
     if (browser && browser.active) {
         browser.execute(`
-            console.log('[BANK] bankTransferResult CEF callback', ${JSON.stringify(success)}, ${JSON.stringify(message)});
-            showBankNotification(${JSON.stringify(success ? 'success' : 'error')}, ${JSON.stringify(message)});
+            console.log('[BANK] bankTransferResult CEF callback', ${JSON.stringify(success)}, ${JSON.stringify(normalizedMessage)});
+            showBankNotification(${JSON.stringify(success ? 'success' : 'error')}, ${JSON.stringify(normalizedMessage)});
             resetBankTransferForm();
             ${success ? `addTransactionToHistory('transfer_out', ${JSON.stringify(amount)}, new Date().toISOString());` : ''}
         `);
@@ -253,4 +274,5 @@ mp.events.add('bankTransferResult', (success, message, recipientName, amount) =>
 });
 
 // Bank helper for CEF
+mp.events.add('bankTransfer', (recipientName, amount) => mp.events.callRemote('bankTransfer', recipientName, amount));
 mp.events.add('openBankApp', () => mp.events.callRemote('openBankApp'));
