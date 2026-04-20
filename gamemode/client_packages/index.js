@@ -1,2 +1,0 @@
-require('./gamemode');
-require('./phone')
