@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="lt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventorius</title>
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0) !important;
+            background-color: transparent !important;
+        }
+
+        :root {
+            --bg: rgba(27, 32, 40, 0.42);
+            --panel: #edf0f5;
+            --panel-soft: #f8f9fc;
+            --slot: #e5e9f2;
+            --slot-hover: #dbe1ed;
+            --line: rgba(64, 74, 92, 0.17);
+            --text: #2a3447;
+            --muted: #6f7890;
+            --accent: #9da8bd;
+            --success: #3f7f5f;
+            --error: #b25f6a;
+            --shadow: 0 20px 54px rgba(12, 22, 38, 0.18);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100%;
+            padding: 16px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background:
+                radial-gradient(circle at 50% 50%, rgba(236, 240, 247, 0.92) 0%, rgba(214, 221, 234, 0.9) 100%);
+            font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+            color: var(--text);
+        }
+
+        .inventory {
+            width: min(820px, 95vw);
+            max-height: calc(100vh - 32px);
+            background: linear-gradient(180deg, #f5f7fb 0%, var(--panel) 100%);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .owner {
+            display: inline-block;
+            background: var(--accent);
+            color: #253248;
+            padding: 10px 16px;
+            font-weight: 700;
+            font-size: 16px;
+            letter-spacing: 0.02em;
+            border-bottom-right-radius: 12px;
+        }
+
+        .content {
+            padding: 14px;
+            max-height: calc(100vh - 100px);
+            overflow: auto;
+        }
+
+        .head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            gap: 8px;
+        }
+
+        .title {
+            margin: 0;
+            font-size: 30px;
+            line-height: 1;
+            color: #233147;
+        }
+
+        .count {
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 8px;
+            min-height: 420px;
+            padding: 8px;
+            border-radius: 10px;
+            background: rgba(209, 216, 228, 0.36);
+            border: 1px solid rgba(112, 124, 148, 0.2);
+        }
+
+        .slot {
+            min-height: 92px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--slot);
+            padding: 8px;
+            text-align: left;
+            color: var(--text);
+            cursor: pointer;
+            transition: background 130ms ease, transform 130ms ease, box-shadow 130ms ease;
+        }
+
+        .slot:hover {
+            background: var(--slot-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 14px rgba(60, 72, 96, 0.14);
+        }
+
+        .slot.active {
+            border-color: rgba(98, 116, 149, 0.68);
+            box-shadow: inset 0 0 0 1px rgba(125, 139, 166, 0.45);
+        }
+
+        .slot.empty {
+            cursor: default;
+            color: rgba(97, 108, 132, 0.32);
+            display: grid;
+            place-items: center;
+            font-size: 22px;
+        }
+
+        .meta {
+            display: flex;
+            justify-content: space-between;
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .name {
+            font-size: 14px;
+            line-height: 1.2;
+            word-break: break-word;
+        }
+
+        .icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            border-radius: 7px;
+            background: rgba(162, 173, 196, 0.26);
+            color: #51607e;
+            margin-bottom: 6px;
+            border: 1px solid rgba(130, 143, 168, 0.3);
+            overflow: hidden;
+        }
+
+        .icon img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+        }
+
+        .icon.fallback {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .controls {
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: 110px 1fr 1fr 1fr 1fr 110px;
+            gap: 8px;
+        }
+
+        .input,
+        .btn {
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid var(--line);
+            background: var(--panel-soft);
+            color: var(--text);
+            font-family: inherit;
+        }
+
+        .input {
+            padding: 0 10px;
+        }
+
+        .input:focus {
+            outline: none;
+            border-color: rgba(110, 126, 157, 0.7);
+            box-shadow: 0 0 0 3px rgba(173, 182, 201, 0.35);
+        }
+
+        .btn {
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 120ms ease, filter 120ms ease;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            filter: brightness(0.98);
+        }
+
+        .btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin: 10px 0 0;
+            color: var(--muted);
+            min-height: 20px;
+            font-size: 14px;
+            background: rgba(195, 203, 219, 0.36);
+            border: 1px solid rgba(115, 128, 153, 0.2);
+            border-radius: 8px;
+            padding: 7px 9px;
+        }
+
+        .status.success {
+            color: var(--success);
+        }
+
+        .status.error {
+            color: var(--error);
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+                min-height: 360px;
+            }
+
+            .controls {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="inventory">
+        <div class="owner">Veikėjo inventorius</div>
+        <div class="content">
+            <div class="head">
+                <h1 class="title">Mano inventorius</h1>
+                <div class="count" id="itemCount">0 daiktų</div>
+            </div>
+
+            <div class="grid" id="slots"></div>
+
+            <div class="controls">
+                <input class="input" id="amountInput" type="number" min="1" step="1" value="1" placeholder="Kiekis">
+                <input class="input" id="targetInput" type="text" placeholder="Žaidėjo ID arba vardas">
+                <button class="btn" id="useBtn" onclick="useSelectedItem()">Naudoti</button>
+                <button class="btn" id="dropBtn" onclick="dropSelectedItem()">Išmesti</button>
+                <button class="btn" id="giveBtn" onclick="giveSelectedItem()">Duoti</button>
+                <button class="btn" onclick="closeInventory()">Uždaryti</button>
+            </div>
+
+            <p class="status" id="statusText">Pasirinkite daiktą.</p>
+        </div>
+    </div>
+
+    <script>
+        let inventoryItems = [];
+        let selectedItemId = null;
+        const SLOT_COUNT = 25;
+        const inventoryIconImageMap = {
+            cigarettes: './assets/inventory-icons/cigarettes.png',
+            beer: './assets/inventory-icons/beer.jpg',
+            water: './assets/inventory-icons/water.png',
+            medkit: './assets/inventory-icons/medkit.png'
+        };
+        const inventoryIconLabelMap = {
+            water: 'H2O',
+            burger: 'BGR',
+            bandage: 'BND',
+            medkit: 'MED',
+            cigarettes: 'CIG',
+            beer: 'ALU'
+        };
+
+        function parseInventory(itemsJson) {
+            if (Array.isArray(itemsJson)) return itemsJson;
+            if (typeof itemsJson !== 'string') return [];
+
+            try {
+                const parsed = JSON.parse(itemsJson);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function getSelectedItem() {
+            return inventoryItems.find(item => item.id === selectedItemId) || null;
+        }
+
+        function setStatus(message, success = null) {
+            const el = document.getElementById('statusText');
+            el.textContent = message || 'Pasirinkite daiktą.';
+            el.classList.remove('success', 'error');
+            if (success === true) el.classList.add('success');
+            if (success === false) el.classList.add('error');
+        }
+
+        function sanitizeAmount() {
+            const input = document.getElementById('amountInput');
+            const item = getSelectedItem();
+            const maxAmount = item ? Math.max(1, Number(item.quantity || 1)) : 1;
+            const parsed = Math.max(1, parseInt(input.value, 10) || 1);
+            const clamped = Math.min(parsed, maxAmount);
+            input.value = clamped;
+            return clamped;
+        }
+
+        function updateButtons() {
+            const item = getSelectedItem();
+            const useBtn = document.getElementById('useBtn');
+            const dropBtn = document.getElementById('dropBtn');
+            const giveBtn = document.getElementById('giveBtn');
+            const amountInput = document.getElementById('amountInput');
+
+            if (!item) {
+                useBtn.disabled = true;
+                dropBtn.disabled = true;
+                giveBtn.disabled = true;
+                amountInput.disabled = true;
+                amountInput.value = 1;
+                return;
+            }
+
+            useBtn.disabled = !item.usable;
+            dropBtn.disabled = !item.droppable;
+            giveBtn.disabled = !item.giveable;
+            amountInput.disabled = false;
+            amountInput.max = Math.max(1, Number(item.quantity || 1));
+            sanitizeAmount();
+        }
+
+        function renderSlots() {
+            const slots = document.getElementById('slots');
+            slots.innerHTML = '';
+
+            for (let i = 0; i < SLOT_COUNT; i++) {
+                const item = inventoryItems[i] || null;
+                const card = document.createElement('button');
+                card.type = 'button';
+                card.className = `slot${item && item.id === selectedItemId ? ' active' : ''}${!item ? ' empty' : ''}`;
+
+                if (!item) {
+                    card.disabled = true;
+                    card.textContent = '?';
+                } else {
+                    const iconKey = item.icon || item.type;
+                    const itemIconImage = inventoryIconImageMap[iconKey] || inventoryIconImageMap[item.type] || '';
+                    const itemIconLabel = inventoryIconLabelMap[iconKey] || inventoryIconLabelMap[item.type] || 'BOX';
+                    const iconClass = itemIconImage ? 'icon' : 'icon fallback';
+                    const iconContent = itemIconImage
+                        ? `<img src="${itemIconImage}" alt="${item.name || 'Daiktas'}">`
+                        : itemIconLabel;
+                    card.innerHTML = `
+                        <div class="meta">
+                            <span>${Number(item.quantity || 0)} vnt.</span>
+                            <span>${item.usable ? 'naudojamas' : 'daiktas'}</span>
+                        </div>
+                        <div class="${iconClass}">${iconContent}</div>
+                        <div class="name">${item.name || 'Daiktas'}</div>
+                    `;
+                    card.onclick = () => {
+                        selectedItemId = item.id;
+                        renderSlots();
+                        updateButtons();
+                        setStatus(item.description || 'Daiktas pasirinktas.');
+                    };
+                }
+
+                slots.appendChild(card);
+            }
+
+            const totalCount = inventoryItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+            document.getElementById('itemCount').textContent = `${totalCount} daiktų`;
+
+            updateButtons();
+        }
+
+        function initInventory(itemsJson, statusText, success) {
+            updateInventory(itemsJson, statusText, success);
+        }
+
+        function updateInventory(itemsJson, statusText, success) {
+            inventoryItems = parseInventory(itemsJson);
+
+            if (!inventoryItems.find(item => item.id === selectedItemId)) {
+                selectedItemId = inventoryItems.length ? inventoryItems[0].id : null;
+            }
+
+            renderSlots();
+
+            if (typeof statusText === 'string' && statusText.trim()) {
+                setStatus(statusText, success);
+            } else if (!inventoryItems.length) {
+                setStatus('Inventorius tuščias.', true);
+            } else {
+                setStatus('Inventorius atnaujintas.', true);
+            }
+        }
+
+        function useSelectedItem() {
+            const item = getSelectedItem();
+            if (!item || !item.usable) return setStatus('Šio daikto naudoti negalima.', false);
+            mp.trigger('inventoryUseItem', item.id);
+        }
+
+        function dropSelectedItem() {
+            const item = getSelectedItem();
+            if (!item || !item.droppable) return setStatus('Šio daikto išmesti negalima.', false);
+            mp.trigger('inventoryDropItem', item.id, String(sanitizeAmount()));
+        }
+
+        function giveSelectedItem() {
+            const item = getSelectedItem();
+            const target = document.getElementById('targetInput').value.trim();
+            if (!item || !item.giveable) return setStatus('Šio daikto duoti negalima.', false);
+            if (!target) return setStatus('Įveskite gavėjo ID arba vardą.', false);
+            mp.trigger('inventoryGiveItem', item.id, target, String(sanitizeAmount()));
+        }
+
+        function closeInventory() {
+            mp.trigger('closeInventoryUI');
+        }
+
+        document.getElementById('amountInput').addEventListener('input', sanitizeAmount);
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeInventory();
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="lt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kirpykla</title>
+    <style>
+        :root {
+            --bg: #131b2f;
+            --surface: #1b243a;
+            --surface2: #22304d;
+            --border: rgba(255, 255, 255, 0.08);
+            --accent: #27d6ad;
+            --accent2: #15b18c;
+            --text: #e7edf9;
+            --muted: #8fa4c8;
+            --danger: #f05d65;
+            --success: #6df0c9;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: transparent;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-left: clamp(16px, 3vw, 48px);
+            font-family: "Bahnschrift", "Segoe UI", Tahoma, sans-serif;
+            color: var(--text);
+        }
+
+        .panel {
+            width: 520px;
+            border-radius: 22px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            background: var(--bg);
+            box-shadow: 0 28px 80px rgba(0, 0, 0, 0.7);
+            animation: pop 300ms ease-out both;
+        }
+
+        @keyframes pop {
+            from {
+                opacity: 0;
+                transform: translateY(12px) scale(0.97);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .header {
+            background: linear-gradient(130deg, #21d8af 0%, #32b3f0 130%);
+            padding: 18px 20px 16px;
+            color: #07261f;
+        }
+
+        .title {
+            font-size: 21px;
+            font-weight: 700;
+        }
+
+        .sub {
+            margin-top: 4px;
+            opacity: 0.74;
+            font-size: 13px;
+        }
+
+        .body {
+            padding: 18px 20px 10px;
+        }
+
+        .row {
+            margin-bottom: 14px;
+        }
+
+        .label {
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 7px;
+        }
+
+        .ctrl {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-step {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .btn-step:hover {
+            background: var(--accent);
+            color: #06251e;
+        }
+
+        .input {
+            flex: 1;
+            height: 38px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text);
+            text-align: center;
+            font-size: 17px;
+            font-family: inherit;
+            font-weight: 700;
+        }
+
+        .input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(39, 214, 173, 0.18);
+        }
+
+        .input::-webkit-outer-spin-button,
+        .input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+        }
+
+        .status {
+            min-height: 20px;
+            padding: 0 20px;
+            margin-bottom: 8px;
+            color: var(--danger);
+            font-weight: 700;
+            font-size: 13px;
+        }
+
+        .status.ok {
+            color: var(--success);
+        }
+
+        .footer {
+            display: flex;
+            gap: 10px;
+            padding: 10px 20px 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 11px;
+            border-radius: 12px;
+            border: 0;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .btn-save {
+            background: linear-gradient(130deg, var(--accent), var(--accent2));
+            color: #06251e;
+        }
+
+        .btn-close {
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--muted);
+        }
+
+        @media (max-width: 1100px) {
+            body {
+                justify-content: center;
+                padding-left: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="panel">
+        <div class="header">
+            <div class="title">Kirpykla</div>
+            <div class="sub">Keiskite plaukus ir barzda</div>
+        </div>
+
+        <div class="body">
+            <div class="row">
+                <div class="label">Plauku stilius</div>
+                <div class="ctrl">
+                    <button class="btn-step" onclick="step('hairStyle', -1)">&#9664;</button>
+                    <input class="input" id="hairStyle" type="number" value="0" min="0" oninput="onInput()">
+                    <button class="btn-step" onclick="step('hairStyle', 1)">&#9654;</button>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="label">Plauku spalva</div>
+                <div class="ctrl">
+                    <button class="btn-step" onclick="step('hairColor', -1)">&#9664;</button>
+                    <input class="input" id="hairColor" type="number" value="0" min="0" oninput="onInput()">
+                    <button class="btn-step" onclick="step('hairColor', 1)">&#9654;</button>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="label">Plauku atspalvis</div>
+                <div class="ctrl">
+                    <button class="btn-step" onclick="step('hairHighlight', -1)">&#9664;</button>
+                    <input class="input" id="hairHighlight" type="number" value="0" min="0" oninput="onInput()">
+                    <button class="btn-step" onclick="step('hairHighlight', 1)">&#9654;</button>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="label">Barzdos stilius (-1 = be barzdos)</div>
+                <div class="ctrl">
+                    <button class="btn-step" onclick="step('beardStyle', -1)">&#9664;</button>
+                    <input class="input" id="beardStyle" type="number" value="-1" min="-1" oninput="onInput()">
+                    <button class="btn-step" onclick="step('beardStyle', 1)">&#9654;</button>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="label">Barzdos intensyvumas (0-10)</div>
+                <div class="ctrl">
+                    <button class="btn-step" onclick="step('beardOpacity', -1)">&#9664;</button>
+                    <input class="input" id="beardOpacity" type="number" value="10" min="0" max="10"
+                        oninput="onInput()">
+                    <button class="btn-step" onclick="step('beardOpacity', 1)">&#9654;</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="status" id="status"></div>
+
+        <div class="footer">
+            <button class="btn btn-save" onclick="saveBarber()">Issaugoti ($50)</button>
+            <button class="btn btn-close" onclick="closeUI()">Uzdaryti</button>
+        </div>
+    </div>
+
+    <script>
+        let data = {
+            hairStyle: 0,
+            hairColor: 0,
+            hairHighlight: 0,
+            beardStyle: -1,
+            beardOpacity: 10,
+        };
+
+        let maxHairStyle = 0;
+        let maxHairColor = 0;
+        let maxBeardStyle = 0;
+        let previewTimer = null;
+
+        function clamp() {
+            data.hairStyle = Math.max(0, Math.min(maxHairStyle, parseInt(data.hairStyle) || 0));
+            data.hairColor = Math.max(0, Math.min(maxHairColor, parseInt(data.hairColor) || 0));
+            data.hairHighlight = Math.max(0, Math.min(maxHairColor, parseInt(data.hairHighlight) || 0));
+            data.beardStyle = Math.max(-1, Math.min(maxBeardStyle, parseInt(data.beardStyle)));
+            if (isNaN(data.beardStyle)) data.beardStyle = -1;
+            data.beardOpacity = Math.max(0, Math.min(10, parseInt(data.beardOpacity) || 0));
+        }
+
+        function syncInputs() {
+            document.getElementById('hairStyle').value = data.hairStyle;
+            document.getElementById('hairColor').value = data.hairColor;
+            document.getElementById('hairHighlight').value = data.hairHighlight;
+            document.getElementById('beardStyle').value = data.beardStyle;
+            document.getElementById('beardOpacity').value = data.beardOpacity;
+        }
+
+        function requestLimits() {
+            mp.trigger('requestBarberLimits');
+        }
+
+        function setBarberLimits(hairStyleLimit, hairColorLimit, beardStyleLimit) {
+            maxHairStyle = Math.max(0, parseInt(hairStyleLimit) || 0);
+            maxHairColor = Math.max(0, parseInt(hairColorLimit) || 0);
+            maxBeardStyle = Math.max(0, parseInt(beardStyleLimit) || 0);
+            clamp();
+            syncInputs();
+            triggerPreview();
+        }
+
+        function init(json) {
+            try {
+                data = JSON.parse(json) || data;
+            } catch (e) {
+                data = {
+                    hairStyle: 0,
+                    hairColor: 0,
+                    hairHighlight: 0,
+                    beardStyle: -1,
+                    beardOpacity: 10,
+                };
+            }
+
+            syncInputs();
+            requestLimits();
+        }
+
+        function step(field, delta) {
+            data[field] = (parseInt(data[field]) || 0) + delta;
+            clamp();
+            syncInputs();
+            triggerPreview();
+        }
+
+        function onInput() {
+            data.hairStyle = parseInt(document.getElementById('hairStyle').value);
+            data.hairColor = parseInt(document.getElementById('hairColor').value);
+            data.hairHighlight = parseInt(document.getElementById('hairHighlight').value);
+            data.beardStyle = parseInt(document.getElementById('beardStyle').value);
+            data.beardOpacity = parseInt(document.getElementById('beardOpacity').value);
+
+            clamp();
+            syncInputs();
+            triggerPreview();
+        }
+
+        function triggerPreview() {
+            clearTimeout(previewTimer);
+            previewTimer = setTimeout(() => {
+                mp.trigger('previewBarber', JSON.stringify(data));
+            }, 120);
+        }
+
+        function saveBarber() {
+            mp.trigger('saveBarber', JSON.stringify(data));
+        }
+
+        function closeUI() {
+            mp.trigger('closeBarberUI');
+        }
+
+        function setStatus(msg, ok) {
+            const status = document.getElementById('status');
+            status.textContent = msg || '';
+            status.className = 'status' + (ok ? ' ok' : '');
+        }
+
+        function barberSuccess(msg) { setStatus(msg, true); }
+        function barberError(msg) { setStatus(msg, false); }
+    </script>
+</body>
+
+</html>

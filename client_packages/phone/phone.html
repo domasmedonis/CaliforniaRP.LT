@@ -1,0 +1,2164 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <style>
+        /* ---- RESET ---- */
+        * {
+            box-sizing: border-box;
+        }
+
+        button {
+            font-family: inherit;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+            background: transparent;
+            overflow: hidden;
+            color: #1c1c1e;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ---- PHONE SHELL ---- */
+        #phone {
+            position: absolute;
+            bottom: 50px;
+            right: 50px;
+            width: 350px;
+            height: 700px;
+            background: #1c1c1e;
+            border-radius: 52px;
+            padding: 10px;
+            box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
+        }
+
+        /* ---- SCREEN ---- */
+        #screen {
+            width: 100%;
+            height: 100%;
+            background: #f2f2f7;
+            border-radius: 42px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ---- STATUS BAR ---- */
+        #statusBar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 22px 6px;
+            flex-shrink: 0;
+            font-size: 13px;
+            font-weight: 600;
+            color: #1c1c1e;
+        }
+
+        #statusBar .icons {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* ---- APP CONTAINERS ---- */
+        #homeScreen,
+        #driveApp,
+        #callApp,
+        #contactsApp,
+        #messagesApp,
+        #twitterApp,
+        #bankApp {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        #homeScreen.active,
+        #driveApp.active,
+        #callApp.active,
+        #contactsApp.active,
+        #messagesApp.active,
+        #twitterApp.active {
+            display: flex;
+        }
+
+        /* ---- APP HEADER (shared) ---- */
+        .app-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 16px 9px;
+            flex-shrink: 0;
+            border-bottom: 0.5px solid rgba(0, 0, 0, 0.12);
+        }
+
+        .app-header-back {
+            background: none;
+            border: none;
+            color: #007aff;
+            font-size: 15px;
+            font-weight: 500;
+            padding: 2px 0;
+            cursor: pointer;
+            min-width: 32px;
+        }
+
+        .app-header-title {
+            font-size: 17px;
+            font-weight: 600;
+            color: #1c1c1e;
+        }
+
+        .app-header-action {
+            background: none;
+            border: none;
+            color: #007aff;
+            font-size: 22px;
+            font-weight: 300;
+            padding: 0 2px;
+            cursor: pointer;
+        }
+
+        /* ---- HOME SCREEN ---- */
+        #homeScreen {
+            background: #f2f2f7;
+            padding: 10px 14px 16px;
+            overflow-y: auto;
+        }
+
+        #appGrid {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-top: 6px;
+        }
+
+        .appRow {
+            display: flex;
+            gap: 12px;
+        }
+
+        .appIcon {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 14px 6px 10px;
+            background: #fff;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: transform 0.12s, opacity 0.12s;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+        }
+
+        .appIcon:active {
+            transform: scale(0.94);
+            opacity: 0.85;
+        }
+
+        .appIcon img {
+            width: 42px;
+            height: 42px;
+            pointer-events: none;
+            border-radius: 12px;
+        }
+
+        .appIcon span {
+            display: block;
+            margin-top: 5px;
+            font-size: 11px;
+            font-weight: 500;
+            color: #1c1c1e;
+            text-align: center;
+        }
+
+        /* ---- CONTACTS ---- */
+        #contactsApp {
+            background: #f2f2f7;
+        }
+
+        #contactsList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 14px 0;
+            min-height: 0;
+        }
+
+        #addContactForm {
+            flex-shrink: 0;
+            padding: 10px 14px 14px;
+            background: #f2f2f7;
+            border-top: 0.5px solid rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        #contactNameInput,
+        #contactNumberInput {
+            width: 100%;
+            padding: 10px 12px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            background: #fff;
+            font-family: inherit;
+            color: #1c1c1e;
+        }
+
+        #contactNameInput:focus,
+        #contactNumberInput:focus {
+            border-color: #007aff;
+        }
+
+        #addContactBtn {
+            background: #007aff;
+            color: #fff;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+        }
+
+        #contactsBackBtn {
+            background: #fff;
+            color: #007aff;
+            padding: 9px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 500;
+            border: 0.5px solid #c6c6c8;
+            cursor: pointer;
+        }
+
+        .contactItem {
+            background: #fff;
+            border-radius: 14px;
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            box-shadow: 0 0.5px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .contactName {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1c1c1e;
+        }
+
+        .contactNumber {
+            font-size: 13px;
+            color: #8e8e93;
+            margin-top: 1px;
+        }
+
+        .contactActions {
+            display: flex;
+            gap: 6px;
+            margin-top: 9px;
+        }
+
+        .actionBtn {
+            flex: 1;
+            padding: 7px 2px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .callContactBtn {
+            background: #34c759;
+            color: #fff;
+        }
+
+        .messageContactBtn {
+            background: #007aff;
+            color: #fff;
+        }
+
+        .removeContactBtn {
+            background: #ff3b30;
+            color: #fff;
+        }
+
+        /* ---- MESSAGES ---- */
+        #messagesApp {
+            background: #f2f2f7;
+        }
+
+        #conversationsList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 14px 0;
+            min-height: 0;
+        }
+
+        .conversationItem {
+            background: #fff;
+            border-radius: 14px;
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            box-shadow: 0 0.5px 3px rgba(0, 0, 0, 0.06);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .conversationInfo {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .conversationName {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1c1c1e;
+        }
+
+        .conversationPreview {
+            font-size: 13px;
+            color: #8e8e93;
+            margin-top: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .conversationTime {
+            font-size: 11px;
+            color: #8e8e93;
+            flex-shrink: 0;
+            margin-left: 8px;
+        }
+
+        #conversationView {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+        }
+
+        #conversationView.active {
+            display: flex;
+        }
+
+        #messagesList {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px 14px;
+            min-height: 0;
+        }
+
+        #messageInputWrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px 12px;
+            flex-shrink: 0;
+            border-top: 0.5px solid rgba(0, 0, 0, 0.1);
+            background: #f2f2f7;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 9px 14px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 20px;
+            font-size: 15px;
+            outline: none;
+            background: #fff;
+            font-family: inherit;
+        }
+
+        #messageInput:focus {
+            border-color: #007aff;
+        }
+
+        #sendMessageBtn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: #007aff;
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        .messageItem {
+            max-width: 72%;
+            padding: 8px 12px;
+            border-radius: 18px;
+            margin-bottom: 4px;
+            font-size: 15px;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .messageItem.sent {
+            background: #007aff;
+            color: #fff;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+
+        .messageItem.received {
+            background: #e5e5ea;
+            color: #1c1c1e;
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+
+        .messageTime {
+            font-size: 10px;
+            opacity: 0.65;
+            margin-top: 2px;
+        }
+
+        #newMessageForm {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            padding: 10px 14px;
+            gap: 8px;
+        }
+
+        #newMessageForm.active {
+            display: flex;
+        }
+
+        #newMessageNumber {
+            flex-shrink: 0;
+            padding: 10px 12px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            background: #fff;
+            font-family: inherit;
+        }
+
+        #newMessageNumber:focus {
+            border-color: #007aff;
+        }
+
+        #newMessageText {
+            flex: 1;
+            padding: 10px 12px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 10px;
+            font-size: 15px;
+            outline: none;
+            resize: none;
+            background: #fff;
+            font-family: inherit;
+            min-height: 60px;
+        }
+
+        #newMessageBtn {
+            flex-shrink: 0;
+            background: #007aff;
+            color: #fff;
+            padding: 11px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+        }
+
+        #messagesFooter {
+            flex-shrink: 0;
+            padding: 8px 14px 12px;
+        }
+
+        #newConversationBtn,
+        #messagesBackBtn {
+            width: 100%;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+        }
+
+        #newConversationBtn {
+            background: #007aff;
+            color: #fff;
+            display: block;
+        }
+
+        #messagesBackBtn {
+            background: #fff;
+            color: #007aff;
+            display: none;
+            border: 0.5px solid #c6c6c8;
+        }
+
+        .marginMessages {
+            flex: 1;
+        }
+
+        /* ---- CALL APP ---- */
+        #callApp {
+            background: #fff;
+        }
+
+        #callContent {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px 20px 16px;
+            min-height: 0;
+        }
+
+        #phoneInputWrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+
+        #phoneInput {
+            font-size: 28px;
+            font-weight: 300;
+            text-align: center;
+            border: none;
+            background: transparent;
+            color: #1c1c1e;
+            width: 100%;
+            outline: none;
+        }
+
+        #deleteBtn {
+            background: none;
+            border: none;
+            font-size: 20px;
+            color: #007aff;
+            cursor: pointer;
+            padding: 6px;
+            flex-shrink: 0;
+        }
+
+        #keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+            justify-items: center;
+        }
+
+        .keypadBtn {
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            border: none;
+            background: #f2f2f7;
+            font-size: 22px;
+            font-weight: 400;
+            color: #1c1c1e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+
+        .keypadBtn:active {
+            background: #d1d1d6;
+        }
+
+        .keypadBtn.zero {
+            grid-column: 2;
+        }
+
+        .keypadBtn .letters {
+            font-size: 9px;
+            color: #8e8e93;
+            margin-top: 1px;
+            letter-spacing: 0.3px;
+        }
+
+        #callActions {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 24px;
+            margin-top: 4px;
+        }
+
+        #callBtn {
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            border: none;
+            background: #34c759 url('https://img.icons8.com/ios-filled/50/ffffff/phone.png') center/22px no-repeat;
+            cursor: pointer;
+        }
+
+        #callBackBtn {
+            background: #f2f2f7;
+            color: #007aff;
+            font-size: 14px;
+            font-weight: 500;
+            padding: 9px 18px;
+            border-radius: 20px;
+            border: none;
+            cursor: pointer;
+        }
+
+        /* ---- SKELBIMAI (TWITTER) ---- */
+        #twitterApp {
+            background: #f2f2f7;
+            padding: 0 12px 12px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .twitterHeader {
+            font-size: 18px;
+            font-weight: 700;
+            text-align: center;
+            padding: 10px 0 8px;
+            color: #1c1c1e;
+            border-bottom: 0.5px solid rgba(0, 0, 0, 0.1);
+            margin-bottom: 8px;
+            flex-shrink: 0;
+        }
+
+        .twitterStatus {
+            background: #edf4fb;
+            color: #2e5c7e;
+            border-radius: 10px;
+            padding: 6px 10px;
+            font-size: 12px;
+            text-align: center;
+            margin-bottom: 8px;
+            border: 0.5px solid #c5d9ee;
+            flex-shrink: 0;
+        }
+
+        .section-card {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07);
+            padding: 12px;
+        }
+
+        #twitterLoggedIn {
+            display: none;
+            flex-direction: column;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+            padding: 10px;
+        }
+
+        #twitterFeed {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 8px;
+            min-height: 0;
+            padding-right: 2px;
+        }
+
+        .tweetItem {
+            background: #fff;
+            border-radius: 14px;
+            padding: 10px 12px;
+            margin-bottom: 7px;
+            box-shadow: 0 0.5px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .tweetHandle {
+            font-weight: 700;
+            color: #007aff;
+            font-size: 14px;
+        }
+
+        .tweetTime {
+            font-size: 11px;
+            color: #8e8e93;
+        }
+
+        .tweetText {
+            margin: 6px 0 3px;
+            line-height: 1.4;
+            font-size: 14px;
+            color: #1c1c1e;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        #tweetComposer {
+            flex-shrink: 0;
+            background: #fff;
+            border-radius: 14px;
+            padding: 9px;
+            margin-bottom: 6px;
+            box-shadow: 0 0.5px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        #tweetInput {
+            width: 100%;
+            min-height: 56px;
+            max-height: 88px;
+            padding: 8px 11px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 10px;
+            font-size: 14px;
+            resize: none;
+            outline: none;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+
+        #postTweetBtn {
+            margin-top: 6px;
+            background: #34c759;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .primary-btn {
+            width: 100%;
+            background: #007aff;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 10px;
+            font-weight: 600;
+            margin-top: 7px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        .secondary-btn {
+            width: 100%;
+            background: #f2f2f7;
+            color: #007aff;
+            border: none;
+            border-radius: 10px;
+            padding: 8px;
+            margin-top: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            flex-shrink: 0;
+        }
+
+        #registerTwitterForm {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        #registerTwitterForm input {
+            width: 100%;
+            max-width: 240px;
+            padding: 11px;
+            font-size: 15px;
+            border: 0.5px solid #c6c6c8;
+            border-radius: 10px;
+            margin-bottom: 12px;
+            text-align: center;
+            outline: none;
+        }
+
+        /* ---- BANK APP ---- */
+        #bankApp {
+            background: #f2f2f7;
+            overflow-y: auto;
+        }
+
+        #bankApp .section-card {
+            position: relative;
+            z-index: 1;
+        }
+
+        #transactionsList {
+            max-height: 280px;
+            overflow-y: auto;
+            margin-top: 6px;
+        }
+
+        #sendBankBtn {
+            position: relative;
+            z-index: 2;
+        }
+
+        /* ---- INCOMING CALL ---- */
+        #incomingCallOverlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #1c1c1e 0%, #2c2c2e 100%);
+            color: #fff;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            border-radius: 42px;
+        }
+
+        #incomingCallOverlay.active {
+            display: flex;
+        }
+
+        #incomingCallText {
+            text-align: center;
+            padding: 0 30px;
+            margin-bottom: 60px;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        #callButtons {
+            display: flex;
+            gap: 50px;
+        }
+
+        .callActionBtn {
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            border: none;
+            background-size: 26px;
+            background-position: center;
+            background-repeat: no-repeat;
+            cursor: pointer;
+        }
+
+        #answerBtn {
+            background-color: #34c759;
+            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/phone.png');
+        }
+
+        #declineBtn {
+            background-color: #ff3b30;
+            background-image: url('https://img.icons8.com/ios-filled/50/ffffff/end-call.png');
+        }
+
+        /* ---- DRIVE APP ---- */
+        #driveApp {
+            background: #f2f2f7;
+        }
+
+        /* ---- SCROLLBARS ---- */
+        ::-webkit-scrollbar {
+            width: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c7c7cc;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="phone">
+        <div id="screen">
+            <!-- Status Bar -->
+            <div id="statusBar">
+                <span class="time">9:41</span>
+                <span id="phone-number" style="font-size: 12px;"></span>
+                <div class="icons">
+                    <span>📶</span>
+                    <span>🔋</span>
+                </div>
+            </div>
+
+            <!-- BANK APP -->
+            <div id="bankApp" style="display:none; flex-direction:column; flex:1; min-height:0; overflow-y:auto;">
+                <div class="app-header" style="flex-shrink:0;">
+                    <button class="app-header-back" onclick="backToHome()">← Atgal</button>
+                    <span class="app-header-title">Bankas</span>
+                    <span style="min-width:48px;"></span>
+                </div>
+                <div style="padding:16px;">
+                    <div style="text-align:center; margin-bottom:16px;">
+                        <div id="balanceDisplay"
+                            style="font-size:38px; font-weight:700; color:#34c759; margin:18px 0 4px;">
+                            $0
+                        </div>
+                        <small id="charNameDisplay" style="color:#8e8e93; font-size:13px;"></small>
+                    </div>
+
+                    <!-- Transfer Form -->
+                    <div class="section-card" style="margin-bottom:14px;">
+                        <h3 style="margin:0 0 10px 0; font-size:15px; font-weight:600;">Siųsti pinigus</h3>
+                        <input type="text" id="recipientInput" placeholder="Gavėjo vardas (char_name)"
+                            style="width:100%; padding:11px 12px; margin-bottom:8px; border-radius:10px; border:0.5px solid #c6c6c8; font-size:14px; box-sizing:border-box; outline:none; font-family:inherit;">
+                        <input type="number" id="amountInput" placeholder="Suma"
+                            style="width:100%; padding:11px 12px; margin-bottom:12px; border-radius:10px; border:0.5px solid #c6c6c8; font-size:14px; box-sizing:border-box; outline:none; font-family:inherit;">
+                        <button id="sendBankBtn" type="button" onclick="sendBankTransfer()"
+                            style="width:100%; background:#34c759; color:white; padding:12px; border:none; border-radius:12px; font-weight:600; font-size:15px; box-sizing:border-box;">
+                            Siųsti
+                        </button>
+                    </div>
+
+                    <!-- Recent Transactions -->
+                    <div class="section-card">
+                        <h3 style="margin:0 0 10px 0; font-size:15px; font-weight:600;">Paskutiniai pavedimai</h3>
+                        <div id="transactionsList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Home Screen -->
+            <div id="homeScreen" class="active">
+                <div id="appGrid">
+                    <div class="appRow">
+                        <div class="appIcon" data-app="drive" onclick="openApp('drive')">
+                            <img src="https://img.icons8.com/?size=100&id=fsoiqMUp0O4v&format=png&color=000000"
+                                alt="Drive">
+                            <span>Drive</span>
+                        </div>
+                        <div class="appIcon" data-app="messages" onclick="openApp('messages')">
+                            <img src="https://img.icons8.com/?size=100&id=81490&format=png&color=000000" alt="Messages">
+                            <span>Žinutės</span>
+                        </div>
+                        <div class="appIcon" data-app="contacts" onclick="openApp('contacts')">
+                            <img src="https://img.icons8.com/?size=100&id=cIe827NWAnMf&format=png&color=000000"
+                                alt="Kontaktai">
+                            <span>Kontaktai</span>
+                        </div>
+                    </div>
+                    <div class="appRow">
+
+                        <div class="appIcon" data-app="twitter" onclick="openApp('twitter')">
+                            <img src="https://img.icons8.com/?size=100&id=13963&format=png&color=000000" alt="Twitter">
+                            <span>Twitter</span>
+                        </div>
+                        <div class="appIcon" data-app="bank" onclick="openApp('bank')">
+                            <img src="https://img.icons8.com/?size=100&id=12985&format=png&color=000000" alt="Bank">
+                            <span>Bankas</span>
+                        </div>
+                        <div class="appIcon" data-app="call" onclick="openApp('call')">
+                            <img src="https://img.icons8.com/?size=100&id=ufkkYBXJSuPy&format=png&color=000000"
+                                alt="Skambinti">
+                            <span>Skambinti</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TWITTER APP - FIXED -->
+
+            <div id="twitterApp">
+                <div class="twitterHeader">Skelbimai</div>
+
+                <div id="twitterStatus" class="twitterStatus">Įkeliamas turinys...</div>
+
+                <!-- REGISTER SECTION -->
+                <div id="registerTwitterForm" style="display:none;" class="section-card">
+                    <h3>Registruokite savo @slapyvardį</h3>
+                    <input type="text" id="twitterHandleInput" placeholder="@slapyvardis" maxlength="20">
+                    <button class="primary-btn" onclick="registerTwitterHandle()">Registruoti @slapyvardį</button>
+                    <button class="secondary-btn" onclick="backToHome()">Atgal</button>
+                </div>
+
+                <!-- FEED + COMPOSER -->
+                <div id="twitterLoggedIn" style="display:none;" class="section-card">
+                    <div id="twitterFeed" class="feed"></div>
+
+                    <div id="tweetComposer" class="composer">
+                        <textarea id="tweetInput" maxlength="150"
+                            placeholder="Ką norite paskelbti? (pvz. Parduodu automobilį, verslo atidarymas...)"
+                            onfocus="mp.trigger('phoneTypingStarted')"
+                            onblur="mp.trigger('phoneTypingEnded')"></textarea>
+                        <div id="charCounter" style="text-align:right; font-size:12px; color:#666; margin-top:4px;">
+                            0/150</div>
+                        <button id="postTweetBtn" class="primary-btn" onclick="postTweet()">Skelbti</button>
+                    </div>
+
+                    <button class="secondary-btn" onclick="backToHome()">Atgal</button>
+                </div>
+            </div>
+
+
+            <div id="driveApp">
+                <div class="app-header">
+                    <button class="app-header-back" id="driveBackBtn" onclick="backToHome()">← Atgal</button>
+                    <span class="app-header-title">Drive</span>
+                    <span style="min-width:48px;"></span>
+                </div>
+                <div
+                    style="flex:1; padding:20px 20px; display:flex; flex-direction:column; justify-content:space-between; overflow-y:auto;">
+                    <div style="text-align:center; margin-top:20px;">
+                        <img src="https://i.imgur.com/UMp6tcH.png" alt="Drive"
+                            style="max-width:140px; margin-bottom:30px;">
+                        <button id="toggleDriverBtn" onclick="toggleDriver()"
+                            style="width:100%; padding:14px; margin:10px 0; background:#007aff; color:white; border:none; border-radius:12px; font-size:15px; font-weight:600;">
+                            Įjungti / Išjungti pavežėjo statusą
+                        </button>
+                        <button id="requestRideBtn" onclick="requestRide()"
+                            style="width:100%; padding:14px; margin:10px 0; background:#34c759; color:white; border:none; border-radius:12px; font-size:15px; font-weight:600;">
+                            Iškviesti pavežėją
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="callApp">
+                <div class="app-header">
+                    <button class="app-header-back" onclick="backToHome()">← Atgal</button>
+                    <span class="app-header-title">Skambinti</span>
+                    <span style="min-width:48px;"></span>
+                </div>
+                <div id="callContent">
+                    <div id="phoneInputWrapper">
+                        <input type="text" id="phoneInput" placeholder="" readonly>
+                        <button id="deleteBtn" onclick="deleteDigit()">⌫</button>
+                    </div>
+                    <div id="keypad">
+                        <button class="keypadBtn" onclick="addDigit('1')">
+                            1
+                            <span class="letters"></span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('2')">
+                            2
+                            <span class="letters">ABC</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('3')">
+                            3
+                            <span class="letters">DEF</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('4')">
+                            4
+                            <span class="letters">GHI</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('5')">
+                            5
+                            <span class="letters">JKL</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('6')">
+                            6
+                            <span class="letters">MNO</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('7')">
+                            7
+                            <span class="letters">PQRS</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('8')">
+                            8
+                            <span class="letters">TUV</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('9')">
+                            9
+                            <span class="letters">WXYZ</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('*')">
+                            *
+                            <span class="letters"></span>
+                        </button>
+                        <button class="keypadBtn zero" onclick="addDigit('0')">
+                            0
+                            <span class="letters">+</span>
+                        </button>
+                        <button class="keypadBtn" onclick="addDigit('#')">
+                            #
+                            <span class="letters"></span>
+                        </button>
+                    </div>
+                    <div id="callActions">
+                        <button id="callBtn" onclick="makeCall()"></button>
+                    </div>
+                </div>
+            </div>
+            <div id="contactsApp">
+                <div class="app-header">
+                    <button class="app-header-back" onclick="backToHome()">← Atgal</button>
+                    <span class="app-header-title">Kontaktai</span>
+                    <span style="min-width:48px;"></span>
+                </div>
+                <div id="contactsList"></div>
+                <div id="addContactForm">
+                    <input type="text" id="contactNameInput" placeholder="Vardas">
+                    <input type="text" id="contactNumberInput" placeholder="Numeris (6 skaitmenys)" maxlength="6">
+                    <button id="addContactBtn" onclick="addContact()">Pridėti kontaktą</button>
+                    <button id="contactsBackBtn" onclick="backToHome()">Atgal</button>
+                </div>
+            </div>
+            <div id="messagesApp">
+                <div class="app-header">
+                    <button class="app-header-back" onclick="handleBack()">← Atgal</button>
+                    <span class="app-header-title">Žinutės</span>
+                    <button id="newMsgHeaderBtn" class="app-header-action" onclick="showNewMessageForm()">＋</button>
+                </div>
+                <div id="conversationsList"></div>
+                <div id="conversationView">
+                    <div id="messagesList"></div>
+                    <div id="messageInputWrapper">
+                        <input type="text" id="messageInput" placeholder="Žinutė..."
+                            onfocus="mp.trigger('phoneTypingStarted')" onblur="mp.trigger('phoneTypingEnded')">
+                        <button id="sendMessageBtn" onclick="sendMessage()">➤</button>
+                    </div>
+                </div>
+                <div id="newMessageForm">
+                    <input type="tel" id="newMessageNumber" placeholder="Telefono numeris" inputmode="numeric"
+                        pattern="[0-9]*" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+                    <textarea id="newMessageText" placeholder="Žinutės tekstas"
+                        style="width:100%; min-height:80px; border:1px solid #c6c6c8; border-radius:10px; padding:10px; resize:vertical;"></textarea>
+                    <button id="newMessageBtn" onclick="sendNewMessage()">Siųsti žinutę</button>
+                </div>
+                <div id="messagesFooter">
+                    <button id="newConversationBtn" onclick="showNewMessageForm()" style="display:none;">Nauja
+                        žinutė</button>
+                    <button id="messagesBackBtn" class="marginMessages" onclick="handleBack()">Atgal</button>
+                </div>
+            </div>
+            <div id="incomingCallOverlay">
+                <div id="incomingCallText"></div>
+                <div id="callButtons">
+                    <button id="answerBtn" class="callActionBtn" onclick="answerCall()"></button>
+                    <button id="declineBtn" class="callActionBtn" onclick="declineCall()"></button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let isDriver = false;
+        let phoneNumber = '';
+
+        let contacts = [];
+        let myPhoneNumber = '';
+        let currentCallStatus = 'idle';
+        let currentCallPartner = '';
+
+        let currentConversationNumber = null;
+        let currentView = 'conversations';
+        let lastConversationNumber = null;
+        const messageCooldown = 1000;
+        let lastMessageTime = 0;
+
+        let myTwitterHandle = null;
+
+        function openApp(appName) {
+            console.log('[DEBUG] JS - openApp called with:', appName);
+            if (!appName) {
+                console.error('[DEBUG] JS - openApp missing appName');
+                return;
+            }
+
+            appName = String(appName).trim().toLowerCase();
+
+            const appIds = ['homeScreen', 'driveApp', 'callApp', 'contactsApp', 'messagesApp', 'twitterApp', 'bankApp', 'incomingCallOverlay'];
+            appIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.classList.remove('active');
+                    el.style.display = 'none';
+                }
+            });
+
+            if (appName === 'drive') {
+                mp.trigger('openDriveApp', isDriver);
+                const driveEl = document.getElementById('driveApp');
+                if (driveEl) {
+                    driveEl.classList.add('active');
+                    driveEl.style.display = 'flex';
+                }
+                updateDriveApp();
+                return;
+            }
+            if (appName === 'call') {
+                const callEl = document.getElementById('callApp');
+                if (callEl) {
+                    callEl.classList.add('active');
+                    callEl.style.display = 'flex';
+                }
+                const incoming = document.getElementById('incomingCallOverlay');
+                if (incoming) incoming.classList.remove('active');
+                phoneNumber = '';
+                const input = document.getElementById('phoneInput');
+                if (input) input.value = '';
+                updateDeleteButton();
+                return;
+            }
+            if (appName === 'contacts') {
+                const contactsEl = document.getElementById('contactsApp');
+                if (contactsEl) {
+                    contactsEl.classList.add('active');
+                    contactsEl.style.display = 'flex';
+                }
+                console.log('[DEBUG] JS - Opening Contacts app, rendering contacts');
+                renderContacts();
+                return;
+            }
+            if (appName === 'messages') {
+                const messagesEl = document.getElementById('messagesApp');
+                if (messagesEl) {
+                    messagesEl.classList.add('active');
+                    messagesEl.style.display = 'flex';
+                }
+                console.log('[DEBUG] JS - Opening Messages app');
+                if (lastConversationNumber && currentView === 'conversation') {
+                    openConversation(lastConversationNumber);
+                } else {
+                    showConversations();
+                }
+                mp.trigger('openMessagesApp');
+                return;
+            }
+            if (appName === 'twitter') {
+                const twitterEl = document.getElementById('twitterApp');
+                if (twitterEl) {
+                    twitterEl.classList.add('active');
+                    twitterEl.style.display = 'flex';
+                }
+                setTwitterStatus('Kraunama...', '#1e90ff');
+                const registerForm = document.getElementById('registerTwitterForm');
+                const loggedInSection = document.getElementById('twitterLoggedIn');
+                registerForm.style.display = 'none';
+                loggedInSection.style.display = 'none';
+                document.getElementById('tweetInput').value = '';
+                updateCharCounter();
+                mp.trigger('requestTwitterData');
+                console.log('[DEBUG] JS - Opened Twitter app - requested data from server');
+                setTimeout(() => {
+                    const statusText = document.getElementById('twitterStatus').innerText;
+                    if (statusText === 'Kraunama...') {
+                        setTwitterStatus('Nepavyko įkelti duomenų – pabandykite dar kartą.', '#e74c3c');
+                        registerForm.style.display = 'flex';
+                        loggedInSection.style.display = 'none';
+                    }
+                }, 3000);
+                return;
+            }
+            if (appName === 'bank') {
+                const bankEl = document.getElementById('bankApp');
+                if (bankEl) {
+                    bankEl.classList.add('active');
+                    bankEl.style.display = 'flex';
+                }
+                mp.trigger('openBankApp');
+                return;
+            }
+
+            console.warn('[DEBUG] JS - openApp unknown appName:', appName);
+            const homeEl = document.getElementById('homeScreen');
+            if (homeEl) {
+                homeEl.classList.add('active');
+                homeEl.style.display = 'flex';
+            }
+        }
+
+        function showPhoneToast(message) {
+            const existing = document.getElementById('phoneToast');
+            if (existing) existing.remove();
+
+            const toast = document.createElement('div');
+            toast.id = 'phoneToast';
+            toast.style.position = 'absolute';
+            toast.style.top = '20px';
+            toast.style.left = '50%';
+            toast.style.transform = 'translateX(-50%)';
+            toast.style.padding = '10px 16px';
+            toast.style.background = 'rgba(0,0,0,0.8)';
+            toast.style.color = '#fff';
+            toast.style.borderRadius = '12px';
+            toast.style.fontSize = '14px';
+            toast.style.zIndex = '999';
+            toast.style.maxWidth = '80%';
+            toast.style.textAlign = 'center';
+            toast.innerText = message;
+            document.getElementById('screen').appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        function initAppIcons() {
+            document.querySelectorAll('.appIcon[data-app]').forEach(icon => {
+                icon.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const app = icon.dataset.app ? icon.dataset.app.trim().toLowerCase() : '';
+                    console.log('[DEBUG] JS - app icon clicked:', app);
+                    openApp(app);
+                });
+            });
+        }
+
+        initAppIcons();
+
+        // If icons not found yet (CEF timing), retry after small delay
+        setTimeout(() => {
+            if (document.querySelectorAll('.appIcon[data-app]').length === 0) {
+                console.warn('[DEBUG] JS - app icons not found, retrying initAppIcons');
+                initAppIcons();
+            }
+        }, 100);
+
+        // Register server events
+        mp.events.add('updateMessagesUI', (number, messagesJson) => {
+            console.log(`[DEBUG] JS - Received updateMessagesUI for ${number} with data: ${messagesJson}`);
+            updateMessagesUI(number, messagesJson);
+        });
+
+        mp.events.add('updateConversationsUI', (conversationsJson) => {
+            console.log(`[DEBUG] JS - Received updateConversationsUI with data: ${conversationsJson}`);
+            updateConversationsUI(conversationsJson);
+        });
+
+
+
+
+        function showHomeScreen(driverStatus) {
+            isDriver = driverStatus;
+            document.getElementById('homeScreen').classList.add('active');
+            document.getElementById('driveApp').classList.remove('active');
+            document.getElementById('callApp').classList.remove('active');
+            document.getElementById('contactsApp').classList.remove('active');
+            document.getElementById('messagesApp').classList.remove('active');
+            document.getElementById('twitterApp').classList.remove('active');
+            document.getElementById('incomingCallOverlay').classList.remove('active');
+            document.getElementById('twitterStatus').innerText = 'Įkeliamas turinys...';
+        }
+
+        function hideAllApps() {
+            const appIds = ['homeScreen', 'driveApp', 'callApp', 'contactsApp', 'messagesApp', 'twitterApp', 'bankApp', 'incomingCallOverlay'];
+            appIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.classList.remove('active');
+                    el.style.display = 'none';
+                }
+            });
+        }
+
+        function backToHome() {
+            hideAllApps();
+            const home = document.getElementById('homeScreen');
+            if (home) {
+                home.classList.add('active');
+                home.style.display = 'flex';
+            }
+            currentConversationNumber = null;
+            currentView = 'conversations';
+            const messagesFooter = document.getElementById('messagesFooter');
+            if (messagesFooter) messagesFooter.classList.remove('conversation');
+            updateMessagesFooter();
+        }
+
+        function updateDriverStatus(status) {
+            isDriver = status;
+        }
+
+        function updateDriveApp() {
+            // Drive UI is simple — no dynamic elements to update
+        }
+
+        function openDriveApp(driverStatus) {
+            isDriver = driverStatus;
+            updateDriveApp();
+        }
+
+        function toggleDriver() {
+            mp.trigger('toggleDriverStatus');
+        }
+
+        function requestRide() {
+            mp.trigger('requestRide');
+        }
+
+        function addDigit(digit) {
+            phoneNumber += digit;
+            document.getElementById('phoneInput').value = phoneNumber;
+            updateDeleteButton();
+        }
+
+        function deleteDigit() {
+            phoneNumber = phoneNumber.slice(0, -1);
+            document.getElementById('phoneInput').value = phoneNumber;
+            updateDeleteButton();
+        }
+
+        function updateDeleteButton() {
+            const deleteBtn = document.getElementById('deleteBtn');
+            if (phoneNumber.length > 0) {
+                deleteBtn.classList.add('visible');
+            } else {
+                deleteBtn.classList.remove('visible');
+            }
+        }
+
+        function makeCall() {
+            if (phoneNumber.length > 0 && /^\d+$/.test(phoneNumber)) {
+                mp.trigger('callFromUI', phoneNumber);
+                // Removed 'Skambinama...' to avoid showing for invalid calls
+            } else {
+                document.getElementById('phoneInput').value = 'Įveskite tik skaitmenis';
+                setTimeout(() => {
+                    document.getElementById('phoneInput').value = phoneNumber;
+                }, 2000);
+            }
+        }
+
+        function updatePhoneNumber(number) {
+            document.getElementById('phone-number').innerText = number;
+        }
+
+        function incomingCall(callerName, callerNumber) {
+            document.getElementById('incomingCallOverlay').classList.add('active');
+            document.getElementById('homeScreen').classList.remove('active');
+            document.getElementById('callApp').classList.remove('active');
+            document.getElementById('contactsApp').classList.remove('active');
+            document.getElementById('driveApp').classList.remove('active');
+            document.getElementById('incomingCallText').innerText = `Gaunamas skambutis nuo ${callerName} (${callerNumber})`;
+            console.log(`[DEBUG] JS - Showing incoming call from ${callerName} (${callerNumber})`);
+        }
+
+        function callStarted(partnerName, partnerNumber) {
+            document.getElementById('incomingCallOverlay').classList.remove('active');
+            document.getElementById('callApp').classList.add('active');
+            document.getElementById('phoneInput').value = `Skambutyje su ${partnerName} (${partnerNumber})`;
+        }
+
+        function callEnded() {
+            document.getElementById('incomingCallOverlay').classList.remove('active');
+            document.getElementById('phoneInput').value = '';
+            phoneNumber = '';
+            updateDeleteButton();
+            backToHome();
+        }
+
+        function loadPhoneData(phoneNumber, callStatus, callPartner, contactsJson) {
+            myPhoneNumber = phoneNumber;
+            currentCallStatus = callStatus;
+            currentCallPartner = callPartner;
+            contacts = JSON.parse(contactsJson);
+            console.log(`[DEBUG] JS - Loaded phone data: phoneNumber=${phoneNumber}, callStatus=${callStatus}, callPartner=${callPartner}, contacts=`, contacts);
+            document.getElementById('phone-number').innerText = myPhoneNumber;
+
+            // Handle call status
+            if (currentCallStatus === 'active') {
+                callStarted(currentCallPartner, ''); // partnerNumber not needed for UI
+            } else if (currentCallStatus === 'ringing') {
+                // For ringing, the incomingCall should have been called separately
+            }
+
+            if (document.getElementById('callApp').classList.contains('active')) {
+                updateCallUI();
+            }
+        }
+
+        function updateContacts(contactsJson) {
+            contacts = JSON.parse(contactsJson);
+            console.log(`[DEBUG] JS - Updated contacts:`, contacts);
+            if (document.getElementById('contactsApp').classList.contains('active')) {
+                renderContacts();
+            } else {
+                console.log('[DEBUG] JS - Contacts updated but Contacts app not active');
+            }
+        }
+
+        function renderContacts() {
+            const contactsList = document.getElementById('contactsList');
+            console.log(`[DEBUG] JS - Rendering contacts:`, contacts);
+            contactsList.innerHTML = '';
+            if (!contacts || contacts.length === 0) {
+                contactsList.innerHTML = '<p style="text-align: center; color: #666;">Nėra kontaktų</p>';
+            } else {
+                contacts.forEach(contact => {
+                    const contactItem = document.createElement('div');
+                    contactItem.className = 'contactItem';
+                    contactItem.innerHTML = `
+                        <div class="contactInfo">
+                            <div class="contactName" style="font-weight:600;font-size:15px;">${contact.name}</div>
+                            <div class="contactNumber" style="color:#8e8e93;font-size:13px;margin-top:2px;">${contact.number}</div>
+                        </div>
+                        <div class="contactActions">
+                            <button class="actionBtn callContactBtn" onclick="callContact('${contact.number}')">📞 Skambinti</button>
+                            <button class="actionBtn messageContactBtn" onclick="messageContact('${contact.number}')">💬 Žinutė</button>
+                            <button class="actionBtn removeContactBtn" onclick="removeContact('${contact.number}')">🗑️ Ištrinti</button>
+                        </div>
+                    `;
+                    contactsList.appendChild(contactItem);
+                });
+            }
+        }
+
+        function addContact() {
+            const name = document.getElementById('contactNameInput').value.trim();
+            const number = document.getElementById('contactNumberInput').value.trim();
+            if (!name || !number || !/^\d+$/.test(number)) {
+                document.getElementById('contactNumberInput').value = 'Įveskite tik skaitmenis';
+                setTimeout(() => {
+                    document.getElementById('contactNumberInput').value = number;
+                }, 2000);
+                return;
+            }
+            mp.trigger('addContact', name, number);
+            document.getElementById('contactNameInput').value = '';
+            document.getElementById('contactNumberInput').value = '';
+        }
+
+        function removeContact(number) {
+            mp.trigger('removeContact', number);
+        }
+
+        function callContact(number) {
+            mp.trigger('callContact', number);
+            openApp('call');
+            document.getElementById('phoneInput').value = `Skambinama ${number}...`;
+        }
+
+        // Update existing messageContact to open Messages app
+        function messageContact(number) {
+            openApp('messages');
+            openConversation(number);
+        }
+        function updateCallUI() {
+            console.log(`[DEBUG] JS - Updating call UI: status=${currentCallStatus}, partner=${currentCallPartner}`);
+        }
+
+        function showIncomingCall(callerName, callerNumber) {
+            incomingCall(callerName, callerNumber);
+        }
+
+        function answerCall() {
+            mp.trigger('acceptCall');
+            console.log('[DEBUG] JS - Call accepted');
+        }
+
+        function declineCall() {
+            mp.trigger('declineCall');
+            console.log('[DEBUG] JS - Call declined');
+        }
+
+
+
+        // Helper function to update footer button visibility
+        function updateMessagesFooter() {
+            const newConversationBtn = document.getElementById('newConversationBtn');
+            const backBtn = document.getElementById('messagesBackBtn');
+            const headerPlusBtn = document.getElementById('newMsgHeaderBtn');
+
+            if (!newConversationBtn || !backBtn) return;
+
+            if (currentView === 'conversations') {
+                newConversationBtn.style.display = 'block';
+                backBtn.style.display = 'none';
+                if (headerPlusBtn) headerPlusBtn.style.display = 'block';
+            } else if (currentView === 'newMessage') {
+                newConversationBtn.style.display = 'none';
+                backBtn.style.display = 'block';
+                if (headerPlusBtn) headerPlusBtn.style.display = 'none';
+            } else {
+                newConversationBtn.style.display = 'none';
+                backBtn.style.display = 'block';
+                if (headerPlusBtn) headerPlusBtn.style.display = 'block';
+            }
+        }
+
+
+        function showConversations() {
+            console.log('[DEBUG] JS - Showing conversations list');
+            currentView = 'conversations';
+            const convList = document.getElementById('conversationsList');
+            const convoView = document.getElementById('conversationView');
+            const newMsgForm = document.getElementById('newMessageForm');
+            if (convList) convList.style.display = 'block';
+            if (convoView) convoView.classList.remove('active');
+            if (newMsgForm) newMsgForm.classList.remove('active');
+            const messagesFooter = document.getElementById('messagesFooter');
+            if (messagesFooter) messagesFooter.classList.remove('conversation');
+            currentConversationNumber = null;
+            updateMessagesFooter();
+            mp.trigger('openMessagesApp');
+        }
+
+        function showNewMessageForm() {
+            currentView = 'newMessage';
+            document.getElementById('conversationsList').style.display = 'none';
+            document.getElementById('conversationView').classList.remove('active');
+            document.getElementById('newMessageForm').classList.add('active');
+            document.getElementById('messagesFooter').classList.remove('conversation');
+            document.getElementById('newMessageNumber').value = '';
+            document.getElementById('newMessageNumber').placeholder = 'Telefono numeris';
+            updateMessagesFooter();
+        }
+
+        function handleBack() {
+            if (currentView === 'conversation' || currentView === 'newMessage') {
+                showConversations();
+            } else {
+                backToHome();
+            }
+        }
+
+        function sendNewMessage() {
+            const numberInput = document.getElementById('newMessageNumber');
+            const textInput = document.getElementById('newMessageText');
+            if (!numberInput || !textInput) return;
+            const number = numberInput.value.trim();
+            const text = textInput.value.trim();
+            if (!number || !/^\d+$/.test(number)) {
+                numberInput.value = '';
+                numberInput.placeholder = 'Įveskite tik skaitmenis';
+                setTimeout(() => numberInput.placeholder = 'Telefono numeris', 2000);
+                return;
+            }
+            if (!text) {
+                textInput.placeholder = 'Įveskite žinutę';
+                return;
+            }
+
+            currentConversationNumber = number;
+            lastConversationNumber = number;
+            currentView = 'conversation';
+            const convList = document.getElementById('conversationsList');
+            const newMsgForm = document.getElementById('newMessageForm');
+            const convoView = document.getElementById('conversationView');
+            if (convList) convList.style.display = 'none';
+            if (newMsgForm) newMsgForm.classList.remove('active');
+            if (convoView) convoView.classList.add('active');
+            const msgsFooter = document.getElementById('messagesFooter');
+            if (msgsFooter) msgsFooter.classList.add('conversation');
+            updateMessagesFooter();
+
+            mp.trigger('openConversation', number);
+            mp.trigger('sendMessage', number, text);
+
+            numberInput.value = '';
+            textInput.value = '';
+        }
+
+        function startNewConversation() {
+            const number = document.getElementById('newMessageNumber').value.trim();
+            if (!number || !/^\d+$/.test(number)) {
+                document.getElementById('newMessageNumber').value = '';
+                document.getElementById('newMessageNumber').placeholder = 'Įveskite tik skaitmenis';
+                setTimeout(() => document.getElementById('newMessageNumber').placeholder = 'Telefono numeris', 2000);
+                return;
+            }
+            console.log(`[DEBUG] JS - Starting conversation with ${number}`);
+            currentConversationNumber = number;
+            lastConversationNumber = number;
+            currentView = 'conversation';
+            const convList = document.getElementById('conversationsList');
+            const newMsgForm = document.getElementById('newMessageForm');
+            const convoView = document.getElementById('conversationView');
+            if (convList) convList.style.display = 'none';
+            if (newMsgForm) newMsgForm.classList.remove('active');
+            if (convoView) convoView.classList.add('active');
+            const msgsFooter = document.getElementById('messagesFooter');
+            if (msgsFooter) msgsFooter.classList.add('conversation');
+            updateMessagesFooter();
+
+            mp.trigger('openConversation', number);
+        }
+
+        function updateConversationsUI(conversationsJson) {
+            console.log('[DEBUG] JS - Received updateConversationsUI');
+            const conversations = JSON.parse(conversationsJson);
+            const conversationsList = document.getElementById('conversationsList');
+            conversationsList.innerHTML = conversations.length === 0 ? '<p style="text-align: center; color: #666;">Nėra pokalbių</p>' : '';
+            conversations.forEach(conv => {
+                const item = document.createElement('div');
+                item.className = 'conversationItem';
+                if (!conv.isRead && conv.number !== myPhoneNumber) item.classList.add('unread');
+                const date = new Date(conv.timestamp);
+                const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                item.innerHTML = `
+                    <div class="conversationInfo" onclick="openConversation('${conv.number}')">
+                        <div class="conversationName">${conv.contactName}</div>
+                        <div class="conversationPreview">${conv.lastMessage}</div>
+                    </div>
+                    <div class="conversationTime">${timeString}</div>
+                `;
+                conversationsList.appendChild(item);
+            });
+        }
+
+        function openConversation(number) {
+            console.log(`[DEBUG] JS - Opening conversation with ${number}`);
+            currentConversationNumber = number;
+            lastConversationNumber = number;
+            currentView = 'conversation';
+            document.getElementById('conversationsList').style.display = 'none';
+            document.getElementById('newMessageForm').classList.remove('active');
+            document.getElementById('conversationView').classList.add('active');
+            document.getElementById('messagesFooter').classList.add('conversation');
+            document.getElementById('messageInput').focus();
+            updateMessagesFooter();
+            mp.trigger('openConversation', number);
+        }
+
+        function updateMessagesUI(number, messagesJson) {
+            console.log(`[DEBUG] JS - Updating messages for ${number}`);
+            try {
+                const messages = JSON.parse(messagesJson);
+                currentConversationNumber = number;
+                lastConversationNumber = number;
+                currentView = 'conversation';
+                const messagesList = document.getElementById('messagesList');
+                messagesList.innerHTML = '';
+                messages.forEach(msg => {
+                    const item = document.createElement('div');
+                    item.className = `messageItem ${msg.sender === myPhoneNumber ? 'sent' : 'received'}`;
+                    const date = new Date(msg.timestamp);
+                    const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    item.innerHTML = `<div>${msg.text}</div><div class="messageTime">${timeString}</div>`;
+                    messagesList.appendChild(item);
+                });
+                messagesList.scrollTop = messagesList.scrollHeight;
+                document.getElementById('conversationView').classList.add('active');
+                document.getElementById('messagesFooter').classList.add('conversation');
+
+                if (!document.getElementById('messagesApp').classList.contains('active')) {
+                    // if we are not currently in messages, show a toast
+                    showPhoneToast('Nauja žinutė');
+                }
+
+            } catch (e) {
+                console.error('[ERROR] JS - Failed to parse messages JSON:', e, messagesJson);
+            }
+        }
+
+        function updateConversationsUI(conversationsJson) {
+            console.log('[DEBUG] JS - Updating conversations list');
+            try {
+                const conversations = JSON.parse(conversationsJson);
+                const conversationsList = document.getElementById('conversationsList');
+                conversationsList.innerHTML = conversations.length === 0 ? '<p style="text-align: center; color: #666;">Nėra pokalbių</p>' : '';
+                conversations.forEach(conv => {
+                    const item = document.createElement('div');
+                    item.className = 'conversationItem';
+                    if (!conv.isRead && conv.number !== myPhoneNumber) item.classList.add('unread');
+                    const date = new Date(conv.timestamp);
+                    const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    item.innerHTML = `
+                        <div class="conversationInfo" onclick="openConversation('${conv.number}')">
+                            <div class="conversationName">${conv.contactName}</div>
+                            <div class="conversationPreview">${conv.lastMessage}</div>
+                        </div>
+                        <div class="conversationTime">${timeString}</div>
+                    `;
+                    conversationsList.appendChild(item);
+                });
+            } catch (e) {
+                console.error('[ERROR] JS - Failed to parse conversations JSON:', e, conversationsJson);
+            }
+        }
+
+        function sendMessage() {
+            const now = Date.now();
+            if (now - lastMessageTime < messageCooldown) {
+                document.getElementById('messageInput').placeholder = 'Palaukite prieš siunčiant kitą žinutę';
+                setTimeout(() => document.getElementById('messageInput').placeholder = 'Žinutė...', 2000);
+                return;
+            }
+
+            const messageInput = document.getElementById('messageInput');
+            const messageText = messageInput.value.trim();
+            if (!messageText || !currentConversationNumber) {
+                console.log(`[DEBUG] JS - Send failed: text=${messageText}, conversation=${currentConversationNumber}`);
+                return;
+            }
+
+            console.log(`[DEBUG] JS - Sending message to ${currentConversationNumber}: "${messageText}"`);
+            lastMessageTime = now;
+            mp.trigger('sendMessage', currentConversationNumber, messageText);
+            messageInput.value = '';
+        }
+
+        function messageContact(number) {
+            openApp('messages');
+            openConversation(number);
+        }
+
+
+
+        // ==================== NEW: MESSAGE NOTIFICATION ====================
+
+        function showMessageNotification(senderNumber, senderName, messageText) {
+            // Create a nice floating notification on the phone screen
+            let notif = document.createElement('div');
+            notif.style.position = 'absolute';
+            notif.style.top = '60px';
+            notif.style.left = '50%';
+            notif.style.transform = 'translateX(-50%)';
+            notif.style.background = 'rgba(0, 122, 255, 0.95)';
+            notif.style.color = 'white';
+            notif.style.padding = '12px 18px';
+            notif.style.borderRadius = '12px';
+            notif.style.fontSize = '15px';
+            notif.style.maxWidth = '280px';
+            notif.style.textAlign = 'center';
+            notif.style.boxShadow = '0 4px 15px rgba(0,0,0,0.6)';
+            notif.style.zIndex = '100';
+            notif.style.opacity = '0';
+            notif.style.transition = 'all 0.3s ease';
+
+            const displayName = senderName || senderNumber;
+            notif.innerHTML = `
+        <strong>Nauja žinutė</strong><br>
+        <span style="opacity:0.9">${displayName}</span><br>
+        <small>${messageText.substring(0, 60)}${messageText.length > 60 ? '...' : ''}</small>
+    `;
+
+            document.getElementById('screen').appendChild(notif);
+
+            // Fade in
+            setTimeout(() => {
+                notif.style.opacity = '1';
+                notif.style.top = '80px';
+            }, 10);
+
+            // Auto remove after 4 seconds
+            setTimeout(() => {
+                notif.style.opacity = '0';
+                notif.style.top = '60px';
+                setTimeout(() => notif.remove(), 300);
+            }, 4000);
+        }
+
+        // ==================== IMPROVED INCOMING CALL ====================
+
+        // Make sure this replaces any old incomingCall function if conflicting
+        function incomingCall(callerName, callerNumber) {
+            console.log(`[PHONE] Showing incoming call UI: ${callerName} (${callerNumber})`);
+
+            // Hide all other screens
+            document.getElementById('homeScreen').classList.remove('active');
+            document.getElementById('driveApp').classList.remove('active');
+            document.getElementById('callApp').classList.remove('active');
+            document.getElementById('contactsApp').classList.remove('active');
+            document.getElementById('messagesApp').classList.remove('active');
+
+            // Show incoming call overlay
+            const overlay = document.getElementById('incomingCallOverlay');
+            overlay.classList.add('active');
+
+            document.getElementById('incomingCallText').innerHTML = `
+        Gaunamas skambutis<br>
+        <strong>${callerName}</strong><br>
+        <span style="font-size:18px; opacity:0.9">${callerNumber}</span>
+    `;
+        }
+
+        // Optional: Add vibration effect (visual)
+        setInterval(() => {
+            const overlay = document.getElementById('incomingCallOverlay');
+            if (overlay.classList.contains('active')) {
+                overlay.style.transform = 'scale(1.02)';
+                setTimeout(() => {
+                    if (overlay.classList.contains('active')) overlay.style.transform = 'scale(1)';
+                }, 150);
+            }
+        }, 800);
+
+
+        function loadTwitterData(handle, tweetsJson) {
+            let parsedTweets = [];
+            try {
+                parsedTweets = JSON.parse(tweetsJson || '[]');
+            } catch (e) {
+                console.error('[DEBUG] loadTwitterData: fail parse tweetsJson', e, tweetsJson);
+            }
+            console.log(`[DEBUG] loadTwitterData received - handle: "${handle}", tweets count: ${parsedTweets.length}`);
+
+            myTwitterHandle = handle;
+
+            const status = document.getElementById('twitterStatus');
+            const registerForm = document.getElementById('registerTwitterForm');
+            const loggedInSection = document.getElementById('twitterLoggedIn');
+
+            if (!handle || handle === '') {
+                status.innerText = '';
+                registerForm.style.display = 'flex';
+                loggedInSection.style.display = 'none';
+            } else {
+                status.innerText = `Prisijungęs kaip @${handle}.`;
+                registerForm.style.display = 'none';
+                loggedInSection.style.display = 'flex';
+                renderTwitterFeed(JSON.stringify(parsedTweets));
+            }
+        }
+
+        function setTwitterStatus(text, color = '#2c3e50') {
+            const status = document.getElementById('twitterStatus');
+            if (status) {
+                status.innerText = text;
+                status.style.color = color;
+            }
+        }
+
+        function renderTwitterFeed(tweetsJson) {
+            const feed = document.getElementById('twitterFeed');
+            const tweets = JSON.parse(tweetsJson);
+
+            feed.innerHTML = tweets.length === 0
+                ? '<p style="text-align:center;color:#666;padding:20px;">Kol kas nėra skelbimų...</p>'
+                : '';
+
+            tweets.forEach(tweet => {
+                const div = document.createElement('div');
+                div.className = 'tweetItem';
+                div.innerHTML = `
+                    <span class="tweetHandle">@${tweet.handle}</span>
+                    <span class="tweetTime">${new Date(tweet.timestamp).toLocaleString('lt-LT')}</span>
+                    <div class="tweetText">${tweet.content}</div>
+                `;
+                feed.appendChild(div);
+            });
+        }
+
+        function registerTwitterHandle() {
+            const handle = document.getElementById('twitterHandleInput').value.trim().replace('@', '');
+            if (!handle || handle.length < 3) {
+                alert('Slapyvardis turi būti bent 3 simboliai!');
+                return;
+            }
+            mp.trigger('registerTwitterHandle', handle);
+        }
+
+        function postTweet() {
+            const text = document.getElementById('tweetInput').value.trim();
+            if (!text) return;
+            if (text.length > 150) {
+                alert('Skelbimas per ilgas! (max 150 simbolių)');
+                return;
+            }
+            mp.trigger('postTweet', text);
+            document.getElementById('tweetInput').value = '';
+            updateCharCounter();
+        }
+
+        function updateCharCounter() {
+            const input = document.getElementById('tweetInput');
+            const counter = document.getElementById('charCounter');
+            const length = input.value.length;
+            counter.textContent = `${length}/150`;
+            counter.style.color = length > 150 ? '#e74c3c' : '#666';
+            autoFitTweetInput();
+        }
+
+        function autoFitTweetInput() {
+            const input = document.getElementById('tweetInput');
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 200) + 'px';
+        }
+
+        // ==================== BANK APP JS ====================
+        let bankTransferPending = false;
+        let bankTransferTimeout = null;
+
+        function renderTransactions(json) {
+            const list = document.getElementById('transactionsList');
+            const tx = JSON.parse(json || '[]');
+            if (tx.length === 0) {
+                list.innerHTML = '<p style="text-align:center; color:#666; padding:20px;">Nėra pavedimų</p>';
+                return;
+            }
+
+            const typeLabelMap = {
+                withdraw: 'Išsigryninta',
+                deposit: 'Įnešta',
+                transfer_in: 'Gauta',
+                transfer_out: 'Išsiųsta'
+            };
+
+            const typeColorMap = {
+                withdraw: '#e74c3c',
+                transfer_out: '#e74c3c',
+                deposit: '#2ecc71',
+                transfer_in: '#2ecc71'
+            };
+
+            const typeSignMap = {
+                withdraw: '-',
+                transfer_out: '-',
+                deposit: '+',
+                transfer_in: '+'
+            };
+
+            let html = '';
+            tx.forEach(t => {
+                const type = t.type || 'unknown';
+                const label = typeLabelMap[type] || 'Nežinoma';
+                const color = typeColorMap[type] || '#999';
+                const sign = typeSignMap[type] || '';
+
+                html += `
+            <div style="display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid #eee;">
+                <div>
+                    <strong>${label}</strong><br>
+                    <small>${new Date(t.date).toLocaleString('lt-LT')}</small>
+                </div>
+                <div style="text-align:right; color:${color}; font-weight:600;">
+                    ${sign}$${t.amount}
+                </div>
+            </div>`;
+            });
+            list.innerHTML = html;
+        }
+
+        function sendBankTransfer() {
+            if (bankTransferPending) return;
+
+            const recipientInput = document.getElementById('recipientInput');
+            const amountInput = document.getElementById('amountInput');
+            const recipient = recipientInput.value.trim();
+            const amount = amountInput.value.trim();
+            const parsedAmount = parseInt(amount, 10);
+
+            if (!recipient || !amount) {
+                showBankNotification('error', 'Įveskite gavėją ir sumą.');
+                if (!recipient) {
+                    recipientInput.focus();
+                } else {
+                    amountInput.focus();
+                }
+                return;
+            }
+
+            if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+                showBankNotification('error', 'Įveskite teisingą sumą.');
+                amountInput.focus();
+                amountInput.select();
+                return;
+            }
+
+            console.log('[BANK] sendBankTransfer start', recipient, parsedAmount);
+
+            const sendBtn = document.getElementById('sendBankBtn');
+            if (sendBtn) {
+                sendBtn.disabled = true;
+                sendBtn.innerText = 'Siunčiama...';
+            }
+            recipientInput.disabled = true;
+            amountInput.disabled = true;
+
+            bankTransferPending = true;
+            mp.trigger('bankTransfer', recipient, String(parsedAmount));
+
+            bankTransferTimeout = setTimeout(() => {
+                if (bankTransferPending) {
+                    console.warn('[BANK] bankTransfer timeout, resetting state');
+                    showBankNotification('error', 'Serveris neatsakė laiku. Bandykite dar kartą.');
+                    resetBankTransferForm();
+                    bankTransferPending = false;
+                }
+            }, 6000);
+        }
+
+        function addTransactionToHistory(type, amount, date) {
+            const list = document.getElementById('transactionsList');
+            const now = date ? new Date(date) : new Date();
+            const typeLabelMap = {
+                withdraw: 'Išsigryninta',
+                deposit: 'Įnešta',
+                transfer_in: 'Gauta',
+                transfer_out: 'Išsiųsta'
+            };
+            const typeColorMap = {
+                withdraw: '#e74c3c',
+                transfer_out: '#e74c3c',
+                deposit: '#2ecc71',
+                transfer_in: '#2ecc71'
+            };
+            const typeSignMap = {
+                withdraw: '-',
+                transfer_out: '-',
+                deposit: '+',
+                transfer_in: '+'
+            };
+
+            const label = typeLabelMap[type] || 'Nežinoma';
+            const color = typeColorMap[type] || '#999';
+            const sign = typeSignMap[type] || '';
+
+            const item = document.createElement('div');
+            item.style.cssText = 'display:flex; justify-content:space-between; padding:12px 0; border-bottom:1px solid #eee;';
+            item.innerHTML = `
+                <div>
+                    <strong>${label}</strong><br>
+                    <small>${now.toLocaleString('lt-LT')}</small>
+                </div>
+                <div style="text-align:right; color:${color}; font-weight:600;">
+                    ${sign}$${amount}
+                </div>
+            `;
+
+            // insert newest at top
+            if (list.firstChild) {
+                list.insertBefore(item, list.firstChild);
+            } else {
+                list.appendChild(item);
+            }
+        }
+
+        function showBankNotification(type, text) {
+            // Simple floating notification
+            const notif = document.createElement('div');
+            notif.style.cssText = `position:absolute; top:80px; left:50%; transform:translateX(-50%); padding:14px 24px; border-radius:12px; color:white; font-weight:600; z-index:999;`;
+            notif.style.background = type === 'success' ? '#34c759' : '#ff3b30';
+            notif.textContent = text;
+            document.getElementById('screen').appendChild(notif);
+            setTimeout(() => notif.remove(), 3500);
+        }
+
+        function resetBankTransferForm() {
+            const recipientInput = document.getElementById('recipientInput');
+            const amountInput = document.getElementById('amountInput');
+            const sendBtn = document.getElementById('sendBankBtn');
+
+            bankTransferPending = false;
+            if (bankTransferTimeout) {
+                clearTimeout(bankTransferTimeout);
+                bankTransferTimeout = null;
+            }
+            if (recipientInput) recipientInput.disabled = false;
+            if (amountInput) amountInput.disabled = false;
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.innerText = 'Siųsti';
+            }
+        }
+
+        // Initialize character counter for tweet input
+        document.getElementById('tweetInput').addEventListener('input', updateCharCounter);
+
+    </script>
+</body>
+
+</html>

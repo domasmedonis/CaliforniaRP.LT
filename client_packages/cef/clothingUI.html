@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="lt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drabużių Parduotuvė</title>
+    <style>
+        :root {
+            --bg: #131b2f;
+            --surface: #1b243a;
+            --surface2: #22304d;
+            --border: rgba(255, 255, 255, 0.08);
+            --accent: #27d6ad;
+            --accent2: #15b18c;
+            --text: #e7edf9;
+            --muted: #8fa4c8;
+            --danger: #f05d65;
+            --success: #6df0c9;
+            --radius: 14px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: transparent;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-left: clamp(16px, 3vw, 48px);
+            font-family: "Bahnschrift", "Segoe UI", Tahoma, sans-serif;
+            color: var(--text);
+        }
+
+        .panel {
+            width: 540px;
+            background: var(--bg);
+            border-radius: 22px;
+            border: 1px solid var(--border);
+            box-shadow: 0 28px 80px rgba(0, 0, 0, 0.7);
+            overflow: hidden;
+            animation: pop 320ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+        }
+
+        @media (max-width: 1100px) {
+            body {
+                justify-content: center;
+                padding-left: 0;
+            }
+        }
+
+        @keyframes pop {
+            from {
+                opacity: 0;
+                transform: scale(0.92) translateY(16px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        /* ── HEADER ─────────────────────────────── */
+        .header {
+            background: linear-gradient(130deg, #21d8af 0%, #32b3f0 130%);
+            padding: 20px 22px 18px;
+            color: #07261f;
+        }
+
+        .header-title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .header-sub {
+            margin-top: 3px;
+            font-size: 13px;
+            opacity: 0.72;
+        }
+
+        /* ── CATEGORY TABS ────────────────────────── */
+        .tab-bar {
+            display: flex;
+            gap: 6px;
+            padding: 14px 16px 0;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+
+        .tab-bar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .tab {
+            flex-shrink: 0;
+            padding: 7px 13px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--muted);
+            cursor: pointer;
+            transition: background 160ms, color 160ms, border-color 160ms;
+            white-space: nowrap;
+        }
+
+        .tab:hover {
+            background: var(--surface2);
+            color: var(--text);
+        }
+
+        .tab.active {
+            background: var(--accent);
+            color: #06251e;
+            border-color: var(--accent);
+        }
+
+        /* ── CONTROLS ─────────────────────────────── */
+        .body {
+            padding: 18px 20px 0;
+        }
+
+        .comp-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 18px;
+        }
+
+        .comp-id {
+            font-size: 12px;
+            color: var(--muted);
+            font-weight: 400;
+            margin-left: 6px;
+        }
+
+        .control-row {
+            margin-bottom: 16px;
+        }
+
+        .control-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .spinner {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .spin-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text);
+            font-size: 18px;
+            cursor: pointer;
+            transition: background 140ms;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            user-select: none;
+        }
+
+        .spin-btn:hover {
+            background: var(--accent);
+            color: #06251e;
+        }
+
+        .spin-input {
+            flex: 1;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text);
+            font-size: 18px;
+            font-family: inherit;
+            font-weight: 700;
+            text-align: center;
+            padding: 8px 4px;
+        }
+
+        .spin-input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(39, 214, 173, 0.18);
+        }
+
+        /* remove number arrows */
+        .spin-input::-webkit-outer-spin-button,
+        .spin-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+        }
+
+        /* ── DIVIDER ─────────────────────────────── */
+        .divider {
+            height: 1px;
+            background: var(--border);
+            margin: 16px 0;
+        }
+
+        /* ── STATUS ──────────────────────────────── */
+        .status {
+            min-height: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--danger);
+            padding: 0 20px;
+        }
+
+        .status.ok {
+            color: var(--success);
+        }
+
+        /* ── FOOTER BUTTONS ─────────────────────── */
+        .footer {
+            display: flex;
+            gap: 10px;
+            padding: 14px 20px 20px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px;
+            border: 0;
+            border-radius: var(--radius);
+            font-size: 15px;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: filter 160ms, transform 160ms;
+        }
+
+        .btn:hover {
+            filter: brightness(1.12);
+            transform: translateY(-1px);
+        }
+
+        .btn-save {
+            background: linear-gradient(130deg, var(--accent), var(--accent2));
+            color: #06251e;
+        }
+
+        .btn-close {
+            background: var(--surface2);
+            color: var(--muted);
+            border: 1px solid var(--border);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="panel">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-title">Drabuzių Parduotuve</div>
+            <div class="header-sub">Pasirinkite kategorija ir keiskite savo stiliu</div>
+        </div>
+
+        <!-- Category Tabs -->
+        <div class="tab-bar" id="tabBar"></div>
+
+        <!-- Controls -->
+        <div class="body">
+            <div class="comp-title" id="compTitle">
+                Virsutinis drabuzis <span class="comp-id" id="compId">(Komponentas: 11)</span>
+            </div>
+
+            <div class="control-row">
+                <div class="control-label">Dizainas</div>
+                <div class="spinner">
+                    <button class="spin-btn" onclick="step('drawable', -1)">&#9664;</button>
+                    <input class="spin-input" type="number" id="drawable" value="0" min="0" max="999"
+                        oninput="onSpinInput()">
+                    <button class="spin-btn" onclick="step('drawable', 1)">&#9654;</button>
+                </div>
+            </div>
+
+            <div class="control-row">
+                <div class="control-label">Faktura</div>
+                <div class="spinner">
+                    <button class="spin-btn" onclick="step('texture', -1)">&#9664;</button>
+                    <input class="spin-input" type="number" id="texture" value="0" min="0" max="99"
+                        oninput="onSpinInput()">
+                    <button class="spin-btn" onclick="step('texture', 1)">&#9654;</button>
+                </div>
+            </div>
+
+            <div class="divider"></div>
+        </div>
+
+        <!-- Status -->
+        <div class="status" id="status"></div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <button class="btn btn-save" onclick="saveClothes()">Issaugoti ($100)</button>
+            <button class="btn btn-close" onclick="closeUI()">Uzdaryti</button>
+        </div>
+    </div>
+
+    <script>
+        const COMPONENTS = [
+            { id: 11, name: 'Virsutinis drabuzis' },
+            { id: 3, name: 'Torso' },
+            { id: 8, name: 'Marskineliai' },
+            { id: 4, name: 'Kelnes' },
+            { id: 6, name: 'Batai' },
+            { id: 1, name: 'Kauke' },
+            { id: 7, name: 'Aksesuaras' },
+            { id: 5, name: 'Kuprine' },
+            { id: 9, name: 'Sarvai' },
+            { id: 10, name: 'Lipdukai' },
+        ];
+
+        // clothes[compId] = { d: drawable, t: texture }
+        let clothes = {};
+        let activeIdx = 0;
+        let previewTimer = null;
+        let maxDrawable = 0;
+        let maxTexture = 0;
+        let lastLimitDrawable = -1;
+
+        /* ─── INIT ─────────────────────────────── */
+        function init(clothesJson) {
+            try { clothes = JSON.parse(clothesJson) || {}; }
+            catch { clothes = {}; }
+
+            buildTabs();
+            selectTab(0);
+        }
+
+        function buildTabs() {
+            const bar = document.getElementById('tabBar');
+            bar.innerHTML = '';
+            COMPONENTS.forEach((c, i) => {
+                const btn = document.createElement('button');
+                btn.className = 'tab' + (i === 0 ? ' active' : '');
+                btn.textContent = c.name;
+                btn.onclick = () => selectTab(i);
+                bar.appendChild(btn);
+            });
+        }
+
+        function selectTab(idx) {
+            activeIdx = idx;
+            const comp = COMPONENTS[idx];
+
+            // Update active class
+            document.querySelectorAll('.tab').forEach((t, i) => {
+                t.classList.toggle('active', i === idx);
+            });
+
+            // Update title
+            document.getElementById('compTitle').childNodes[0].textContent = comp.name + ' ';
+            document.getElementById('compId').textContent = '(Komponentas: ' + comp.id + ')';
+
+            // Restore saved values for this component
+            const saved = clothes[comp.id] || { d: 0, t: 0 };
+            document.getElementById('drawable').value = saved.d;
+            document.getElementById('texture').value = saved.t;
+
+            requestLimits(comp.id, saved.d);
+
+            clearStatus();
+        }
+
+        function requestLimits(componentId, drawable) {
+            mp.trigger('requestClothingLimits', String(componentId), String(Math.max(0, parseInt(drawable) || 0)));
+        }
+
+        function setClothingLimits(drawableLimit, textureLimit) {
+            maxDrawable = Math.max(0, parseInt(drawableLimit) || 0);
+            maxTexture = Math.max(0, parseInt(textureLimit) || 0);
+
+            const drawableEl = document.getElementById('drawable');
+            const textureEl = document.getElementById('texture');
+
+            drawableEl.max = String(maxDrawable);
+            textureEl.max = String(maxTexture);
+
+            const clampedDrawable = Math.min(maxDrawable, Math.max(0, parseInt(drawableEl.value) || 0));
+            drawableEl.value = clampedDrawable;
+
+            const clampedTexture = Math.min(maxTexture, Math.max(0, parseInt(textureEl.value) || 0));
+            textureEl.value = clampedTexture;
+
+            const comp = COMPONENTS[activeIdx];
+            clothes[comp.id] = { d: clampedDrawable, t: clampedTexture };
+        }
+
+        /* ─── SPINNERS ─────────────────────────── */
+        function step(field, delta) {
+            const el = document.getElementById(field);
+            const max = field === 'drawable' ? maxDrawable : maxTexture;
+            const val = (parseInt(el.value) || 0) + delta;
+            el.value = Math.min(max, Math.max(0, val));
+            onSpinInput();
+        }
+
+        function onSpinInput() {
+            const comp = COMPONENTS[activeIdx];
+            const drawableEl = document.getElementById('drawable');
+            const textureEl = document.getElementById('texture');
+
+            const drawable = Math.min(maxDrawable, Math.max(0, parseInt(drawableEl.value) || 0));
+            const texture = Math.min(maxTexture, Math.max(0, parseInt(textureEl.value) || 0));
+
+            drawableEl.value = drawable;
+            textureEl.value = texture;
+
+            if (drawable !== lastLimitDrawable) {
+                lastLimitDrawable = drawable;
+                requestLimits(comp.id, drawable);
+            }
+
+            // Update in-memory state
+            clothes[comp.id] = { d: drawable, t: texture };
+
+            // Debounce live preview (150ms)
+            clearTimeout(previewTimer);
+            previewTimer = setTimeout(() => {
+                mp.trigger('previewClothes', String(comp.id), String(drawable), String(texture));
+            }, 150);
+        }
+
+        /* ─── SAVE ─────────────────────────────── */
+        function saveClothes() {
+            mp.trigger('saveClothes', JSON.stringify(clothes));
+        }
+
+        /* ─── CLOSE ─────────────────────────────── */
+        function closeUI() {
+            mp.trigger('closeClothingUI');
+        }
+
+        /* ─── STATUS ───────────────────────────── */
+        function showStatus(msg, ok) {
+            const el = document.getElementById('status');
+            el.textContent = msg;
+            el.className = 'status' + (ok ? ' ok' : '');
+        }
+
+        function clearStatus() {
+            document.getElementById('status').textContent = '';
+            document.getElementById('status').className = 'status';
+        }
+
+        function clothingSuccess(msg) { showStatus(msg, true); }
+        function clothingError(msg) { showStatus(msg, false); }
+    </script>
+</body>
+
+</html>

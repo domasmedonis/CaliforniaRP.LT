@@ -1,0 +1,884 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Dealership</title>
+    <style>
+        :root {
+            --bg-soft: #f7f3ff;
+            --bg-soft-2: #eef7ff;
+            --panel: #ffffff;
+            --ink: #253049;
+            --ink-soft: #66708a;
+            --line: #e6e3f2;
+            --accent: #8ab6ff;
+            --accent-2: #9de7d8;
+            --good: #2f9a75;
+            --bad: #cd5d6f;
+            --shadow: 0 24px 56px rgba(67, 65, 96, 0.28);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-left: min(2.2vw, 28px);
+            background: transparent;
+            color: var(--ink);
+            font-family: "Bahnschrift", "Segoe UI", sans-serif;
+            overflow: hidden;
+        }
+
+        .app {
+            width: min(920px, 56vw);
+            max-height: min(92vh, 940px);
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 14px;
+            padding: 22px;
+            border-radius: 24px;
+            background:
+                radial-gradient(circle at 12% 14%, rgba(154, 224, 255, 0.34), transparent 36%),
+                radial-gradient(circle at 88% 82%, rgba(255, 195, 220, 0.22), transparent 34%),
+                linear-gradient(145deg, var(--bg-soft) 0%, var(--bg-soft-2) 100%);
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(255, 255, 255, 0.78);
+            transform: translateX(-16px);
+            opacity: 0;
+            animation: slideIn 360ms ease forwards;
+        }
+
+        .glass {
+            border: 1px solid rgba(255, 255, 255, 0.76);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.78);
+            backdrop-filter: blur(6px);
+        }
+
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 16px;
+        }
+
+        .title {
+            margin: 0;
+            font-size: 19px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .subtitle {
+            margin: 3px 0 0;
+            font-size: 12px;
+            color: var(--ink-soft);
+        }
+
+        .money {
+            font-size: 17px;
+            font-weight: 700;
+            color: #2f8a69;
+            background: #ecf9f5;
+            border: 1px solid #d3efe7;
+            padding: 9px 12px;
+            border-radius: 12px;
+            min-width: 116px;
+            text-align: center;
+        }
+
+        .money-stack {
+            display: grid;
+            gap: 6px;
+            min-width: 150px;
+        }
+
+        .money.bank {
+            color: #315d9b;
+            background: #eef5ff;
+            border-color: #d9e5fb;
+        }
+
+        .main {
+            min-height: 0;
+            display: grid;
+            grid-template-columns: 1.08fr 1fr;
+            gap: 14px;
+        }
+
+        .left,
+        .right {
+            min-height: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .search {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: #ffffff;
+            color: var(--ink);
+            padding: 10px 12px;
+            font: inherit;
+            font-size: 13px;
+        }
+
+        .search:focus {
+            outline: none;
+            border-color: #abc7ff;
+            box-shadow: 0 0 0 3px rgba(138, 182, 255, 0.24);
+        }
+
+        .list {
+            min-height: 0;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-right: 3px;
+        }
+
+        .item {
+            border: 1px solid #e9e6f5;
+            border-radius: 12px;
+            background: #ffffff;
+            padding: 10px;
+            cursor: pointer;
+            transition: 150ms ease;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            text-align: left;
+        }
+
+        .item:hover {
+            border-color: #c8d7fb;
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px rgba(95, 116, 158, 0.13);
+        }
+
+        .item.active {
+            border-color: #a8c4ff;
+            box-shadow: inset 0 0 0 1px #a8c4ff;
+            background: linear-gradient(180deg, #fdfdff 0%, #f5f8ff 100%);
+        }
+
+        .name {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .model {
+            margin: 2px 0 0;
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--ink-soft);
+        }
+
+        .price {
+            align-self: center;
+            font-size: 13px;
+            font-weight: 700;
+            color: #2f8a69;
+        }
+
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            background: #ffffff;
+            padding: 12px;
+        }
+
+        .selected-name {
+            margin: 0;
+            font-size: 21px;
+            letter-spacing: 0.01em;
+        }
+
+        .meta {
+            margin: 4px 0 0;
+            font-size: 12px;
+            color: var(--ink-soft);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .picker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 0 0 8px;
+            gap: 10px;
+        }
+
+        .picker-title {
+            font-size: 12px;
+            color: var(--ink-soft);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .picker-value {
+            font-size: 12px;
+            color: #49516a;
+            font-weight: 700;
+        }
+
+        .palette-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .color-square {
+            height: 28px;
+            border-radius: 8px;
+            border: 1px solid rgba(62, 74, 104, 0.22);
+            cursor: pointer;
+            padding: 0;
+            transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+        }
+
+        .color-square:hover {
+            transform: translateY(-1px);
+            border-color: rgba(39, 55, 96, 0.56);
+        }
+
+        .color-square.active {
+            box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #7ba6ff;
+            border-color: #5b87ea;
+        }
+
+        .preview {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .payment-toggle {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .pay-btn {
+            border: 1px solid #d8e0f1;
+            border-radius: 10px;
+            background: #f7f9ff;
+            color: #48506b;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            padding: 9px;
+            cursor: pointer;
+            transition: 140ms ease;
+        }
+
+        .pay-btn:hover {
+            transform: translateY(-1px);
+            border-color: #b5c6eb;
+        }
+
+        .pay-btn.active {
+            border-color: #7ba6ff;
+            box-shadow: 0 0 0 2px rgba(123, 166, 255, 0.2);
+            background: #ebf2ff;
+            color: #21334f;
+        }
+
+        .preview-chip {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 9px;
+            font-size: 12px;
+            color: #ffffff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            background: #ffffff;
+        }
+
+        .stats {
+            display: grid;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .stat-row {
+            display: grid;
+            grid-template-columns: 78px 1fr 30px;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .stat-row span {
+            font-size: 11px;
+            color: #616b86;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .bar {
+            height: 8px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: #edf0f8;
+        }
+
+        .bar i {
+            display: block;
+            height: 100%;
+            width: 0%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #8eb7ff, #8fe3cf);
+            transition: width 220ms ease;
+        }
+
+        .status {
+            min-height: 42px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid #dbe3f3;
+            background: #ffffff;
+            color: #4f5873;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+        }
+
+        .status.ok {
+            border-color: #cdeedc;
+            background: #edf9f2;
+            color: #217754;
+        }
+
+        .status.bad {
+            border-color: #f3cfd8;
+            background: #fff0f4;
+            color: #a84557;
+        }
+
+        .actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .btn {
+            border: 0;
+            border-radius: 12px;
+            padding: 12px;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            transition: filter 150ms ease, transform 150ms ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.03);
+        }
+
+        .btn.buy {
+            background: linear-gradient(120deg, #8eb7ff, #8fe3cf);
+            color: #20314b;
+        }
+
+        .btn.close {
+            background: #eef1f8;
+            color: #4f5873;
+            border: 1px solid #dce1ee;
+        }
+
+        @keyframes slideIn {
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 900px) {
+            body {
+                justify-content: center;
+                padding-left: 0;
+            }
+
+            .app {
+                width: min(900px, 96vw);
+                max-height: 94vh;
+            }
+
+            .main {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <div class="topbar glass">
+            <div>
+                <h1 class="title">Los Santos Dealership</h1>
+                <p class="subtitle">Minimal selector with live preview colors.</p>
+            </div>
+            <div class="money-stack">
+                <div class="money" id="moneyLabel">Cash $0</div>
+                <div class="money bank" id="bankLabel">Bank $0</div>
+            </div>
+        </div>
+
+        <div class="main">
+            <section class="left glass">
+                <input id="searchInput" class="search" type="text" placeholder="Search by name or model...">
+                <div id="vehicleList" class="list"></div>
+            </section>
+
+            <section class="right glass">
+                <div class="card">
+                    <h2 class="selected-name" id="selectedName">Select a vehicle</h2>
+                    <p class="meta" id="selectedMeta">Model and price will appear here</p>
+                </div>
+
+                <div class="card">
+                    <div class="picker-header" style="margin-bottom: 10px;">
+                        <div class="picker-title">Payment Method</div>
+                        <div class="picker-value" id="paymentValue">Cash</div>
+                    </div>
+                    <div class="payment-toggle">
+                        <button type="button" class="pay-btn active" id="payCashBtn">Cash</button>
+                        <button type="button" class="pay-btn" id="payBankBtn">Bank</button>
+                    </div>
+
+                    <div class="picker-header">
+                        <div class="picker-title">Primary Color</div>
+                        <div class="picker-value" id="primaryValue">ID 0</div>
+                    </div>
+                    <div class="palette-grid" id="primaryPalette"></div>
+
+                    <div class="picker-header" style="margin-top: 12px;">
+                        <div class="picker-title">Secondary Color</div>
+                        <div class="picker-value" id="secondaryValue">ID 0</div>
+                    </div>
+                    <div class="palette-grid" id="secondaryPalette"></div>
+
+                    <div class="preview">
+                        <div class="preview-chip" id="previewPrimary">Primary 0</div>
+                        <div class="preview-chip" id="previewSecondary">Secondary 0</div>
+                    </div>
+
+                    <div class="stats">
+                        <div class="stat-row">
+                            <span>Power</span>
+                            <div class="bar"><i id="statPower"></i></div>
+                            <span id="statPowerLabel">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Handling</span>
+                            <div class="bar"><i id="statHandling"></i></div>
+                            <span id="statHandlingLabel">0</span>
+                        </div>
+                        <div class="stat-row">
+                            <span>Comfort</span>
+                            <div class="bar"><i id="statComfort"></i></div>
+                            <span id="statComfortLabel">0</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="status" id="statusBox">Choose a vehicle to continue.</div>
+
+        <div class="actions">
+            <button class="btn buy" id="buyBtn">Purchase</button>
+            <button class="btn close" id="closeBtn">Close</button>
+        </div>
+    </div>
+
+    <script>
+        let vehicles = [];
+        let filtered = [];
+        let selected = null;
+        let cashBalance = 0;
+        let bankBalance = 0;
+        let hasInitialized = false;
+        let primaryColor = 0;
+        let secondaryColor = 0;
+        let paymentMethod = 'cash';
+
+        // Curated GTA-like palette: fewer swatches, focused on primary/common paint colors.
+        const COLOR_SWATCHES = [
+            { id: 0, name: 'Black', hex: '#0d0f12' },
+            { id: 1, name: 'Graphite', hex: '#20242a' },
+            { id: 3, name: 'Silver', hex: '#8f9398' },
+            { id: 4, name: 'Gray', hex: '#696f78' },
+            { id: 111, name: 'White', hex: '#eef2f6' },
+            { id: 27, name: 'Red', hex: '#ab1f1f' },
+            { id: 64, name: 'Blue', hex: '#2b5f9a' },
+            { id: 50, name: 'Green', hex: '#2f6a37' },
+            { id: 53, name: 'Yellow', hex: '#d3af2d' },
+            { id: 41, name: 'Orange', hex: '#c86b29' },
+            { id: 135, name: 'Pink', hex: '#b86c93' },
+            { id: 145, name: 'Purple', hex: '#5a4691' },
+            { id: 90, name: 'Brown', hex: '#5c4333' },
+            { id: 107, name: 'Beige', hex: '#b9a37e' },
+        ];
+
+        const vehicleList = document.getElementById('vehicleList');
+        const selectedName = document.getElementById('selectedName');
+        const selectedMeta = document.getElementById('selectedMeta');
+        const moneyLabel = document.getElementById('moneyLabel');
+        const bankLabel = document.getElementById('bankLabel');
+        const statusBox = document.getElementById('statusBox');
+        const paymentValue = document.getElementById('paymentValue');
+        const payCashBtn = document.getElementById('payCashBtn');
+        const payBankBtn = document.getElementById('payBankBtn');
+
+        const primaryPalette = document.getElementById('primaryPalette');
+        const secondaryPalette = document.getElementById('secondaryPalette');
+        const primaryValue = document.getElementById('primaryValue');
+        const secondaryValue = document.getElementById('secondaryValue');
+        const previewPrimary = document.getElementById('previewPrimary');
+        const previewSecondary = document.getElementById('previewSecondary');
+
+        const statPower = document.getElementById('statPower');
+        const statHandling = document.getElementById('statHandling');
+        const statComfort = document.getElementById('statComfort');
+        const statPowerLabel = document.getElementById('statPowerLabel');
+        const statHandlingLabel = document.getElementById('statHandlingLabel');
+        const statComfortLabel = document.getElementById('statComfortLabel');
+
+        function clampColor(value) {
+            const n = parseInt(value, 10);
+            if (!Number.isFinite(n)) return 0;
+            return Math.max(0, Math.min(160, n));
+        }
+
+        function formatMoney(value) {
+            return `$${Number(value || 0).toLocaleString('en-US')}`;
+        }
+
+        function getSwatchById(index) {
+            return COLOR_SWATCHES.find((entry) => entry.id === Number(index)) || COLOR_SWATCHES[0];
+        }
+
+        function getReadableTextColor(hex) {
+            const safeHex = String(hex || '').replace('#', '');
+            if (safeHex.length !== 6) return '#ffffff';
+            const r = parseInt(safeHex.slice(0, 2), 16);
+            const g = parseInt(safeHex.slice(2, 4), 16);
+            const b = parseInt(safeHex.slice(4, 6), 16);
+            if (![r, g, b].every(Number.isFinite)) return '#ffffff';
+
+            const luminance = ((0.299 * r) + (0.587 * g) + (0.114 * b)) / 255;
+            return luminance > 0.62 ? '#1f2634' : '#ffffff';
+        }
+
+        function setStatus(success, message) {
+            statusBox.textContent = message || '';
+            statusBox.classList.remove('ok', 'bad');
+            if (success === true) statusBox.classList.add('ok');
+            if (success === false) statusBox.classList.add('bad');
+        }
+
+        function updateMoneyLabel() {
+            moneyLabel.textContent = `Cash ${formatMoney(cashBalance)}`;
+            bankLabel.textContent = `Bank ${formatMoney(bankBalance)}`;
+        }
+
+        function getAvailableBalance() {
+            return paymentMethod === 'bank' ? bankBalance : cashBalance;
+        }
+
+        function updatePaymentUi() {
+            paymentValue.textContent = paymentMethod === 'bank' ? 'Bank' : 'Cash';
+            payCashBtn.classList.toggle('active', paymentMethod === 'cash');
+            payBankBtn.classList.toggle('active', paymentMethod === 'bank');
+        }
+
+        function setPaymentMethod(method) {
+            paymentMethod = method === 'bank' ? 'bank' : 'cash';
+            updatePaymentUi();
+
+            if (selected) {
+                const missing = Number(selected.price || 0) - getAvailableBalance();
+                if (missing > 0) {
+                    setStatus(false, `Not enough ${paymentMethod}. Missing ${formatMoney(missing)}.`);
+                } else {
+                    setStatus(null, `Ready to buy using ${paymentMethod}.`);
+                }
+            }
+        }
+
+        function setStat(el, labelEl, value) {
+            const safe = Math.max(0, Math.min(100, Number(value) || 0));
+            el.style.width = `${safe}%`;
+            labelEl.textContent = String(Math.round(safe));
+        }
+
+        function updateVehicleStats(item) {
+            if (!item) {
+                setStat(statPower, statPowerLabel, 0);
+                setStat(statHandling, statHandlingLabel, 0);
+                setStat(statComfort, statComfortLabel, 0);
+                return;
+            }
+
+            const price = Number(item.price) || 0;
+            const power = Math.min(100, 20 + (price / 600));
+            const handling = Math.max(25, 92 - (price / 1400));
+            const comfort = Math.max(20, 76 - (price / 1900) + ((String(item.model || '').length % 7) * 2));
+
+            setStat(statPower, statPowerLabel, power);
+            setStat(statHandling, statHandlingLabel, handling);
+            setStat(statComfort, statComfortLabel, comfort);
+        }
+
+        function triggerPreviewVehicle(item) {
+            if (!item || !hasInitialized) return;
+            if (typeof mp !== 'undefined' && typeof mp.trigger === 'function') {
+                mp.trigger('dealershipPreview', String(item.id));
+            }
+        }
+
+        function triggerPreviewColors() {
+            if (!hasInitialized) return;
+            if (typeof mp !== 'undefined' && typeof mp.trigger === 'function') {
+                mp.trigger('dealershipPreviewColors', String(primaryColor), String(secondaryColor));
+            }
+        }
+
+        function updateColorUi() {
+            const primarySwatch = getSwatchById(primaryColor);
+            const secondarySwatch = getSwatchById(secondaryColor);
+
+            previewPrimary.textContent = `Primary ${primarySwatch.name} (${primaryColor})`;
+            previewSecondary.textContent = `Secondary ${secondarySwatch.name} (${secondaryColor})`;
+            primaryValue.textContent = `${primarySwatch.name} · ID ${primaryColor}`;
+            secondaryValue.textContent = `${secondarySwatch.name} · ID ${secondaryColor}`;
+
+            previewPrimary.style.background = primarySwatch.hex;
+            previewSecondary.style.background = secondarySwatch.hex;
+            previewPrimary.style.color = getReadableTextColor(primarySwatch.hex);
+            previewSecondary.style.color = getReadableTextColor(secondarySwatch.hex);
+            previewPrimary.style.textShadow = previewPrimary.style.color === '#ffffff' ? '0 1px 2px rgba(0, 0, 0, 0.5)' : 'none';
+            previewSecondary.style.textShadow = previewSecondary.style.color === '#ffffff' ? '0 1px 2px rgba(0, 0, 0, 0.5)' : 'none';
+
+            Array.from(primaryPalette.children).forEach((node) => {
+                node.classList.toggle('active', Number(node.dataset.colorIndex) === primaryColor);
+            });
+
+            Array.from(secondaryPalette.children).forEach((node) => {
+                node.classList.toggle('active', Number(node.dataset.colorIndex) === secondaryColor);
+            });
+        }
+
+        function setPrimaryColor(value) {
+            primaryColor = clampColor(value);
+            updateColorUi();
+            triggerPreviewColors();
+        }
+
+        function setSecondaryColor(value) {
+            secondaryColor = clampColor(value);
+            updateColorUi();
+            triggerPreviewColors();
+        }
+
+        function createPaletteSquare(entry, onPick) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'color-square';
+            btn.dataset.colorIndex = String(entry.id);
+            btn.style.background = entry.hex;
+            btn.title = `${entry.name} (ID ${entry.id})`;
+            btn.setAttribute('aria-label', `${entry.name} color ${entry.id}`);
+            btn.addEventListener('click', () => onPick(entry.id));
+            return btn;
+        }
+
+        function renderPalettes() {
+            primaryPalette.innerHTML = '';
+            secondaryPalette.innerHTML = '';
+
+            COLOR_SWATCHES.forEach((entry) => {
+                primaryPalette.appendChild(createPaletteSquare(entry, setPrimaryColor));
+                secondaryPalette.appendChild(createPaletteSquare(entry, setSecondaryColor));
+            });
+
+            updateColorUi();
+        }
+
+        function renderVehicleList() {
+            vehicleList.innerHTML = '';
+
+            if (!filtered.length) {
+                const empty = document.createElement('div');
+                empty.className = 'item';
+                empty.innerHTML = '<div><p class="name">No matches found</p><p class="model">Try another search term</p></div>';
+                empty.style.cursor = 'default';
+                vehicleList.appendChild(empty);
+                return;
+            }
+
+            filtered.forEach((item) => {
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = `item${selected && selected.id === item.id ? ' active' : ''}`;
+                row.innerHTML = `
+                    <div>
+                        <p class="name">${item.name}</p>
+                        <p class="model">${item.model}</p>
+                    </div>
+                    <div class="price">${formatMoney(item.price)}</div>
+                `;
+
+                row.addEventListener('click', () => selectVehicle(item));
+                vehicleList.appendChild(row);
+            });
+        }
+
+        function selectVehicle(item) {
+            selected = item;
+            selectedName.textContent = item.name;
+            selectedMeta.textContent = `${String(item.model || '').toUpperCase()} · ${formatMoney(item.price)}`;
+            updateVehicleStats(item);
+            renderVehicleList();
+            triggerPreviewVehicle(item);
+
+            setTimeout(() => {
+                triggerPreviewColors();
+            }, 25);
+
+            const available = getAvailableBalance();
+            if (available < item.price) {
+                setStatus(false, `Not enough ${paymentMethod}. Missing ${formatMoney(item.price - available)}.`);
+            } else {
+                setStatus(null, `Pick colors and press Purchase (${paymentMethod}).`);
+            }
+        }
+
+        function applySearch(value) {
+            const term = String(value || '').trim().toLowerCase();
+            if (!term) {
+                filtered = vehicles.slice();
+            } else {
+                filtered = vehicles.filter(v =>
+                    String(v.name || '').toLowerCase().includes(term)
+                    || String(v.model || '').toLowerCase().includes(term)
+                );
+            }
+
+            if (selected && !filtered.some(v => v.id === selected.id)) {
+                selected = null;
+                selectedName.textContent = 'Select a vehicle';
+                selectedMeta.textContent = 'Model and price will appear here';
+                updateVehicleStats(null);
+            }
+
+            renderVehicleList();
+        }
+
+        function parseCatalog(catalogJson) {
+            if (Array.isArray(catalogJson)) return catalogJson;
+            try {
+                return JSON.parse(catalogJson || '[]');
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function initDealership(catalogJson, money, bankMoney) {
+            vehicles = parseCatalog(catalogJson);
+            filtered = vehicles.slice();
+            cashBalance = Number(money) || 0;
+            bankBalance = Number(bankMoney) || 0;
+            hasInitialized = true;
+            paymentMethod = 'cash';
+
+            updateMoneyLabel();
+            updatePaymentUi();
+            renderPalettes();
+
+            selected = filtered[0] || null;
+            if (selected) {
+                selectedName.textContent = selected.name;
+                selectedMeta.textContent = `${String(selected.model || '').toUpperCase()} · ${formatMoney(selected.price)}`;
+                updateVehicleStats(selected);
+                triggerPreviewVehicle(selected);
+                setTimeout(() => {
+                    triggerPreviewColors();
+                }, 25);
+            } else {
+                selectedName.textContent = 'Select a vehicle';
+                selectedMeta.textContent = 'Model and price will appear here';
+                updateVehicleStats(null);
+            }
+
+            renderVehicleList();
+            setStatus(null, 'Choose your vehicle and pick primary paint colors.');
+        }
+
+        function setDealershipStatus(success, message, currentMoney, currentBankMoney) {
+            if (Number.isFinite(Number(currentMoney))) {
+                cashBalance = Number(currentMoney);
+            }
+            if (Number.isFinite(Number(currentBankMoney))) {
+                bankBalance = Number(currentBankMoney);
+            }
+            updateMoneyLabel();
+            setStatus(Boolean(success), message || '');
+        }
+
+        payCashBtn.addEventListener('click', () => setPaymentMethod('cash'));
+        payBankBtn.addEventListener('click', () => setPaymentMethod('bank'));
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            applySearch(e.target.value);
+        });
+
+        document.getElementById('buyBtn').addEventListener('click', () => {
+            if (!selected) {
+                setStatus(false, 'Select a vehicle first.');
+                return;
+            }
+
+            if (typeof mp !== 'undefined' && typeof mp.trigger === 'function') {
+                mp.trigger('dealershipPurchase', String(selected.id), String(primaryColor), String(secondaryColor), paymentMethod);
+            }
+        });
+
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            if (typeof mp !== 'undefined' && typeof mp.trigger === 'function') {
+                mp.trigger('dealershipClose');
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (typeof mp !== 'undefined' && typeof mp.trigger === 'function') {
+                mp.trigger('dealershipClose');
+            }
+        });
+
+        window.initDealership = initDealership;
+        window.setDealershipStatus = setDealershipStatus;
+    </script>
+</body>
+
+</html>
