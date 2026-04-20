@@ -43,3 +43,5 @@ CaliforniaRP.LT is a [RageMP](https://rage.mp/) modification for Grand Theft Aut
 
 [https://imgur.com/a/i7SdSV4](https://imgur.com/a/i7SdSV4)
 
+
+Upload this into existing RageMP server files - https://wiki.rage.mp/wiki/Getting_Started_with_Server
