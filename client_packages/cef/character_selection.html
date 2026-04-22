@@ -17,8 +17,10 @@
             height: 100%;
             margin: 0;
             padding: 0;
-            background: rgba(240, 249, 244, 0.18) !important;
-            background-color: rgba(240, 249, 244, 0.18) !important;
+            background: radial-gradient(circle at 15% 20%, rgba(138, 181, 157, 0.42), rgba(138, 181, 157, 0) 35%),
+                radial-gradient(circle at 85% 75%, rgba(237, 208, 146, 0.34), rgba(237, 208, 146, 0) 33%),
+                linear-gradient(145deg, rgba(35, 56, 45, 0.28), rgba(20, 35, 29, 0.26));
+            background-color: rgba(20, 35, 29, 0.26) !important;
         }
 
         :root {
@@ -40,6 +42,17 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image: linear-gradient(transparent 96%, rgba(255, 255, 255, 0.05) 100%);
+            background-size: 100% 6px;
+            opacity: 0.45;
         }
 
         /* ── OUTER LAYOUT ── */
@@ -52,6 +65,7 @@
             display: grid;
             grid-template-columns: 1fr 340px;
             gap: 14px;
+            animation: panelIn 0.42s ease;
         }
 
         /* ── LEFT COLUMN ── */
@@ -112,6 +126,20 @@
             padding-right: 2px;
         }
 
+        .char-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .char-list::-webkit-scrollbar-track {
+            background: rgba(114, 149, 132, 0.12);
+            border-radius: 999px;
+        }
+
+        .char-list::-webkit-scrollbar-thumb {
+            background: rgba(95, 133, 114, 0.56);
+            border-radius: 999px;
+        }
+
         /* ── INDIVIDUAL CARD (horizontal) ── */
         .char-card {
             background: var(--panel);
@@ -121,12 +149,16 @@
             display: grid;
             grid-template-columns: 64px 1fr auto;
             overflow: hidden;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
             height: 90px;
+            opacity: 0;
+            transform: translateY(8px);
+            animation: cardIn 0.3s ease forwards;
         }
 
         .char-card:hover {
             border-color: rgba(160, 210, 185, 0.8);
+            transform: translateY(-1px);
         }
 
         .char-card.selected {
@@ -408,6 +440,53 @@
             color: rgba(255, 255, 255, 0.72);
             pointer-events: none;
         }
+
+        .list-empty {
+            background: var(--panel);
+            border: 1px dashed var(--line);
+            border-radius: 12px;
+            padding: 22px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        @keyframes panelIn {
+            from {
+                transform: translateY(8px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes cardIn {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 940px) {
+            .wrap {
+                height: auto;
+                max-height: calc(100vh - 26px);
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto;
+            }
+
+            .left {
+                min-height: 320px;
+            }
+
+            .right-panel {
+                min-height: 430px;
+            }
+        }
     </style>
 </head>
 
@@ -497,11 +576,18 @@
             document.getElementById('pillCount').innerText = `Veikejai: ${characters.length}`;
             document.getElementById('pillSelected').innerText = 'Pasirinktas: –';
 
+            if (!Array.isArray(characters) || characters.length === 0) {
+                list.innerHTML = `<div class="list-empty">Neturite patvirtintu veikeju.<br>Susisiekite su administracija del patvirtinimo.</div>`;
+                resetPanel();
+                return;
+            }
+
             characters.forEach((char, i) => {
                 const pal = PALETTES[i % PALETTES.length];
                 const initial = (char.name || '?')[0].toUpperCase();
                 const div = document.createElement('div');
                 div.className = 'char-card';
+                div.style.animationDelay = `${Math.min(i, 10) * 45}ms`;
                 div.innerHTML = `
                     <div class="card-band" style="background:linear-gradient(160deg,${pal[0]},${pal[1]});">${initial}</div>
                     <div class="card-body">
@@ -519,6 +605,10 @@
             });
 
             resetPanel();
+            const first = list.querySelector('.char-card');
+            if (first) {
+                first.click();
+            }
         }
 
         function resetPanel() {

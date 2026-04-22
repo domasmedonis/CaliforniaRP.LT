@@ -2,6 +2,9 @@ let bankUI = null;
 let dealershipBrowser = null;
 let pendingDealershipState = null;
 let isDealershipDomReady = false;
+let houseBrowser = null;
+let pendingHouseState = null;
+let isHouseDomReady = false;
 let dealershipPreviewVehicle = null;
 let dealershipCatalog = [];
 let dealershipCam = null;
@@ -13,7 +16,6 @@ let lastInventoryRequestAt = 0;
 let lastPassengerEnterAttemptAt = 0;
 let pendingInventoryState = null;
 let isInventoryDomReady = false;
-let isChatInputActive = false;
 let manualLightsVehicleHandle = 0;
 let manualLightsOverrideState = null;
 let manualLightsOverrideExpiresAt = 0;
@@ -21,10 +23,31 @@ let passengerShuffleActiveUntil = 0;
 let passengerShuffleNextAt = 0;
 let passengerShuffleAttempts = 0;
 let ownedVehicleBlip = null;
+const WEAPON_UNARMED_HASH = mp.game.joaat('weapon_unarmed');
+const NON_AMMO_WEAPON_HASHES = new Set([
+    WEAPON_UNARMED_HASH,
+    mp.game.joaat('weapon_knife'),
+    mp.game.joaat('weapon_bat'),
+]);
+let lastAmmoCheckAt = 0;
+let lastEmptyWeaponRequestHash = null;
+let fallbackChatInputActive = false;
 
 mp.gui.chat.push('Hello World')
 
 globalThis.__isInventoryOpen = false;
+
+function isNativeChatInputActive() {
+    try {
+        if (mp.game && mp.game.ui && typeof mp.game.ui.isChatInputActive === 'function') {
+            return Boolean(mp.game.ui.isChatInputActive());
+        }
+    } catch (e) {
+        // Ignore unavailable native on some client builds.
+    }
+
+    return fallbackChatInputActive;
+}
 
 function canToggleInventory() {
     return !isLoginUIActive
@@ -33,9 +56,10 @@ function canToggleInventory() {
         && !clothingUI
         && !barberUI
         && !dealershipBrowser
+        && !houseBrowser
         && !browser
         && !paycheckBrowser
-        && !isChatInputActive
+        && !isNativeChatInputActive()
         && !globalThis.__isPhoneOpen;
 }
 
@@ -102,6 +126,135 @@ function clearOwnedVehicleBlip() {
 
     ownedVehicleBlip = null;
 }
+
+function getCurrentWeaponHash(localPlayer) {
+    if (!localPlayer || !localPlayer.handle) return 0;
+
+    try {
+        if (mp.game && mp.game.weapon && typeof mp.game.weapon.getSelectedPedWeapon === 'function') {
+            const selected = Number(mp.game.weapon.getSelectedPedWeapon(localPlayer.handle));
+            if (Number.isFinite(selected)) {
+                return selected;
+            }
+        }
+    } catch (e) {
+        // Ignore native failures on client builds missing this native.
+    }
+
+    const fallback = Number(localPlayer.weapon);
+    return Number.isFinite(fallback) ? fallback : 0;
+}
+
+function getTotalAmmoForWeapon(localPlayer, weaponHash) {
+    if (!localPlayer || !localPlayer.handle) return null;
+
+    try {
+        if (mp.game && mp.game.weapon && typeof mp.game.weapon.getAmmoInPedWeapon === 'function') {
+            const totalAmmo = Number(mp.game.weapon.getAmmoInPedWeapon(localPlayer.handle, weaponHash));
+            if (Number.isFinite(totalAmmo)) {
+                return totalAmmo;
+            }
+        }
+    } catch (e) {
+        // Ignore native failures on client builds missing this native.
+    }
+
+    return null;
+}
+
+function forceSwitchToUnarmed(localPlayer, weaponHash) {
+    if (!localPlayer || !localPlayer.handle) return;
+
+    try {
+        if (mp.game && mp.game.weapon && typeof mp.game.weapon.removeWeaponFromPed === 'function') {
+            mp.game.weapon.removeWeaponFromPed(localPlayer.handle, weaponHash);
+        }
+    } catch (e) {
+        // Ignore native failures on client builds missing this native.
+    }
+
+    try {
+        if (mp.game && mp.game.weapon && typeof mp.game.weapon.setCurrentPedWeapon === 'function') {
+            mp.game.weapon.setCurrentPedWeapon(localPlayer.handle, WEAPON_UNARMED_HASH, true);
+        }
+    } catch (e) {
+        // Ignore native failures on client builds missing this native.
+    }
+}
+
+function getAddressHashFromPosition(x, y, z) {
+    const xx = Math.floor(Math.abs(Number(x) || 0) * 100);
+    const yy = Math.floor(Math.abs(Number(y) || 0) * 100);
+    const zz = Math.floor(Math.abs(Number(z) || 0) * 100);
+    return ((xx * 73856093) ^ (yy * 19349663) ^ (zz * 83492791)) >>> 0;
+}
+
+function getStreetHashesAtCoords(x, y, z) {
+    if (!mp.game || !mp.game.pathfind || typeof mp.game.pathfind.getStreetNameAtCoord !== 'function') {
+        return null;
+    }
+
+    try {
+        const result = mp.game.pathfind.getStreetNameAtCoord(Number(x), Number(y), Number(z), 0, 0);
+        if (Array.isArray(result) && result.length >= 1) {
+            return {
+                streetHash: Number(result[0]) || 0,
+                crossingHash: Number(result[1]) || 0,
+            };
+        }
+
+        if (result && typeof result === 'object') {
+            return {
+                streetHash: Number(result.streetName) || Number(result[0]) || 0,
+                crossingHash: Number(result.crossingRoad) || Number(result[1]) || 0,
+            };
+        }
+    } catch (e) {
+        // Fallback to null when native call is unavailable on client build.
+    }
+
+    return null;
+}
+
+function getStreetNameFromHash(streetHash) {
+    if (!streetHash) return '';
+    if (!mp.game || !mp.game.ui || typeof mp.game.ui.getStreetNameFromHashKey !== 'function') return '';
+
+    try {
+        return String(mp.game.ui.getStreetNameFromHashKey(streetHash) || '').trim();
+    } catch (e) {
+        return '';
+    }
+}
+
+function buildNativePropertyAddress(x, y, z) {
+    const hashes = getStreetHashesAtCoords(x, y, z);
+    const primaryStreetName = hashes ? getStreetNameFromHash(hashes.streetHash) : '';
+    const crossingStreetName = hashes ? getStreetNameFromHash(hashes.crossingHash) : '';
+
+    let streetName = primaryStreetName;
+    if (!streetName && crossingStreetName) {
+        streetName = crossingStreetName;
+    }
+    if (!streetName) {
+        streetName = 'San Andreas Avenue';
+    }
+
+    const hash = getAddressHashFromPosition(x, y, z);
+    const houseNumber = 100 + (hash % 9800);
+    return `${houseNumber} ${streetName}`;
+}
+
+mp.events.add('resolvePropertyNativeAddress', (propertyIdRaw, xRaw, yRaw, zRaw) => {
+    const propertyId = parseInt(propertyIdRaw, 10);
+    if (!Number.isFinite(propertyId)) return;
+
+    const x = Number(xRaw) || 0;
+    const y = Number(yRaw) || 0;
+    const z = Number(zRaw) || 0;
+    const address = buildNativePropertyAddress(x, y, z);
+    mp.events.callRemote('propertyNativeAddressResolved', propertyId, address);
+});
 
 mp.events.add('showOwnedVehicleBlip', (x, y, z, label) => {
     clearOwnedVehicleBlip();
@@ -354,6 +507,26 @@ function sendDealershipStateToBrowser(catalogJson, money, bankMoney = 0) {
     );
 }
 
+function closeHouseUI() {
+    if (houseBrowser) {
+        houseBrowser.destroy();
+        houseBrowser = null;
+    }
+
+    pendingHouseState = null;
+    isHouseDomReady = false;
+    mp.gui.cursor.show(false, false);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(true);
+}
+
+function sendHouseStateToBrowser(functionName, payloadJson, statusText = '', success = true) {
+    if (!houseBrowser) return;
+    houseBrowser.execute(
+        `${functionName}(${JSON.stringify(payloadJson || '{}')}, ${JSON.stringify(statusText || '')}, ${JSON.stringify(Boolean(success))});`
+    );
+}
+
 function getDealershipPreviewSpawnPoint() {
     return {
         position: new mp.Vector3(
@@ -548,6 +721,82 @@ mp.events.add('dealershipPurchaseResult', (success, message, currentMoney, curre
     }
 });
 
+mp.events.add('openHouseUI', (payloadJson) => {
+    if (houseBrowser) {
+        houseBrowser.destroy();
+        houseBrowser = null;
+    }
+
+    houseBrowser = mp.browsers.new('package://cef/houseUI.html');
+    houseBrowser.active = true;
+    isHouseDomReady = false;
+    pendingHouseState = {
+        payloadJson: payloadJson || '{}',
+        statusText: '',
+        success: true,
+        functionName: 'initHousePanel',
+    };
+
+    mp.gui.cursor.show(true, true);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(false);
+
+    setTimeout(() => {
+        if (!houseBrowser || !pendingHouseState || isHouseDomReady) return;
+        sendHouseStateToBrowser(
+            pendingHouseState.functionName,
+            pendingHouseState.payloadJson,
+            pendingHouseState.statusText,
+            pendingHouseState.success
+        );
+    }, 300);
+});
+
+mp.events.add('updateHouseUI', (payloadJson, statusText = '', success = true) => {
+    pendingHouseState = {
+        payloadJson: payloadJson || '{}',
+        statusText,
+        success,
+        functionName: isHouseDomReady ? 'updateHousePanel' : 'initHousePanel',
+    };
+
+    if (houseBrowser && isHouseDomReady) {
+        sendHouseStateToBrowser(pendingHouseState.functionName, payloadJson || '{}', statusText, success);
+    }
+});
+
+mp.events.add('closeHouseUI', () => {
+    closeHouseUI();
+});
+
+mp.events.add('houseUiClose', () => {
+    closeHouseUI();
+});
+
+mp.events.add('houseUiRequestRefresh', () => {
+    mp.events.callRemote('houseUiRequestRefresh');
+});
+
+mp.events.add('houseUiEnterExit', () => {
+    mp.events.callRemote('houseUiEnterExit');
+});
+
+mp.events.add('houseUiToggleLock', () => {
+    mp.events.callRemote('houseUiToggleLock');
+});
+
+mp.events.add('houseUiSetRent', (amountRaw) => {
+    mp.events.callRemote('houseUiSetRent', String(amountRaw || '0'));
+});
+
+mp.events.add('houseUiOfferRent', (targetIdentifier, amountRaw) => {
+    mp.events.callRemote('houseUiOfferRent', String(targetIdentifier || ''), String(amountRaw || '0'));
+});
+
+mp.events.add('houseUiStopRent', () => {
+    mp.events.callRemote('houseUiStopRent');
+});
+
 mp.events.add('applyManualLightsState', (isOn) => {
     const localPlayer = mp.players.local;
     if (!localPlayer || !localPlayer.vehicle || !localPlayer.vehicle.handle) return;
@@ -628,10 +877,11 @@ function canUsePassengerEnterHotkey() {
         && !clothingUI
         && !barberUI
         && !dealershipBrowser
+        && !houseBrowser
         && !inventoryBrowser
         && !paycheckBrowser
         && !globalThis.__isPhoneOpen
-        && !isChatInputActive;
+        && !isNativeChatInputActive();
 }
 
 function getClosestVehicleInRange(position, maxDistance = 6.0) {
@@ -728,6 +978,15 @@ mp.keys.bind(0x47, true, () => {
     }
 });
 
+// Fallback chat input tracking for clients where isChatInputActive native is unavailable.
+mp.keys.bind(0x54, false, () => {
+    fallbackChatInputActive = true;
+});
+
+mp.keys.bind(0x0D, false, () => {
+    fallbackChatInputActive = false;
+});
+
 mp.keys.bind(0x49, true, () => {
     if (isInventoryOpen) {
         closeInventoryBrowser();
@@ -755,32 +1014,6 @@ mp.keys.bind(0x49, true, () => {
     }, 260);
 });
 
-// Prevent inventory opening while chat input is active (T key flow).
-mp.keys.bind(0x54, true, () => {
-    if (isLoginUIActive || isInventoryOpen || globalThis.__isPhoneOpen) {
-        isChatInputActive = false;
-        return;
-    }
-
-    isChatInputActive = true;
-});
-
-mp.keys.bind(0x0D, true, () => {
-    isChatInputActive = false;
-});
-
-mp.keys.bind(0x1B, true, () => {
-    isChatInputActive = false;
-
-    if (dealershipBrowser) {
-        closeDealershipUI();
-        return;
-    }
-
-    if (isInventoryOpen) {
-        closeInventoryBrowser();
-    }
-});
 
 // Event listener from the bank UI to handle deposit/withdraw actions
 mp.events.add('bankAction', (type, amount) => {
@@ -1033,6 +1266,17 @@ mp.events.add('browserDomReady', (browserInstance) => {
     if (browserInstance === dealershipBrowser && pendingDealershipState) {
         isDealershipDomReady = true;
         sendDealershipStateToBrowser(pendingDealershipState.catalogJson, pendingDealershipState.money, pendingDealershipState.bankMoney);
+        return;
+    }
+
+    if (browserInstance === houseBrowser && pendingHouseState) {
+        isHouseDomReady = true;
+        sendHouseStateToBrowser(
+            pendingHouseState.functionName,
+            pendingHouseState.payloadJson,
+            pendingHouseState.statusText,
+            pendingHouseState.success
+        );
     }
 });
 
@@ -1274,6 +1518,7 @@ mp.events.add('playerQuit', () => {
         }
     }
     if (inventoryBrowser) inventoryBrowser.destroy();
+    if (houseBrowser) houseBrowser.destroy();
     if (cameraChar) {
         mp.game.cam.renderScriptCams(false, false, 0, true, false);
         cameraChar.destroy();
@@ -1282,18 +1527,23 @@ mp.events.add('playerQuit', () => {
     }
 
     inventoryBrowser = null;
+    houseBrowser = null;
     dealershipBrowser = null;
     dealershipCatalog = [];
     pendingDealershipState = null;
     isDealershipDomReady = false;
     pendingInventoryState = null;
     isInventoryDomReady = false;
+    pendingHouseState = null;
+    isHouseDomReady = false;
     setInventoryUiOpenState(false);
+    lastAmmoCheckAt = 0;
+    lastEmptyWeaponRequestHash = null;
 });
 
 // Simple speedometer for vehicle driving.
 mp.events.add('render', () => {
-    if (dealershipBrowser) {
+    if (dealershipBrowser || houseBrowser) {
         mp.gui.cursor.show(true, true);
         mp.gui.chat.activate(false);
     }
@@ -1321,5 +1571,56 @@ mp.events.add('render', () => {
         shadow: true,
         alignment: 2,
     });
+});
+
+mp.events.add('render', () => {
+    const now = Date.now();
+    if (now - lastAmmoCheckAt < 220) return;
+    lastAmmoCheckAt = now;
+
+    const localPlayer = mp.players.local;
+    if (!localPlayer || !localPlayer.handle) return;
+
+    const weaponHash = Number(getCurrentWeaponHash(localPlayer));
+    if (!Number.isFinite(weaponHash) || weaponHash === 0 || weaponHash === WEAPON_UNARMED_HASH) {
+        lastEmptyWeaponRequestHash = null;
+        return;
+    }
+
+    if (NON_AMMO_WEAPON_HASHES.has(weaponHash)) {
+        lastEmptyWeaponRequestHash = null;
+        return;
+    }
+
+    const totalAmmo = getTotalAmmoForWeapon(localPlayer, weaponHash);
+    if (!Number.isFinite(totalAmmo)) return;
+
+    if (totalAmmo > 0) {
+        if (lastEmptyWeaponRequestHash === weaponHash) {
+            lastEmptyWeaponRequestHash = null;
+        }
+        return;
+    }
+
+    if (lastEmptyWeaponRequestHash === weaponHash) return;
+
+    lastEmptyWeaponRequestHash = weaponHash;
+    forceSwitchToUnarmed(localPlayer, weaponHash);
+    mp.events.callRemote('requestClearEmptyWeapon', String(weaponHash));
+});
+
+
+// Handle Esc key for closing custom UIs (dealership, inventory) only
+// Let RAGE MP handle chat natively
+mp.keys.bind(0x1B, true, () => {
+    fallbackChatInputActive = false;
+
+    if (dealershipBrowser) {
+        closeDealershipUI();
+    }
+
+    if (isInventoryOpen) {
+        closeInventoryBrowser();
+    }
 });
 

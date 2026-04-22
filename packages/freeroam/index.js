@@ -7,6 +7,7 @@ const moment = require('moment-timezone');
 const activeDrivers = new Map();
 const activeRides = new Map();
 const activeCalls = new Map();
+const pendingRentOffers = new Map();
 
 const INVENTORY_GIVE_RADIUS = 5.0;
 const WEAPON_GIVE_RADIUS = 5.0;
@@ -151,6 +152,90 @@ const DEALERSHIP_DELIVERY_POS = new mp.Vector3(-23.84, -1094.95, 26.67);
 const DEALERSHIP_DELIVERY_HEADING = 69.0;
 const DEALERSHIP_INTERACT_RADIUS = 8.0;
 const DEALERSHIP_PURCHASE_SPAWN_POS = new mp.Vector3(-49.89, -1111.67, 26.44);
+const PROPERTY_INTERACT_RADIUS = 3.0;
+const PROPERTY_SELL_RADIUS = 10.0;
+const PROPERTY_ADDRESS_HINT_RADIUS = 4.0;
+
+const PROPERTY_CATALOG = Object.freeze([
+    {
+        key: 'alta-apt-1',
+        name: 'Alta Street Apartment 1',
+        price: 85000,
+        entry: { x: -270.07, y: -957.11, z: 31.22, h: 208.0 },
+        interior: { x: 266.08, y: -1007.13, z: -101.01, h: 358.0 },
+        exit: { x: 266.02, y: -1007.32, z: -101.01, h: 179.0 },
+        dimension: 7101,
+    },
+    {
+        key: 'south-rockford-apt-7',
+        name: 'South Rockford Apartment 7',
+        price: 125000,
+        entry: { x: -912.54, y: -365.24, z: 114.28, h: 296.0 },
+        interior: { x: 346.52, y: -1012.45, z: -99.2, h: 5.0 },
+        exit: { x: 346.52, y: -1012.45, z: -99.2, h: 181.0 },
+        dimension: 7102,
+    },
+    {
+        key: 'milton-rd-penthouse',
+        name: 'Milton Road Penthouse',
+        price: 220000,
+        entry: { x: -1451.01, y: -523.09, z: 56.93, h: 36.0 },
+        interior: { x: -786.87, y: 315.73, z: 217.64, h: 268.0 },
+        exit: { x: -786.87, y: 315.73, z: 217.64, h: 90.0 },
+        dimension: 7103,
+    },
+]);
+
+const APROP_INTERIOR_PRESETS = Object.freeze({
+    low_end_apartment: { label: 'Low End Apartment', pos: new mp.Vector3(261.4586, -998.8196, -99.00863) },
+    medium_end_apartment: { label: 'Medium End Apartment', pos: new mp.Vector3(347.2686, -999.2955, -99.19622) },
+    integrity_way_apt_28: { label: '4 Integrity Way, Apt 28', pos: new mp.Vector3(-18.07856, -583.6725, 79.46569) },
+    integrity_way_apt_30: { label: '4 Integrity Way, Apt 30', pos: new mp.Vector3(-35.31277, -580.4199, 88.71221) },
+    dell_perro_apt_4: { label: 'Dell Perro Heights, Apt 4', pos: new mp.Vector3(-1468.14, -541.815, 73.4442) },
+    dell_perro_apt_7: { label: 'Dell Perro Heights, Apt 7', pos: new mp.Vector3(-1477.14, -538.7499, 55.5264) },
+    richard_majestic_apt_2: { label: 'Richard Majestic, Apt 2', pos: new mp.Vector3(-915.811, -379.432, 113.6748) },
+    tinsel_towers_apt_42: { label: 'Tinsel Towers, Apt 42', pos: new mp.Vector3(-614.86, 40.6783, 97.60007) },
+    eclipse_towers_apt_3: { label: 'Eclipse Towers, Apt 3', pos: new mp.Vector3(-773.407, 341.766, 211.397) },
+    wild_oats_3655: { label: '3655 Wild Oats Drive', pos: new mp.Vector3(-169.286, 486.4938, 137.4436) },
+    north_conker_2044: { label: '2044 North Conker Avenue', pos: new mp.Vector3(340.9412, 437.1798, 149.3925) },
+    north_conker_2045: { label: '2045 North Conker Avenue', pos: new mp.Vector3(373.023, 416.105, 145.7006) },
+    hillcrest_2862: { label: '2862 Hillcrest Avenue', pos: new mp.Vector3(-676.127, 588.612, 145.1698) },
+    hillcrest_2868: { label: '2868 Hillcrest Avenue', pos: new mp.Vector3(-763.107, 615.906, 144.1401) },
+    hillcrest_2874: { label: '2874 Hillcrest Avenue', pos: new mp.Vector3(-857.798, 682.563, 152.6529) },
+    whispymound_2677: { label: '2677 Whispymound Drive', pos: new mp.Vector3(120.5, 549.952, 184.097) },
+    mad_wayne_2133: { label: '2133 Mad Wayne Thunder', pos: new mp.Vector3(-1288.0, 440.748, 97.69459) },
+});
+
+const APROP_INTERIOR_PRESET_LIST = Object.freeze([
+    { id: 1, key: 'low_end_apartment', label: 'Low End Apartment', pos: new mp.Vector3(261.4586, -998.8196, -99.00863) },
+    { id: 2, key: 'medium_end_apartment', label: 'Medium End Apartment', pos: new mp.Vector3(347.2686, -999.2955, -99.19622) },
+    { id: 3, key: 'integrity_way_apt_28', label: '4 Integrity Way, Apt 28', pos: new mp.Vector3(-18.07856, -583.6725, 79.46569) },
+    { id: 4, key: 'integrity_way_apt_30', label: '4 Integrity Way, Apt 30', pos: new mp.Vector3(-35.31277, -580.4199, 88.71221) },
+    { id: 5, key: 'dell_perro_apt_4', label: 'Dell Perro Heights, Apt 4', pos: new mp.Vector3(-1468.14, -541.815, 73.4442) },
+    { id: 6, key: 'dell_perro_apt_7', label: 'Dell Perro Heights, Apt 7', pos: new mp.Vector3(-1477.14, -538.7499, 55.5264) },
+    { id: 7, key: 'richard_majestic_apt_2', label: 'Richard Majestic, Apt 2', pos: new mp.Vector3(-915.811, -379.432, 113.6748) },
+    { id: 8, key: 'tinsel_towers_apt_42', label: 'Tinsel Towers, Apt 42', pos: new mp.Vector3(-614.86, 40.6783, 97.60007) },
+    { id: 9, key: 'eclipse_towers_apt_3', label: 'Eclipse Towers, Apt 3', pos: new mp.Vector3(-773.407, 341.766, 211.397) },
+    { id: 10, key: 'wild_oats_3655', label: '3655 Wild Oats Drive', pos: new mp.Vector3(-169.286, 486.4938, 137.4436) },
+    { id: 11, key: 'north_conker_2044', label: '2044 North Conker Avenue', pos: new mp.Vector3(340.9412, 437.1798, 149.3925) },
+    { id: 12, key: 'north_conker_2045', label: '2045 North Conker Avenue', pos: new mp.Vector3(373.023, 416.105, 145.7006) },
+    { id: 13, key: 'hillcrest_2862', label: '2862 Hillcrest Avenue', pos: new mp.Vector3(-676.127, 588.612, 145.1698) },
+    { id: 14, key: 'hillcrest_2868', label: '2868 Hillcrest Avenue', pos: new mp.Vector3(-763.107, 615.906, 144.1401) },
+    { id: 15, key: 'hillcrest_2874', label: '2874 Hillcrest Avenue', pos: new mp.Vector3(-857.798, 682.563, 152.6529) },
+    { id: 16, key: 'whispymound_2677', label: '2677 Whispymound Drive', pos: new mp.Vector3(120.5, 549.952, 184.097) },
+    { id: 17, key: 'mad_wayne_2133', label: '2133 Mad Wayne Thunder', pos: new mp.Vector3(-1288.0, 440.748, 97.69459) },
+]);
+
+const APROP_INTERIOR_PRESETS_BY_ID = new Map(APROP_INTERIOR_PRESET_LIST.map(item => [item.id, item]));
+const APROP_INTERIOR_PRESETS_BY_KEY = new Map(APROP_INTERIOR_PRESET_LIST.map(item => [item.key, item]));
+
+function getUniquePropertyDimension(propertyId) {
+    const safePropertyId = Math.max(1, parseInt(propertyId, 10) || 1);
+    return 90000 + safePropertyId;
+}
+
+const propertiesById = new Map();
+let propertiesLoaded = false;
 
 const VEHICLE_CATALOG = Object.freeze([
     { key: 'sultan', name: 'Karin Sultan', model: 'sultan', price: 28000 },
@@ -177,6 +262,23 @@ mp.markers.new(1, new mp.Vector3(DEALERSHIP_POS.x, DEALERSHIP_POS.y, DEALERSHIP_
     color: [93, 173, 226, 180],
     visible: true,
     dimension: 0,
+});
+
+PROPERTY_CATALOG.forEach((propertyDef) => {
+    const entry = propertyDef.entry;
+
+    mp.blips.new(40, new mp.Vector3(entry.x, entry.y, entry.z), {
+        name: 'Property',
+        color: 2,
+        shortRange: true,
+        scale: 0.7,
+    });
+
+    mp.markers.new(1, new mp.Vector3(entry.x, entry.y, entry.z - 1.0), 1.0, {
+        color: [46, 204, 113, 150],
+        visible: true,
+        dimension: 0,
+    });
 });
 
 function isNearPoint(player, point, radius) {
@@ -227,6 +329,552 @@ function makeVehiclePlate(charId, vehicleDbId) {
     const safeChar = Math.max(0, parseInt(charId, 10) || 0).toString().slice(-3);
     const safeVehicle = Math.max(0, parseInt(vehicleDbId, 10) || 0).toString().slice(-3);
     return `CRP${safeChar}${safeVehicle}`.slice(0, 8);
+}
+
+function getDefaultPropertySettings() {
+    return {
+        locked: 1,
+        rentPerPaycheck: 0,
+    };
+}
+
+function getLocalizedPropertyName(propertyIdRaw) {
+    const propertyId = Math.max(1, parseInt(propertyIdRaw, 10) || 1);
+    return `Nuosavybė #${propertyId}`;
+}
+
+function shouldLocalizeLegacyPropertyName(nameRaw) {
+    const name = String(nameRaw || '').trim();
+    if (!name) return true;
+    return /^property\s*#\s*\d+$/i.test(name);
+}
+
+function isGenericPropertyLabel(nameRaw) {
+    const name = String(nameRaw || '').trim();
+    if (!name) return true;
+    return /^property\s*#\s*\d+$/i.test(name) || /^nuosavyb(?:ė|e)\s*#\s*\d+$/i.test(name);
+}
+
+const GTA_ADDRESS_STREETS = Object.freeze([
+    'Rodeo Drive',
+    'Vinewood Blvd',
+    'Alta Street',
+    'Power Street',
+    'Hawick Avenue',
+    'Del Perro Fwy',
+    'Eclipse Blvd',
+    'Marathon Avenue',
+    'Occupation Avenue',
+    'Strawberry Avenue',
+    'Innocence Blvd',
+    'Elgin Avenue',
+    'Spanish Avenue',
+    'Fantastic Place',
+    'Palomino Avenue',
+    'Mirror Park Blvd',
+    'Carcer Way',
+    'Banham Canyon Drive',
+    'Great Ocean Highway',
+    'Route 68',
+]);
+
+function getHashFromPosition(pos) {
+    if (!pos) return 0;
+    const x = Math.floor(Math.abs(Number(pos.x) || 0) * 100);
+    const y = Math.floor(Math.abs(Number(pos.y) || 0) * 100);
+    const z = Math.floor(Math.abs(Number(pos.z) || 0) * 100);
+    return ((x * 73856093) ^ (y * 19349663) ^ (z * 83492791)) >>> 0;
+}
+
+function getGtaStreetNameByPosition(pos) {
+    if (!pos || !GTA_ADDRESS_STREETS.length) return 'San Andreas Avenue';
+    const hash = getHashFromPosition(pos);
+    return GTA_ADDRESS_STREETS[hash % GTA_ADDRESS_STREETS.length] || 'San Andreas Avenue';
+}
+
+function getGtaHouseNumberByPosition(pos) {
+    if (!pos) return 1000;
+    const hash = getHashFromPosition(pos);
+    return 100 + (hash % 9800);
+}
+
+function getAutoPropertyAddressFromPosition(pos) {
+    const houseNumber = getGtaHouseNumberByPosition(pos);
+    const streetName = getGtaStreetNameByPosition(pos);
+    return `${houseNumber} ${streetName}`;
+}
+
+function sanitizePropertyAddress(addressRaw) {
+    const text = String(addressRaw || '').replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return text.slice(0, 128);
+}
+
+function requestNativePropertyAddressResolution(player, property) {
+    if (!player || !property || !property.id || !property.entryPos) return;
+
+    const now = Date.now();
+    const lastRequestedPropertyId = parseInt(player.lastNativeAddressResolvePropertyId, 10);
+    const lastRequestedAt = parseInt(player.lastNativeAddressResolveAt, 10);
+    if (Number.isFinite(lastRequestedPropertyId)
+        && Number.isFinite(lastRequestedAt)
+        && lastRequestedPropertyId === Number(property.id)
+        && (now - lastRequestedAt) < 30000) {
+        return;
+    }
+
+    player.lastNativeAddressResolvePropertyId = Number(property.id);
+    player.lastNativeAddressResolveAt = now;
+    player.call('resolvePropertyNativeAddress', [
+        Number(property.id),
+        Number(property.entryPos.x) || 0,
+        Number(property.entryPos.y) || 0,
+        Number(property.entryPos.z) || 0,
+    ]);
+}
+
+function getPropertyAddressForDisplay(property) {
+    if (!property) return '1000 San Andreas Avenue';
+
+    const storedAddress = sanitizePropertyAddress(property.address);
+    if (storedAddress) return storedAddress;
+
+    const position = property.entryPos || property.interiorPos || null;
+    return getAutoPropertyAddressFromPosition(position);
+}
+
+function parsePropertySettings(rawSettings) {
+    const defaults = getDefaultPropertySettings();
+    if (rawSettings === null || rawSettings === undefined || rawSettings === '') return defaults;
+
+    try {
+        const parsed = JSON.parse(rawSettings);
+        return {
+            locked: Number(parsed.locked) ? 1 : 0,
+            rentPerPaycheck: Math.max(0, parseInt(parsed.rentPerPaycheck, 10) || 0),
+        };
+    } catch (error) {
+        console.error('[HOUSING] Failed to parse property settings JSON:', error.message);
+        return defaults;
+    }
+}
+
+function parsePropertyInventory(rawInventory) {
+    if (rawInventory === null || rawInventory === undefined || rawInventory === '') {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(rawInventory);
+        return normalizeInventoryItems(parsed);
+    } catch (error) {
+        console.error('[HOUSING] Failed to parse property inventory JSON:', error.message);
+        return [];
+    }
+}
+
+function getPropertyInventoryJson(property) {
+    if (!property || !Array.isArray(property.inventory)) return '[]';
+    return JSON.stringify(property.inventory);
+}
+
+function getPropertySettingsJson(property) {
+    if (!property || !property.settings) return JSON.stringify(getDefaultPropertySettings());
+    return JSON.stringify({
+        locked: Number(property.settings.locked) ? 1 : 0,
+        rentPerPaycheck: Math.max(0, parseInt(property.settings.rentPerPaycheck, 10) || 0),
+    });
+}
+
+function persistPropertyState(property) {
+    if (!property || !property.id) return;
+    property.address = getPropertyAddressForDisplay(property);
+
+    db.query(
+        'UPDATE server_properties SET owner_char_id = ?, owner_char_name = ?, tenant_char_id = ?, tenant_char_name = ?, inventory = ?, settings = ?, address = ? WHERE id = ?',
+        [
+            property.ownerCharId || null,
+            property.ownerCharName || null,
+            property.tenantCharId || null,
+            property.tenantCharName || null,
+            getPropertyInventoryJson(property),
+            getPropertySettingsJson(property),
+            property.address,
+            property.id,
+        ],
+        (err) => {
+            if (err) {
+                console.error('[HOUSING] Failed to persist property state:', err.message);
+            }
+        }
+    );
+}
+
+function loadPropertiesFromDatabase() {
+    db.query('SELECT * FROM server_properties ORDER BY id ASC', (err, rows) => {
+        if (err) {
+            console.error('[HOUSING] Failed to load properties:', err.message);
+            return;
+        }
+
+        propertiesById.clear();
+
+        rows.forEach((row) => {
+            const propertyId = Number(row.id);
+            const shouldLocalizeName = shouldLocalizeLegacyPropertyName(row.name);
+            const localizedName = shouldLocalizeName ? getLocalizedPropertyName(propertyId) : String(row.name || '').trim();
+            const generatedAddress = getAutoPropertyAddressFromPosition({ x: row.entry_x, y: row.entry_y, z: row.entry_z });
+            const storedAddress = String(row.address || '').trim();
+            const resolvedAddress = storedAddress || generatedAddress;
+
+            const property = {
+                id: propertyId,
+                key: row.property_key,
+                name: localizedName,
+                address: resolvedAddress,
+                price: Math.max(0, parseInt(row.price, 10) || 0),
+                entryPos: new mp.Vector3(Number(row.entry_x), Number(row.entry_y), Number(row.entry_z)),
+                entryHeading: Number.isFinite(Number(row.entry_h)) ? Number(row.entry_h) : 0,
+                interiorPos: new mp.Vector3(Number(row.interior_x), Number(row.interior_y), Number(row.interior_z)),
+                interiorHeading: Number.isFinite(Number(row.interior_h)) ? Number(row.interior_h) : 0,
+                exitPos: new mp.Vector3(Number(row.interior_x), Number(row.interior_y), Number(row.interior_z)),
+                exitHeading: Number.isFinite(Number(row.interior_h)) ? Number(row.interior_h) : 0,
+                dimension: Math.max(1, parseInt(row.dimension, 10) || (7000 + Number(row.id))),
+                ownerCharId: row.owner_char_id ? Number(row.owner_char_id) : null,
+                ownerCharName: row.owner_char_name || null,
+                tenantCharId: row.tenant_char_id ? Number(row.tenant_char_id) : null,
+                tenantCharName: row.tenant_char_name || null,
+                inventory: parsePropertyInventory(row.inventory),
+                settings: parsePropertySettings(row.settings),
+            };
+
+            if (shouldLocalizeName) {
+                db.query('UPDATE server_properties SET name = ? WHERE id = ?', [localizedName, propertyId]);
+            }
+
+            if (!storedAddress) {
+                db.query('UPDATE server_properties SET address = ? WHERE id = ?', [resolvedAddress, propertyId]);
+            }
+
+            propertiesById.set(property.id, property);
+        });
+
+        propertiesLoaded = true;
+        console.log(`[HOUSING] Loaded ${propertiesById.size} properties.`);
+    });
+}
+
+function seedAndLoadProperties() {
+    if (!PROPERTY_CATALOG.length) {
+        loadPropertiesFromDatabase();
+        return;
+    }
+
+    let pending = PROPERTY_CATALOG.length;
+    const done = () => {
+        pending -= 1;
+        if (pending <= 0) {
+            loadPropertiesFromDatabase();
+        }
+    };
+
+    PROPERTY_CATALOG.forEach((propertyDef) => {
+        const settingsJson = JSON.stringify(getDefaultPropertySettings());
+        const autoAddress = getAutoPropertyAddressFromPosition(propertyDef.entry);
+        db.query(
+            'INSERT IGNORE INTO server_properties (property_key, name, address, price, entry_x, entry_y, entry_z, entry_h, interior_x, interior_y, interior_z, interior_h, dimension, inventory, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                propertyDef.key,
+                propertyDef.name,
+                autoAddress,
+                propertyDef.price,
+                propertyDef.entry.x,
+                propertyDef.entry.y,
+                propertyDef.entry.z,
+                propertyDef.entry.h,
+                propertyDef.interior.x,
+                propertyDef.interior.y,
+                propertyDef.interior.z,
+                propertyDef.interior.h,
+                propertyDef.dimension,
+                '[]',
+                settingsJson,
+            ],
+            (err) => {
+                if (err) {
+                    console.error('[HOUSING] Failed to seed property:', propertyDef.key, err.message);
+                }
+                done();
+            }
+        );
+    });
+}
+
+function getPropertyById(propertyIdRaw) {
+    const propertyId = parseInt(propertyIdRaw, 10);
+    if (!Number.isFinite(propertyId)) return null;
+    return propertiesById.get(propertyId) || null;
+}
+
+function getNearbyProperty(player, radius = PROPERTY_INTERACT_RADIUS) {
+    if (!player || !player.position || Number(player.dimension) !== 0) return null;
+
+    let closest = null;
+    let closestDistance = Number(radius);
+
+    propertiesById.forEach((property) => {
+        const distance = getDistanceBetweenPositions(player.position, property.entryPos);
+        if (distance <= closestDistance) {
+            closestDistance = distance;
+            closest = property;
+        }
+    });
+
+    return closest;
+}
+
+function getPlayerCurrentProperty(player) {
+    if (!player) return null;
+
+    const currentPropertyId = parseInt(player.currentPropertyId, 10);
+    if (Number.isFinite(currentPropertyId)) {
+        const byId = propertiesById.get(currentPropertyId);
+        if (byId) return byId;
+    }
+
+    if (Number(player.dimension) <= 0) return null;
+
+    for (const property of propertiesById.values()) {
+        if (Number(property.dimension) === Number(player.dimension)) {
+            return property;
+        }
+    }
+
+    return null;
+}
+
+function isPropertyOwner(player, property) {
+    if (!player || !property || !player.charId) return false;
+
+    const ownerCharId = parseInt(property.ownerCharId, 10);
+    const playerCharId = parseInt(player.charId, 10);
+    if (!Number.isFinite(ownerCharId) || ownerCharId <= 0) return false;
+    if (!Number.isFinite(playerCharId) || playerCharId <= 0) return false;
+
+    return ownerCharId === playerCharId;
+}
+
+function isPropertyTenant(player, property) {
+    if (!player || !property || !player.charId) return false;
+
+    const tenantCharId = parseInt(property.tenantCharId, 10);
+    const playerCharId = parseInt(player.charId, 10);
+    if (!Number.isFinite(tenantCharId) || tenantCharId <= 0) return false;
+    if (!Number.isFinite(playerCharId) || playerCharId <= 0) return false;
+
+    return tenantCharId === playerCharId;
+}
+
+function isPropertyLocked(property) {
+    if (!property || !property.settings) return false;
+    const raw = property.settings.locked;
+    if (raw === true) return true;
+    if (typeof raw === 'string') {
+        const normalized = raw.trim().toLowerCase();
+        if (normalized === 'true' || normalized === 'yes' || normalized === 'on') return true;
+    }
+    return Number(raw) === 1;
+}
+
+function canAccessProperty(player, property) {
+    if (!player || !property) return false;
+    return isPropertyOwner(player, property) || isPropertyTenant(player, property);
+}
+
+function clearTenantFromProperty(property) {
+    if (!property) return;
+    property.tenantCharId = null;
+    property.tenantCharName = null;
+}
+
+function setTenantForProperty(property, tenantPlayer) {
+    if (!property || !tenantPlayer || !tenantPlayer.charId || !tenantPlayer.charName) return false;
+
+    property.tenantCharId = tenantPlayer.charId;
+    property.tenantCharName = tenantPlayer.charName;
+    return true;
+}
+
+function getOwnedPropertyContext(player) {
+    const currentProperty = getPlayerCurrentProperty(player);
+    if (currentProperty && isPropertyOwner(player, currentProperty)) {
+        return currentProperty;
+    }
+
+    const nearbyProperty = getNearbyProperty(player);
+    if (nearbyProperty && isPropertyOwner(player, nearbyProperty)) {
+        return nearbyProperty;
+    }
+
+    return null;
+}
+
+function getTenantPropertyContext(player) {
+    const currentProperty = getPlayerCurrentProperty(player);
+    if (currentProperty && isPropertyTenant(player, currentProperty)) {
+        return currentProperty;
+    }
+
+    const nearbyProperty = getNearbyProperty(player, 12.0);
+    if (nearbyProperty && isPropertyTenant(player, nearbyProperty)) {
+        return nearbyProperty;
+    }
+
+    return null;
+}
+
+function getPropertyRentedByCharId(charId) {
+    const safeCharId = parseInt(charId, 10);
+    if (!Number.isFinite(safeCharId) || safeCharId <= 0) return null;
+
+    for (const property of propertiesById.values()) {
+        if (Number(property.tenantCharId) === safeCharId) {
+            return property;
+        }
+    }
+
+    return null;
+}
+
+function getAccessiblePropertyContext(player) {
+    const currentProperty = getPlayerCurrentProperty(player);
+    if (currentProperty && canAccessProperty(player, currentProperty)) {
+        return currentProperty;
+    }
+
+    const nearbyProperty = getNearbyProperty(player);
+    if (nearbyProperty && canAccessProperty(player, nearbyProperty)) {
+        return nearbyProperty;
+    }
+
+    return null;
+}
+
+function addPropertyInventoryItem(property, type, amount) {
+    if (!property) return null;
+    if (!Array.isArray(property.inventory)) {
+        property.inventory = [];
+    }
+
+    const quantity = Math.max(1, parseInt(amount, 10) || 1);
+    const existing = property.inventory.find(item => item && item.type === type);
+    if (existing) {
+        existing.quantity += quantity;
+        return existing;
+    }
+
+    const created = createInventoryItem(type, quantity);
+    if (!created) return null;
+    property.inventory.push(created);
+    return created;
+}
+
+function removePropertyInventoryItemByType(property, type, amount) {
+    if (!property || !Array.isArray(property.inventory)) return null;
+
+    const index = property.inventory.findIndex(item => item && item.type === type);
+    if (index === -1) return null;
+
+    const entry = property.inventory[index];
+    const quantity = Math.max(1, parseInt(amount, 10) || 1);
+    if (entry.quantity < quantity) return null;
+
+    entry.quantity -= quantity;
+    if (entry.quantity <= 0) {
+        property.inventory.splice(index, 1);
+    }
+
+    return entry;
+}
+
+function getPropertyRentForOwner(charId) {
+    const safeCharId = parseInt(charId, 10);
+    if (!Number.isFinite(safeCharId)) return 0;
+
+    let total = 0;
+    propertiesById.forEach((property) => {
+        if (Number(property.ownerCharId) !== safeCharId) return;
+        total += Math.max(0, parseInt(property.settings?.rentPerPaycheck, 10) || 0);
+    });
+
+    return total;
+}
+
+function getPropertyRentChargeLinesForTenant(charId) {
+    const safeCharId = parseInt(charId, 10);
+    if (!Number.isFinite(safeCharId)) return [];
+
+    const lines = [];
+    propertiesById.forEach((property) => {
+        if (Number(property.tenantCharId) !== safeCharId) return;
+        const rent = Math.max(0, parseInt(property.settings?.rentPerPaycheck, 10) || 0);
+        if (rent <= 0) return;
+        if (!property.ownerCharId || !property.ownerCharName) return;
+        lines.push({ property, rent });
+    });
+
+    return lines;
+}
+
+function findOnlinePlayerByCharId(charId) {
+    const safeCharId = parseInt(charId, 10);
+    if (!Number.isFinite(safeCharId)) return null;
+    return mp.players.toArray().find(p => Number(p.charId) === safeCharId) || null;
+}
+
+function formatPropertyOwner(property) {
+    if (!property || !property.ownerCharId) return 'Server';
+    return property.ownerCharName || `Char ID ${property.ownerCharId}`;
+}
+
+function sendPropertyInfo(player, property) {
+    if (!player || !property) return;
+
+    const ownerText = formatPropertyOwner(property);
+    const tenantText = property.tenantCharId ? (property.tenantCharName || `Char ID ${property.tenantCharId}`) : 'Nera';
+    const lockedText = Number(property.settings?.locked) ? 'Uzrakintas' : 'Atrakintas';
+    const rentText = Math.max(0, parseInt(property.settings?.rentPerPaycheck, 10) || 0);
+
+    player.outputChatBox(`!{#85c1e9}Property #${property.id}: ${property.name}`);
+    player.outputChatBox(`!{#d6eaf8}Kaina: $${property.price} | Savininkas: ${ownerText}`);
+    player.outputChatBox(`!{#d6eaf8}Busena: ${lockedText} | Nuoma per paycheck: $${rentText} | Nuomininkas: ${tenantText}`);
+}
+
+function movePlayerIntoProperty(player, property) {
+    if (!player || !property) return;
+
+    const targetPos = property.exitPos || property.interiorPos;
+    const targetHeading = Number.isFinite(property.exitHeading)
+        ? property.exitHeading
+        : (Number.isFinite(property.interiorHeading) ? property.interiorHeading : 0);
+
+    player.dimension = property.dimension;
+    player.position = targetPos;
+    player.heading = targetHeading;
+    player.currentPropertyId = property.id;
+}
+
+function getPropertyRoleForPlayer(player, property) {
+    if (!player || !property) return 'guest';
+    if (isPropertyOwner(player, property)) return 'owner';
+    if (isPropertyTenant(player, property)) return 'tenant';
+    return 'guest';
+}
+
+function removeExpiredRentOffer(targetPlayerId, offer) {
+    const existing = pendingRentOffers.get(targetPlayerId);
+    if (!existing || existing.createdAt !== offer.createdAt) return;
+    pendingRentOffers.delete(targetPlayerId);
 }
 
 function ensureOwnedVehicleState(player) {
@@ -413,6 +1061,7 @@ function spawnOwnedVehicleForPlayer(player, record, spawnPos = DEALERSHIP_DELIVE
     entity.setVariable('manualLightsOn', 0);
     entity.setVariable('ownedVehicleId', record.id);
     entity.setVariable('ownedByCharId', player.charId);
+    setVehicleWeaponStash(entity, record.weaponInventory || []);
 
     record.entity = entity;
     record.parked = 0;
@@ -477,6 +1126,7 @@ function parkOwnedVehicle(record, parkPos, parkHeading = DEALERSHIP_DELIVERY_HEA
     record.blip = null;
 
     if (record.entity) {
+        record.weaponInventory = getVehicleWeaponStash(record.entity);
         try { record.entity.destroy(); } catch (e) { console.error('[VEHICLES] destroy error:', e.message); }
     }
 
@@ -527,6 +1177,7 @@ function cleanupPlayerOwnedVehicles(player, forceParked = true) {
                 record.parkH = heading;
             }
 
+            record.weaponInventory = getVehicleWeaponStash(record.entity);
             record.entity.destroy();
             record.entity = null;
             persistOwnedVehicleState(record);
@@ -847,6 +1498,48 @@ function getVehicleWeaponInventoryJson(record) {
     );
 }
 
+function getVehicleWeaponStash(vehicle) {
+    if (!vehicle || !vehicle.getVariable) return [];
+    try {
+        const raw = vehicle.getVariable('weaponStash');
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .map((entry) => {
+                const weaponHash = sanitizeWeaponHash(entry && entry.weaponHash);
+                if (!weaponHash) return null;
+                return { weaponHash, label: getWeaponLabel(weaponHash) };
+            })
+            .filter(Boolean);
+    } catch (e) {
+        return [];
+    }
+}
+
+function setVehicleWeaponStash(vehicle, inventory) {
+    if (!vehicle || !vehicle.setVariable) return;
+    const json = JSON.stringify(
+        (Array.isArray(inventory) ? inventory : [])
+            .map((e) => ({ weaponHash: sanitizeWeaponHash(e && e.weaponHash) }))
+            .filter((e) => e.weaponHash)
+    );
+    vehicle.setVariable('weaponStash', json);
+}
+
+function persistVehicleWeaponStash(vehicle) {
+    if (!vehicle || !vehicle.getVariable) return;
+    const ownedVehicleId = vehicle.getVariable('ownedVehicleId');
+    if (!ownedVehicleId) return;
+    const stash = getVehicleWeaponStash(vehicle);
+    const json = JSON.stringify(
+        stash.map((e) => ({ weaponHash: sanitizeWeaponHash(e && e.weaponHash) })).filter((e) => e.weaponHash)
+    );
+    db.query('UPDATE player_vehicles SET weapon_inventory = ? WHERE id = ?', [json, ownedVehicleId], (err) => {
+        if (err) console.error('[WEAPONS] Failed to persist vehicle weapon stash:', err.message);
+    });
+}
+
 function parseWeaponPackage(rawPackage) {
     if (rawPackage === null || rawPackage === undefined || rawPackage === '') {
         return [];
@@ -896,16 +1589,96 @@ function persistWeaponPackage(player) {
     });
 }
 
+function getEquippedWeaponAmmo(player, expectedWeaponHash = null) {
+    if (!player) {
+        return null;
+    }
+
+    const expectedHash = sanitizeWeaponHash(expectedWeaponHash);
+
+    // Prefer client-tracked weapon ammo (most reliable)
+    if (Number.isFinite(player.trackedWeaponAmmo)
+        && (!expectedHash || Number(player.trackedWeaponHash) === expectedHash)) {
+        return player.trackedWeaponAmmo;
+    }
+
+    // Fallback: try server API
+    const currentWeapon = Number(player.weapon);
+
+    if (!Number.isFinite(currentWeapon) || currentWeapon === 0 || currentWeapon === WEAPON_UNARMED_HASH) {
+        return player.currentWeaponAmmo || null;
+    }
+
+    try {
+        // Try to get current ammo from player API
+        if (typeof player.getWeaponAmmo === 'function') {
+            const ammo = player.getWeaponAmmo(currentWeapon);
+            if (Number.isFinite(ammo)) {
+                return ammo;
+            }
+        }
+    } catch (err) {
+        console.error('[WEAPONS] Error getting weapon ammo:', err.message);
+    }
+
+    // Fallback to saved ammo from DB
+    const savedAmmo = player.savedEquippedWeaponAmmo;
+    if (Number.isFinite(savedAmmo)) {
+        return savedAmmo;
+    }
+
+    return null;
+}
+
 function persistEquippedWeapon(player) {
     if (!player || !player.charId) return;
 
-    const equippedWeaponHash = sanitizeWeaponHash(getCurrentHoldableWeaponHash(player));
+    const equippedWeaponHash = sanitizeWeaponHash(getCurrentHoldableWeaponHash(player))
+        || sanitizeWeaponHash(player.savedEquippedWeaponHash)
+        || null;
+
+    let equippedWeaponAmmo = null;
+    if (equippedWeaponHash) {
+        const currentAmmo = getEquippedWeaponAmmo(player);
+        equippedWeaponAmmo = (Number.isFinite(currentAmmo)) ? currentAmmo : DEFAULT_WEAPON_AMMO;
+    }
+
     player.savedEquippedWeaponHash = equippedWeaponHash;
-    db.query('UPDATE characters SET equipped_weapon_hash = ? WHERE id = ?', [equippedWeaponHash, player.charId], (err) => {
-        if (err) {
-            console.error('[WEAPONS] Failed to save equipped weapon:', err.message);
+    player.savedEquippedWeaponAmmo = equippedWeaponAmmo;
+
+    console.log(`[WEAPONS] Persisting weapon hash=${equippedWeaponHash} ammo=${equippedWeaponAmmo} for player ${player.charName}`);
+
+    db.query('UPDATE characters SET equipped_weapon_hash = ?, equipped_weapon_ammo = ? WHERE id = ?',
+        [equippedWeaponHash, equippedWeaponAmmo, player.charId], (err) => {
+            if (err) {
+                console.error('[WEAPONS] Failed to save equipped weapon:', err.message);
+            } else {
+                console.log(`[WEAPONS] Weapon persisted successfully for ${player.charName}`);
+            }
+        });
+}
+
+function checkAndRemoveEmptyWeapons(player) {
+    if (!player || !player.weapon) return;
+
+    const currentWeapon = Number(player.weapon);
+    if (!Number.isFinite(currentWeapon) || currentWeapon === 0 || currentWeapon === WEAPON_UNARMED_HASH) return;
+
+    try {
+        // In RAGE MP, we need to check if ammo is 0 for the current weapon
+        // If getAmmo is available, use it; otherwise the client will handle removal
+        if (typeof player.getWeaponAmmo === 'function') {
+            const ammo = player.getWeaponAmmo(currentWeapon);
+            if (ammo === 0) {
+                const weaponLabel = getWeaponLabel(currentWeapon);
+                setSingleWeaponForPlayer(player, WEAPON_UNARMED_HASH, 0);
+                persistEquippedWeapon(player);
+                player.outputChatBox(`!{#e74c3c}${weaponLabel} baigėsi kulkos ir buvo panaikintas.`);
+            }
         }
-    });
+    } catch (err) {
+        // Silently ignore errors in ammo checks
+    }
 }
 
 function setSingleWeaponForPlayer(player, weaponHash, ammo = DEFAULT_WEAPON_AMMO) {
@@ -917,6 +1690,11 @@ function setSingleWeaponForPlayer(player, weaponHash, ammo = DEFAULT_WEAPON_AMMO
 
     const targetHash = Number(weaponHash);
     if (!Number.isFinite(targetHash) || targetHash === 0 || targetHash === WEAPON_UNARMED_HASH) {
+        player.savedEquippedWeaponHash = null;
+        player.savedEquippedWeaponAmmo = null;
+        player.currentWeaponAmmo = null;
+        player.trackedWeaponHash = null;
+        player.trackedWeaponAmmo = null;
         if (typeof player.weapon !== 'undefined') {
             player.weapon = WEAPON_UNARMED_HASH;
         }
@@ -930,139 +1708,225 @@ function setSingleWeaponForPlayer(player, weaponHash, ammo = DEFAULT_WEAPON_AMMO
     const safeAmmo = Math.max(1, parseInt(ammo, 10) || DEFAULT_WEAPON_AMMO);
     player.giveWeapon(targetHash, safeAmmo);
     player.weapon = targetHash;
+    player.savedEquippedWeaponHash = sanitizeWeaponHash(targetHash);
+    player.savedEquippedWeaponAmmo = safeAmmo;
+    player.currentWeaponAmmo = safeAmmo;  // Track current ammo
+    player.trackedWeaponHash = targetHash;  // Track weapon hash
+    player.trackedWeaponAmmo = safeAmmo;  // Track from server too
+    console.log(`[WEAPONS] setSingleWeaponForPlayer: ${targetHash} with ${safeAmmo} ammo`);
     return true;
 }
 
 
-const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'ragemp_mod'
+const db = mysql.createPool({
+    connectionLimit: 10,
+    waitForConnections: true,
+    queueLimit: 0,
+    host: 'californiarp.lt',
+    user: 'u845910951_ingamedatabase',
+    password: 'Yv4V&y0D',
+    database: 'u845910951_ingamedatabase'
 });
 
+function bootstrapDatabase() {
+    console.log('Connected to MySQL Database!');
 
-db.connect((err) => {
+    // Ensure Twitter schema exists
+    db.query(`CREATE TABLE IF NOT EXISTS twitter_accounts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        char_id INT NOT NULL,
+        handle VARCHAR(50) UNIQUE NOT NULL,
+        FOREIGN KEY (char_id) REFERENCES characters(id)
+    )`, (err) => {
+        if (err) console.error('Error creating twitter_accounts table:', err);
+        else console.log('Twitter accounts table ready.');
+    });
+    db.query(`CREATE TABLE IF NOT EXISTS twitter_posts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        char_id INT NOT NULL,
+        handle VARCHAR(50) NOT NULL,
+        content TEXT NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+        if (err) console.error('Error creating twitter_posts table:', err);
+        else console.log('Twitter posts table ready.');
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN clothes TEXT DEFAULT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[CLOTHES] Failed to add clothes column:', err.message);
+        } else {
+            console.log('[CLOTHES] Clothes column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN barber TEXT DEFAULT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[BARBER] Failed to add barber column:', err.message);
+        } else {
+            console.log('[BARBER] Barber column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN inventory TEXT DEFAULT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[INVENTORY] Failed to add inventory column:', err.message);
+        } else {
+            console.log('[INVENTORY] Inventory column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN equipped_weapon_hash INT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[WEAPONS] Failed to add equipped_weapon_hash column:', err.message);
+        } else {
+            console.log('[WEAPONS] equipped_weapon_hash column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN weapon_package TEXT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[WEAPONS] Failed to add weapon_package column:', err.message);
+        } else {
+            console.log('[WEAPONS] weapon_package column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN equipped_weapon_ammo INT NULL DEFAULT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[WEAPONS] Failed to add equipped_weapon_ammo column:', err.message);
+        } else {
+            console.log('[WEAPONS] equipped_weapon_ammo column ready.');
+        }
+    });
+
+    // Fix rows where ammo was stored as 120 default but no weapon is equipped
+    db.query('UPDATE characters SET equipped_weapon_ammo = NULL WHERE equipped_weapon_hash IS NULL AND equipped_weapon_ammo IS NOT NULL', (err) => {
+        if (err) console.error('[WEAPONS] Failed to clean up orphan ammo values:', err.message);
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS player_vehicles (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        char_id INT NOT NULL,
+        model VARCHAR(40) NOT NULL,
+        model_hash INT NOT NULL,
+        display_name VARCHAR(64) NOT NULL,
+        price INT NOT NULL DEFAULT 0,
+        primary_color INT NOT NULL DEFAULT 0,
+        secondary_color INT NOT NULL DEFAULT 0,
+        parked TINYINT(1) NOT NULL DEFAULT 1,
+        park_x FLOAT NULL,
+        park_y FLOAT NULL,
+        park_z FLOAT NULL,
+        park_h FLOAT NULL,
+        locked TINYINT(1) NOT NULL DEFAULT 0,
+        plate VARCHAR(16) NOT NULL,
+        weapon_inventory TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_player_vehicles_char_id (char_id),
+        CONSTRAINT fk_player_vehicles_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE
+    )`, (createErr) => {
+        if (createErr) {
+            console.error('[VEHICLES] Failed to create player_vehicles table:', createErr.message);
+        } else {
+            console.log('[VEHICLES] player_vehicles table ready.');
+        }
+    });
+
+    db.query('ALTER TABLE player_vehicles ADD COLUMN weapon_inventory TEXT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[WEAPONS] Failed to add weapon_inventory column:', err.message);
+        } else {
+            console.log('[WEAPONS] vehicle weapon_inventory column ready.');
+        }
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS player_vehicle_park_locations (
+        vehicle_id INT NOT NULL PRIMARY KEY,
+        char_id INT NOT NULL,
+        park_x FLOAT NOT NULL,
+        park_y FLOAT NOT NULL,
+        park_z FLOAT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_player_vehicle_park_char_id (char_id),
+        CONSTRAINT fk_player_vehicle_park_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE,
+        CONSTRAINT fk_player_vehicle_park_vehicle FOREIGN KEY (vehicle_id) REFERENCES player_vehicles(id) ON DELETE CASCADE
+    )`, (createErr) => {
+        if (createErr) {
+            console.error('[VEHICLES] Failed to create player_vehicle_park_locations table:', createErr.message);
+        } else {
+            console.log('[VEHICLES] player_vehicle_park_locations table ready.');
+        }
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS server_properties (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        property_key VARCHAR(64) NOT NULL UNIQUE,
+        name VARCHAR(80) NOT NULL,
+        address VARCHAR(128) NULL,
+        price INT NOT NULL DEFAULT 0,
+        entry_x FLOAT NOT NULL,
+        entry_y FLOAT NOT NULL,
+        entry_z FLOAT NOT NULL,
+        entry_h FLOAT NOT NULL DEFAULT 0,
+        interior_x FLOAT NOT NULL,
+        interior_y FLOAT NOT NULL,
+        interior_z FLOAT NOT NULL,
+        interior_h FLOAT NOT NULL DEFAULT 0,
+        dimension INT NOT NULL,
+        owner_char_id INT NULL,
+        owner_char_name VARCHAR(64) NULL,
+        tenant_char_id INT NULL,
+        tenant_char_name VARCHAR(64) NULL,
+        inventory TEXT NULL,
+        settings TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_server_properties_owner_char_id (owner_char_id),
+        INDEX idx_server_properties_tenant_char_id (tenant_char_id)
+    )`, (createErr) => {
+        if (createErr) {
+            console.error('[HOUSING] Failed to create server_properties table:', createErr.message);
+            return;
+        }
+
+        console.log('[HOUSING] server_properties table ready.');
+
+        db.query('ALTER TABLE server_properties ADD COLUMN tenant_char_id INT NULL', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[HOUSING] Failed to add tenant_char_id column:', alterErr.message);
+            }
+        });
+
+        db.query('ALTER TABLE server_properties ADD COLUMN tenant_char_name VARCHAR(64) NULL', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[HOUSING] Failed to add tenant_char_name column:', alterErr.message);
+            }
+        });
+
+        db.query('ALTER TABLE server_properties ADD INDEX idx_server_properties_tenant_char_id (tenant_char_id)', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_KEYNAME') {
+                console.error('[HOUSING] Failed to add tenant index:', alterErr.message);
+            }
+        });
+
+        db.query('ALTER TABLE server_properties ADD COLUMN address VARCHAR(128) NULL', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[HOUSING] Failed to add address column:', alterErr.message);
+            }
+        });
+
+        seedAndLoadProperties();
+    });
+}
+
+db.getConnection((err, connection) => {
     if (err) {
         console.error('MySQL Connection Failed:', err);
-    } else {
-        console.log('Connected to MySQL Database!');
-        // Ensure Twitter schema exists
-        db.query(`CREATE TABLE IF NOT EXISTS twitter_accounts (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            char_id INT NOT NULL,
-            handle VARCHAR(50) UNIQUE NOT NULL,
-            FOREIGN KEY (char_id) REFERENCES characters(id)
-        )`, (err) => {
-            if (err) console.error('Error creating twitter_accounts table:', err);
-            else console.log('Twitter accounts table ready.');
-        });
-        db.query(`CREATE TABLE IF NOT EXISTS twitter_posts (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            char_id INT NOT NULL,
-            handle VARCHAR(50) NOT NULL,
-            content TEXT NOT NULL,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`, (err) => {
-            if (err) console.error('Error creating twitter_posts table:', err);
-            else console.log('Twitter posts table ready.');
-        });
-
-        // Clothing system — add column if it didn't exist yet
-        db.query('ALTER TABLE characters ADD COLUMN clothes TEXT DEFAULT NULL', (err) => {
-            if (err && err.code !== 'ER_DUP_FIELDNAME') {
-                console.error('[CLOTHES] Failed to add clothes column:', err.message);
-            } else {
-                console.log('[CLOTHES] Clothes column ready.');
-            }
-        });
-
-        db.query('ALTER TABLE characters ADD COLUMN barber TEXT DEFAULT NULL', (err) => {
-            if (err && err.code !== 'ER_DUP_FIELDNAME') {
-                console.error('[BARBER] Failed to add barber column:', err.message);
-            } else {
-                console.log('[BARBER] Barber column ready.');
-            }
-        });
-
-        db.query('ALTER TABLE characters ADD COLUMN inventory TEXT DEFAULT NULL', (err) => {
-            if (err && err.code !== 'ER_DUP_FIELDNAME') {
-                console.error('[INVENTORY] Failed to add inventory column:', err.message);
-            } else {
-                console.log('[INVENTORY] Inventory column ready.');
-            }
-        });
-
-        db.query('ALTER TABLE characters ADD COLUMN equipped_weapon_hash INT NULL', (err) => {
-            if (err && err.code !== 'ER_DUP_FIELDNAME') {
-                console.error('[WEAPONS] Failed to add equipped_weapon_hash column:', err.message);
-            } else {
-                console.log('[WEAPONS] equipped_weapon_hash column ready.');
-            }
-        });
-
-        db.query('ALTER TABLE characters ADD COLUMN weapon_package TEXT NULL', (err) => {
-            if (err && err.code !== 'ER_DUP_FIELDNAME') {
-                console.error('[WEAPONS] Failed to add weapon_package column:', err.message);
-            } else {
-                console.log('[WEAPONS] weapon_package column ready.');
-            }
-        });
-
-        db.query(`CREATE TABLE IF NOT EXISTS player_vehicles (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            char_id INT NOT NULL,
-            model VARCHAR(40) NOT NULL,
-            model_hash INT NOT NULL,
-            display_name VARCHAR(64) NOT NULL,
-            price INT NOT NULL DEFAULT 0,
-            primary_color INT NOT NULL DEFAULT 0,
-            secondary_color INT NOT NULL DEFAULT 0,
-            parked TINYINT(1) NOT NULL DEFAULT 1,
-            park_x FLOAT NULL,
-            park_y FLOAT NULL,
-            park_z FLOAT NULL,
-            park_h FLOAT NULL,
-            locked TINYINT(1) NOT NULL DEFAULT 0,
-            plate VARCHAR(16) NOT NULL,
-            weapon_inventory TEXT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_player_vehicles_char_id (char_id),
-            CONSTRAINT fk_player_vehicles_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE
-        )`, (createErr) => {
-            if (createErr) {
-                console.error('[VEHICLES] Failed to create player_vehicles table:', createErr.message);
-            } else {
-                console.log('[VEHICLES] player_vehicles table ready.');
-            }
-        });
-
-        db.query('ALTER TABLE player_vehicles ADD COLUMN weapon_inventory TEXT NULL', (err) => {
-            if (err && err.code !== 'ER_DUP_FIELDNAME') {
-                console.error('[WEAPONS] Failed to add weapon_inventory column:', err.message);
-            } else {
-                console.log('[WEAPONS] vehicle weapon_inventory column ready.');
-            }
-        });
-
-        db.query(`CREATE TABLE IF NOT EXISTS player_vehicle_park_locations (
-            vehicle_id INT NOT NULL PRIMARY KEY,
-            char_id INT NOT NULL,
-            park_x FLOAT NOT NULL,
-            park_y FLOAT NOT NULL,
-            park_z FLOAT NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_player_vehicle_park_char_id (char_id),
-            CONSTRAINT fk_player_vehicle_park_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE,
-            CONSTRAINT fk_player_vehicle_park_vehicle FOREIGN KEY (vehicle_id) REFERENCES player_vehicles(id) ON DELETE CASCADE
-        )`, (createErr) => {
-            if (createErr) {
-                console.error('[VEHICLES] Failed to create player_vehicle_park_locations table:', createErr.message);
-            } else {
-                console.log('[VEHICLES] player_vehicle_park_locations table ready.');
-            }
-        });
+        return;
     }
+
+    connection.release();
+    bootstrapDatabase();
 });
 
 module.exports = db;
@@ -1105,6 +1969,56 @@ mp.events.add('playerJoin', (player) => {
     console.log(`Žaidėjas (UCP: ${player.name}) prisijungė prie serverio.`);
 });
 
+// Handle client-side weapon ammo updates
+mp.events.add('updateWeaponAmmo', (player, weaponHash, ammo) => {
+    if (!player || !player.charId) {
+        return;
+    }
+
+    const hash = Number(weaponHash);
+    const ammoNum = Number(ammo);
+
+    if (!Number.isFinite(hash) || !Number.isFinite(ammoNum)) {
+        return;
+    }
+
+    // Track both weapon and ammo from client (client is authoritative)
+    player.trackedWeaponHash = hash;
+    player.trackedWeaponAmmo = ammoNum;
+    player.currentWeaponAmmo = ammoNum;
+});
+
+mp.events.add('weaponShotFired', (player, weaponHash) => {
+    if (!player || !player.charId) {
+        return;
+    }
+
+    const hash = Number(weaponHash);
+    if (!Number.isFinite(hash) || hash === 0 || hash === WEAPON_UNARMED_HASH) {
+        return;
+    }
+
+    const equippedHash = sanitizeWeaponHash(getCurrentHoldableWeaponHash(player))
+        || sanitizeWeaponHash(player.savedEquippedWeaponHash)
+        || null;
+
+    if (!equippedHash || equippedHash !== hash) {
+        return;
+    }
+
+    const baseAmmo = Number.isFinite(player.trackedWeaponAmmo)
+        ? player.trackedWeaponAmmo
+        : (Number.isFinite(player.currentWeaponAmmo)
+            ? player.currentWeaponAmmo
+            : (Number.isFinite(player.savedEquippedWeaponAmmo) ? player.savedEquippedWeaponAmmo : DEFAULT_WEAPON_AMMO));
+
+    const nextAmmo = Math.max(0, baseAmmo - 1);
+    player.trackedWeaponHash = hash;
+    player.trackedWeaponAmmo = nextAmmo;
+    player.currentWeaponAmmo = nextAmmo;
+    player.savedEquippedWeaponAmmo = nextAmmo;
+});
+
 mp.events.add('validateLogin', (player, username, password) => {
     db.query('SELECT * FROM players WHERE name = ?', [username], (err, results) => {
         if (err) {
@@ -1142,7 +2056,7 @@ mp.events.add('validateLogin', (player, username, password) => {
 });
 
 function loadCharacterSelection(player) {
-    db.query('SELECT id, char_name, money, bank_balance, playtime, health FROM characters WHERE ucp_username = ?',
+    db.query('SELECT id, char_name, money, bank_balance, playtime, health, is_approved FROM characters WHERE ucp_username = ?',
         [player.name], (err, results) => {
             if (err) {
                 console.error('[KLAIDA] Veikėjų sąrašas nepakrautas:', err);
@@ -1156,7 +2070,12 @@ function loadCharacterSelection(player) {
                 return;
             }
 
-            const characters = results.map(row => ({
+            const approvedCharacters = results.filter(row => Number(row.is_approved) === 1);
+            if (approvedCharacters.length === 0) {
+                player.outputChatBox('!{#e67e22}Neturite patvirtintu veikeju. Prisijungti negalima kol administracija nepatvirtins.');
+            }
+
+            const characters = approvedCharacters.map(row => ({
                 id: row.id,
                 name: row.char_name,
                 money: row.money,
@@ -1165,6 +2084,10 @@ function loadCharacterSelection(player) {
                 playtimeFormatted: Math.floor(row.playtime / 60) + ' val. ' + (row.playtime % 60) + ' min.',
                 health: row.health
             }));
+
+            if (approvedCharacters.length < characterCount) {
+                player.outputChatBox('!{#f7dc6f}Nepatvirtinti veikejai buvo paslepti is pasirinkimo saraso.');
+            }
 
             player.call('showCharacterSelectionUI', [JSON.stringify(characters)]);
         });
@@ -1179,6 +2102,12 @@ mp.events.add('selectCharacter', (player, charId) => {
         }
 
         const charData = results[0];
+        const isApproved = Number(charData.is_approved) === 1;
+        if (!isApproved) {
+            player.outputChatBox('!{#e67e22}Sis veikejas dar nepatvirtintas. Prisijungti negalima.');
+            return;
+        }
+
         player.charId = charData.id;
         player.charName = charData.char_name;
         player.adminName = charData.admin_name || charData.char_name; // Use admin_name if set, otherwise char_name
@@ -1197,6 +2126,7 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.inventory = loadInventory(charData.inventory);
         player.weaponPackageWeapons = parseWeaponPackage(charData.weapon_package);
         player.savedEquippedWeaponHash = sanitizeWeaponHash(charData.equipped_weapon_hash);
+        player.savedEquippedWeaponAmmo = charData.equipped_weapon_ammo != null ? charData.equipped_weapon_ammo : null;
         if (charData.inventory === null || charData.inventory === undefined || charData.inventory === '') {
             persistInventory(player);
         }
@@ -1219,7 +2149,8 @@ mp.events.add('selectCharacter', (player, charId) => {
         });
 
         player.spawn(player.position);
-        setSingleWeaponForPlayer(player, player.savedEquippedWeaponHash || WEAPON_UNARMED_HASH, DEFAULT_WEAPON_AMMO);
+        const restoredAmmo = (player.savedEquippedWeaponHash) ? (player.savedEquippedWeaponAmmo ?? DEFAULT_WEAPON_AMMO) : 0;
+        setSingleWeaponForPlayer(player, player.savedEquippedWeaponHash || WEAPON_UNARMED_HASH, restoredAmmo);
 
         // Apply saved clothes
         if (charData.clothes) {
@@ -1259,6 +2190,8 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.call('updateMoneyHUD', [player.money]);
         player.call('updateBankHUD', [player.bankBalance]);
         player.call('updatePhoneNumber', [player.phoneNumber]);
+        player.currentPropertyId = null;
+        player.dimension = 0;
         player.outputChatBox(`!{#7aa164}Pasirinkote veikėją: ${charData.char_name}. Sveiki atvykę į CaliforniaRP.LT!`);
 
         loadCharacterContacts(player);
@@ -1271,10 +2204,43 @@ mp.events.add('selectCharacter', (player, charId) => {
                 if (player.playtime % 30 === 0) {
                     const paycheckAmount = 1000;
                     player.bankBalance += paycheckAmount;
+                    let totalChargedRent = 0;
+                    const tenantRentLines = getPropertyRentChargeLinesForTenant(player.charId);
+
+                    tenantRentLines.forEach((line) => {
+                        const rent = Math.max(0, parseInt(line.rent, 10) || 0);
+                        if (rent <= 0) return;
+
+                        const charged = Math.min(player.bankBalance, rent);
+                        if (charged <= 0) return;
+
+                        player.bankBalance -= charged;
+                        totalChargedRent += charged;
+
+                        const ownerOnline = findOnlinePlayerByCharId(line.property.ownerCharId);
+                        if (ownerOnline && ownerOnline.charName && Number(ownerOnline.charId) === Number(line.property.ownerCharId)) {
+                            ownerOnline.bankBalance = (ownerOnline.bankBalance || 0) + charged;
+                            ownerOnline.call('updateBankHUD', [ownerOnline.bankBalance]);
+                            ownerOnline.outputChatBox(`!{#7aa164}Gavote $${charged} nuomos uz ${line.property.name} (nuomininkas: ${player.charName}).`);
+                            db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [ownerOnline.bankBalance, ownerOnline.charName]);
+                        } else if (line.property.ownerCharName) {
+                            db.query('UPDATE bank_accounts SET balance = balance + ? WHERE char_name = ?', [charged, line.property.ownerCharName]);
+                        }
+                    });
+
                     player.call('showPaycheckPopup', [paycheckAmount]);
                     db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
                     db.query('UPDATE characters SET playtime = ? WHERE id = ?', [player.playtime, player.charId]);
                     player.outputChatBox(`!{#229954}Jūsų atlyginimas ($${paycheckAmount}) pervestas į banko sąskaitą.`);
+
+                    if (tenantRentLines.length > 0) {
+                        const totalExpectedRent = tenantRentLines.reduce((sum, line) => sum + (Math.max(0, parseInt(line.rent, 10) || 0)), 0);
+                        player.outputChatBox(`!{#f5b041}Nuskaiciuota nuoma: $${totalChargedRent} is $${totalExpectedRent}.`);
+                        if (totalChargedRent < totalExpectedRent) {
+                            player.outputChatBox('!{#e67e22}Nepakako lesu pilnai nuomai padengti.');
+                        }
+                    }
+
                     player.call('updateBankHUD', [player.bankBalance]);
                 }
             }, 60000);
@@ -1318,7 +2284,15 @@ function saveCharacterData(player) {
         const currentPos = player.position;
         const inventoryJson = getInventoryJson(player);
         const weaponPackageJson = getWeaponPackageJson(player);
-        const equippedWeaponHash = sanitizeWeaponHash(getCurrentHoldableWeaponHash(player));
+        const equippedWeaponHash = sanitizeWeaponHash(getCurrentHoldableWeaponHash(player))
+            || sanitizeWeaponHash(player.savedEquippedWeaponHash)
+            || null;
+        const equippedWeaponAmmo = equippedWeaponHash
+            ? ((getEquippedWeaponAmmo(player, equippedWeaponHash) ?? DEFAULT_WEAPON_AMMO))
+            : null;
+        player.savedEquippedWeaponHash = equippedWeaponHash;
+        player.savedEquippedWeaponAmmo = equippedWeaponAmmo;
+        console.log(`[WEAPONS] saveCharacterData for ${player.charName}: weapon=${equippedWeaponHash} ammo=${equippedWeaponAmmo}`);
         const hasValidPosition = currentPos
             && Number.isFinite(currentPos.x)
             && Number.isFinite(currentPos.y)
@@ -1326,8 +2300,8 @@ function saveCharacterData(player) {
 
         if (!hasValidPosition) {
             console.warn(`[VEIKEJAS] Invalid position for ${player.charName || player.name}, preserving last saved coordinates.`);
-            db.query('UPDATE characters SET playtime = ?, money = ?, bank_balance = ?, health = ?, is_pm_enabled = ?, phone_number = ?, inventory = ?, weapon_package = ?, equipped_weapon_hash = ? WHERE id = ?',
-                [player.playtime || 0, player.money || 0, player.bankBalance || 0, player.health || 100, player.isPMEnabled ? 1 : 0, player.phoneNumber, inventoryJson, weaponPackageJson, equippedWeaponHash, player.charId],
+            db.query('UPDATE characters SET playtime = ?, money = ?, bank_balance = ?, health = ?, is_pm_enabled = ?, phone_number = ?, inventory = ?, weapon_package = ?, equipped_weapon_hash = ?, equipped_weapon_ammo = ? WHERE id = ?',
+                [player.playtime || 0, player.money || 0, player.bankBalance || 0, player.health || 100, player.isPMEnabled ? 1 : 0, player.phoneNumber, inventoryJson, weaponPackageJson, equippedWeaponHash, equippedWeaponAmmo, player.charId],
                 (err) => {
                     if (err) {
                         console.error('[KLAIDA] Nepavyko išsaugoti veikėjo duomenų:', err);
@@ -1336,8 +2310,8 @@ function saveCharacterData(player) {
                     }
                 });
         } else {
-            db.query('UPDATE characters SET playtime = ?, money = ?, bank_balance = ?, position_x = ?, position_y = ?, position_z = ?, health = ?, is_pm_enabled = ?, phone_number = ?, inventory = ?, weapon_package = ?, equipped_weapon_hash = ? WHERE id = ?',
-                [player.playtime || 0, player.money || 0, player.bankBalance || 0, currentPos.x, currentPos.y, currentPos.z, player.health || 100, player.isPMEnabled ? 1 : 0, player.phoneNumber, inventoryJson, weaponPackageJson, equippedWeaponHash, player.charId],
+            db.query('UPDATE characters SET playtime = ?, money = ?, bank_balance = ?, position_x = ?, position_y = ?, position_z = ?, health = ?, is_pm_enabled = ?, phone_number = ?, inventory = ?, weapon_package = ?, equipped_weapon_hash = ?, equipped_weapon_ammo = ? WHERE id = ?',
+                [player.playtime || 0, player.money || 0, player.bankBalance || 0, currentPos.x, currentPos.y, currentPos.z, player.health || 100, player.isPMEnabled ? 1 : 0, player.phoneNumber, inventoryJson, weaponPackageJson, equippedWeaponHash, equippedWeaponAmmo, player.charId],
                 (err) => {
                     if (err) {
                         console.error('[KLAIDA] Nepavyko išsaugoti veikėjo duomenų:', err);
@@ -1387,6 +2361,49 @@ process.on('SIGTERM', () => {
 process.on('beforeExit', () => {
     saveAllOnlineCharacters('beforeExit');
 });
+
+// Check for empty weapons and remove them (weapon ammo runs out)
+setInterval(() => {
+    mp.players.forEach((player) => {
+        if (player && player.charId) {
+            checkAndRemoveEmptyWeapons(player);
+        }
+    });
+}, 1000); // Check every 1 second
+
+// Show property address once when player approaches an entry door.
+setInterval(() => {
+    mp.players.forEach((player) => {
+        if (!player || !player.charId || !player.position) return;
+
+        const nearbyProperty = getNearbyProperty(player, PROPERTY_ADDRESS_HINT_RADIUS);
+        if (!nearbyProperty) {
+            player.lastPropertyAddressHintId = null;
+            return;
+        }
+
+        const nearbyPropertyId = Number(nearbyProperty.id);
+        const lastPropertyAddressHintId = parseInt(player.lastPropertyAddressHintId, 10);
+        if (Number.isFinite(lastPropertyAddressHintId) && lastPropertyAddressHintId === nearbyPropertyId) {
+            requestNativePropertyAddressResolution(player, nearbyProperty);
+            return;
+        }
+
+        player.lastPropertyAddressHintId = nearbyPropertyId;
+        requestNativePropertyAddressResolution(player, nearbyProperty);
+
+        const propertyName = getLocalizedPropertyName(nearbyProperty.id);
+        const addressText = getPropertyAddressForDisplay(nearbyProperty);
+        player.outputChatBox(`!{#f7dc6f}${propertyName} | Adresas: ${addressText}`);
+
+        const rentPrice = Math.max(0, parseInt(nearbyProperty.settings?.rentPerPaycheck, 10) || 0);
+        const hasOwner = Number(nearbyProperty.ownerCharId) > 0;
+        const isAvailableForRent = hasOwner && !Number(nearbyProperty.tenantCharId) && rentPrice > 0;
+        if (isAvailableForRent) {
+            player.outputChatBox(`!{#58d68d}Sis bustas laisvas nuomai: $${rentPrice}/paycheck. Rasykite /rent salia iejimo.`);
+        }
+    });
+}, 1000);
 
 // World time sync
 setInterval(() => {
@@ -1510,14 +2527,25 @@ mp.events.addCommand('b', (player, _, ...messageArray) => {
 mp.events.addCommand('help', (player) => {
     player.outputChatBox(`!{#ADD8E6}----- Galimos komandos -----`);
     player.outputChatBox(`ROLEPLAY KOMANDOS - /me, /do, /b, /s, /low, /pm, /id, /try`);
-    player.outputChatBox(`KITOS KOMANDOS - /stats, /pay, /bank, /withdraw, /deposit`);
+    player.outputChatBox(`KITOS KOMANDOS - /stats, /pay, /bank, /withdraw, /deposit, /changechar, /report, /admins`);
     player.outputChatBox(`KITOS KOMANDOS - /togglepm, /time, /barber, /changeclothes, /inv`);
-    player.outputChatBox(`KITOS KOMANDOS - /giveweapon, /dropweapon, /stashweapon, /takeweapon, /buildpackage, /putpackage`);
-    player.outputChatBox(`KITOS KOMANDOS - /changechar, /report, /admins`);
-    player.outputChatBox(`TRANSPORTAS - /buyvehicle, /buypark, /vehicles, /get, /park, /lock`);
+    player.outputChatBox(`TURTAS - /helphouse, /helpvehicle`);
     player.outputChatBox(`!{#ADD8E6}----------------------------`);
     player.outputChatBox(`Įvedus komandą gausite komandos paaiškinimą.`);
     player.outputChatBox(`Daugiau informacijos galite rasti mūsų forume arba /helpme <klausimas>.`);
+});
+
+mp.events.addCommand('helphouse', (player) => {
+    player.outputChatBox(`BUSTAS - /properties, /buyproperty, /house, /enterhouse, /exithouse`);
+    player.outputChatBox(`BUSTAS - /enter (alias), ADMIN: /tpinterior [interiorId]`);
+    player.outputChatBox(`BUSTAS - /sellproperty, /setrent, /rent, /houselock, /hlock`);
+    player.outputChatBox(`BUSTAS - /houseinv, /hdeposit, /hwithdraw`);
+});
+
+mp.events.addCommand('helpvehicle', (player) => {
+    player.outputChatBox(`TRANSPORTAS - /buyvehicle, /buypark, /vehicles, /get, /park, /lock`);
+    player.outputChatBox(`TRANSPORTAS - /engine, /sellto [zaidejoId] [kaina]`);
+    player.outputChatBox(`TRANSPORTAS - /scrap, /scrapconfirm`);
 });
 
 mp.events.addCommand('id', (player, fullText, partialName) => {
@@ -1619,10 +2647,11 @@ mp.events.addCommand('time', (player) => {
 const knownCommands = new Set([
     'me', 'do', 's', 'low', 'b', 'help', 'id', 'pm', 'stats', 'try', 'time',
     'bank', 'withdraw', 'deposit', 'transfer', 'inventory', 'inv',
-    'kick', 'freeze', 'goto', 'bring', 'ban', 'giveitem', 'giveweapon', 'dropweapon', 'stashweapon', 'takeweapon', 'buildpackage', 'putpackage', 'admingiveweapon',
+    'kick', 'freeze', 'goto', 'bring', 'ban', 'giveitem', 'giveweapon', 'dropweapon', 'stashweapon', 'takeweapon', 'buildpackage', 'putpackage', 'viewpackage', 'admingiveweapon',
     'helpme', 'accepthelp', 'declinehelp',
     'report', 'acceptreport', 'declinereport',
     'admins', 'setaname', 'changechar', 'coords', 'createtwittertables',
+    'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'aprop', 'tpinterior',
     'ph', 'phone', 'acceptdrive',
     'call', 'answer', 'decline', 'hangup',
     'sharenumber', 'sms',
@@ -2417,6 +3446,838 @@ mp.events.addCommand('sellto', (player, _, targetIdStr, priceStr) => {
     targetPlayer.outputChatBox(`!{#7aa164}Nusipirkote ${vehicleDisplayName} iš žaidėjo ${player.charName} už $${price}.`);
 });
 
+mp.events.addCommand('properties', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!propertiesLoaded) {
+        return player.outputChatBox('!{#f7dc6f}Property sistema dar kraunasi. Bandykite po keliu sekundziu.');
+    }
+
+    player.outputChatBox('!{#85c1e9}===== Server Properties =====');
+
+    if (propertiesById.size === 0) {
+        return player.outputChatBox('!{#f7dc6f}Siuo metu property sarasas tuscias.');
+    }
+
+    propertiesById.forEach((property) => {
+        const ownerLabel = property.ownerCharId ? formatPropertyOwner(property) : 'Server';
+        const rentLabel = Math.max(0, parseInt(property.settings?.rentPerPaycheck, 10) || 0);
+        player.outputChatBox(`!{#d6eaf8}[${property.id}] ${property.name} | $${property.price} | Savininkas: ${ownerLabel} | Nuoma: $${rentLabel}`);
+    });
+});
+
+mp.events.addCommand('buyproperty', (player, _, propertyIdRaw, paymentMethodRaw = 'bank') => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!propertiesLoaded) {
+        return player.outputChatBox('!{#f7dc6f}Property sistema dar kraunasi. Bandykite po keliu sekundziu.');
+    }
+
+    if (!propertyIdRaw) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /buyproperty [property ID] [cash|bank]');
+    }
+
+    const property = getPropertyById(propertyIdRaw);
+    if (!property) {
+        return player.outputChatBox('!{#e74c3c}Property pagal nurodyta ID nerastas.');
+    }
+
+    const nearbyProperty = getNearbyProperty(player, PROPERTY_INTERACT_RADIUS);
+    if (!nearbyProperty || nearbyProperty.id !== property.id) {
+        return player.outputChatBox('!{#e74c3c}Turite stoveti prie sio property iejimo.');
+    }
+
+    if (property.ownerCharId) {
+        return player.outputChatBox(`!{#e74c3c}Sis property jau parduotas (${formatPropertyOwner(property)}).`);
+    }
+
+    const paymentMethod = String(paymentMethodRaw || 'bank').trim().toLowerCase() === 'cash' ? 'cash' : 'bank';
+    const availableFunds = paymentMethod === 'cash' ? (player.money || 0) : (player.bankBalance || 0);
+
+    if (availableFunds < property.price) {
+        return player.outputChatBox(`!{#e74c3c}Nepakanka lesu. Truksta $${property.price - availableFunds}.`);
+    }
+
+    if (paymentMethod === 'cash') {
+        player.money -= property.price;
+        player.call('updateMoneyHUD', [player.money]);
+        db.query('UPDATE characters SET money = ? WHERE id = ?', [player.money, player.charId]);
+    } else {
+        player.bankBalance -= property.price;
+        player.call('updateBankHUD', [player.bankBalance]);
+        db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
+    }
+
+    property.ownerCharId = player.charId;
+    property.ownerCharName = player.charName;
+    clearTenantFromProperty(property);
+    property.inventory = [];
+    property.settings = getDefaultPropertySettings();
+    persistPropertyState(property);
+
+    player.outputChatBox(`!{#7aa164}Nusipirkote ${property.name} uz $${property.price} (${paymentMethod}).`);
+    sendPropertyInfo(player, property);
+});
+
+mp.events.addCommand('house', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!propertiesLoaded) {
+        return player.outputChatBox('!{#f7dc6f}Property sistema dar kraunasi.');
+    }
+
+    const insideProperty = getPlayerCurrentProperty(player);
+    if (insideProperty) {
+        sendPropertyInfo(player, insideProperty);
+        return;
+    }
+
+    const nearbyProperty = getNearbyProperty(player, 12.0);
+    if (!nearbyProperty) {
+        return player.outputChatBox('!{#f7dc6f}Salia nera property. Naudokite /properties.');
+    }
+
+    sendPropertyInfo(player, nearbyProperty);
+});
+
+mp.events.addCommand('enterhouse', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!propertiesLoaded) {
+        return player.outputChatBox('!{#f7dc6f}Property sistema dar kraunasi.');
+    }
+
+    if (player.vehicle) {
+        return player.outputChatBox('!{#e74c3c}I property vidu su transportu ivaziuoti negalima.');
+    }
+
+    if (Number(player.dimension) !== 0) {
+        return player.outputChatBox('!{#f7dc6f}Jau esate property viduje. Naudokite /exithouse.');
+    }
+
+    const property = getNearbyProperty(player, PROPERTY_INTERACT_RADIUS);
+    if (!property) {
+        return player.outputChatBox('!{#e74c3c}Nesate prie property iejimo.');
+    }
+
+    if (!property.ownerCharId) {
+        return player.outputChatBox('!{#f7dc6f}Sis property neparduotas. Naudokite /buyproperty.');
+    }
+
+    if (isPropertyLocked(property)) {
+        return player.outputChatBox('!{#e74c3c}Property uzrakintas.');
+    }
+
+    movePlayerIntoProperty(player, property);
+
+    player.outputChatBox(`!{#7aa164}Iejote i ${property.name}.`);
+});
+
+mp.events.addCommand('enter', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!propertiesLoaded) {
+        return player.outputChatBox('!{#f7dc6f}Property sistema dar kraunasi.');
+    }
+
+    if (player.vehicle) {
+        return player.outputChatBox('!{#e74c3c}I property vidu su transportu ivaziuoti negalima.');
+    }
+
+    if (Number(player.dimension) !== 0) {
+        return player.outputChatBox('!{#f7dc6f}Jau esate property viduje. Naudokite /exithouse.');
+    }
+
+    const property = getNearbyProperty(player, PROPERTY_INTERACT_RADIUS);
+    if (!property) {
+        return player.outputChatBox('!{#e74c3c}Nesate prie property iejimo.');
+    }
+
+    if (!property.ownerCharId) {
+        return player.outputChatBox('!{#f7dc6f}Sis property neparduotas. Naudokite /buyproperty.');
+    }
+
+    if (isPropertyLocked(property)) {
+        return player.outputChatBox('!{#e74c3c}Property uzrakintas.');
+    }
+
+    movePlayerIntoProperty(player, property);
+    player.outputChatBox(`!{#7aa164}Iejote i ${property.name}.`);
+});
+
+mp.events.addCommand('exithouse', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const property = getPlayerCurrentProperty(player);
+    if (!property) {
+        return player.outputChatBox('!{#f7dc6f}Nesate jokio property viduje.');
+    }
+
+    const exitDistance = getDistanceBetweenPositions(player.position, property.exitPos);
+    if (exitDistance > 6.0) {
+        return player.outputChatBox('!{#f7dc6f}Prieikite prie isejimo tasko property viduje.');
+    }
+
+    player.dimension = 0;
+    player.position = property.entryPos;
+    player.heading = property.entryHeading;
+    player.currentPropertyId = null;
+
+    player.outputChatBox(`!{#7aa164}Isėjote is ${property.name}.`);
+});
+
+mp.events.addCommand('exit', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const property = getPlayerCurrentProperty(player);
+    if (!property) {
+        return player.outputChatBox('!{#f7dc6f}Nesate jokio property viduje.');
+    }
+
+    const exitDistance = getDistanceBetweenPositions(player.position, property.exitPos);
+    if (exitDistance > 6.0) {
+        return player.outputChatBox('!{#f7dc6f}Prieikite prie isejimo tasko property viduje.');
+    }
+
+    player.dimension = 0;
+    player.position = property.entryPos;
+    player.heading = property.entryHeading;
+    player.currentPropertyId = null;
+
+    player.outputChatBox(`!{#7aa164}Isėjote is ${property.name}.`);
+});
+
+mp.events.addCommand('sellproperty', (player, _, targetIdentifier, priceRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!targetIdentifier || !priceRaw) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /sellproperty [zaidejo ID/vardas] [kaina]');
+    }
+
+    const property = getOwnedPropertyContext(player);
+    if (!property) {
+        return player.outputChatBox('!{#e74c3c}Galite parduoti tik savo property (budami jame arba prie iejimo).');
+    }
+
+    const targetPlayer = getPlayerByIDOrName(targetIdentifier);
+    if (!targetPlayer || !targetPlayer.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirkejas nerastas arba nepasirinko veikejo.');
+    }
+
+    if (targetPlayer.id === player.id) {
+        return player.outputChatBox('!{#f7dc6f}Negalite parduoti property sau.');
+    }
+
+    const price = parseInt(priceRaw, 10);
+    if (!Number.isFinite(price) || price <= 0) {
+        return player.outputChatBox('!{#f7dc6f}Nurodykite teisinga kaina.');
+    }
+
+    const distance = getDistanceBetweenPositions(player.position, targetPlayer.position);
+    if (distance > PROPERTY_SELL_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Pirkejas turi buti salia jusu.');
+    }
+
+    if ((targetPlayer.money || 0) < price) {
+        return player.outputChatBox(`!{#e74c3c}Pirkejui truksta grynuju. Turi tik $${targetPlayer.money || 0}.`);
+    }
+
+    player.money += price;
+    targetPlayer.money -= price;
+
+    player.call('updateMoneyHUD', [player.money]);
+    targetPlayer.call('updateMoneyHUD', [targetPlayer.money]);
+    db.query('UPDATE characters SET money = ? WHERE id = ?', [player.money, player.charId]);
+    db.query('UPDATE characters SET money = ? WHERE id = ?', [targetPlayer.money, targetPlayer.charId]);
+
+    property.ownerCharId = targetPlayer.charId;
+    property.ownerCharName = targetPlayer.charName;
+    clearTenantFromProperty(property);
+    property.settings.locked = 1;
+    persistPropertyState(property);
+
+    player.outputChatBox(`!{#7aa164}Pardavete ${property.name} zaidejui ${targetPlayer.charName} uz $${price}.`);
+    targetPlayer.outputChatBox(`!{#7aa164}Nusipirkote ${property.name} is ${player.charName} uz $${price}.`);
+});
+
+mp.events.addCommand('setrent', (player, _, amountRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!amountRaw) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /setrent [suma per paycheck]');
+    }
+
+    const property = getOwnedPropertyContext(player);
+    if (!property) {
+        return player.outputChatBox('!{#e74c3c}Nerastas jusu property kontekstas.');
+    }
+
+    const amount = Math.max(0, parseInt(amountRaw, 10) || 0);
+    if (amount > 100000) {
+        return player.outputChatBox('!{#e74c3c}Maksimali nuoma per paycheck yra $100000.');
+    }
+
+    property.settings.rentPerPaycheck = amount;
+    persistPropertyState(property);
+    player.outputChatBox(`!{#7aa164}${property.name} nuoma nustatyta: $${amount} per paycheck.`);
+});
+
+function handleHouseLockCommand(player, modeRaw) {
+    if (!player.charId || !player.charName) {
+        if (player) {
+            player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+        }
+        return;
+    }
+
+    const property = getAccessiblePropertyContext(player);
+    if (!property) {
+        player.outputChatBox('!{#e74c3c}Nerastas jums priklausantis arba nuomojamas property kontekstas.');
+        return;
+    }
+
+    const mode = String(modeRaw || '').trim().toLowerCase();
+    if (mode === 'on' || mode === '1' || mode === 'lock') {
+        property.settings.locked = 1;
+    } else if (mode === 'off' || mode === '0' || mode === 'unlock') {
+        property.settings.locked = 0;
+    } else {
+        property.settings.locked = Number(property.settings.locked) ? 0 : 1;
+    }
+
+    persistPropertyState(property);
+    player.outputChatBox(`!{#7aa164}${property.name}: ${property.settings.locked ? 'uzrakintas' : 'atrakintas'}.`);
+}
+
+mp.events.addCommand('houselock', (player, _, modeRaw) => {
+    handleHouseLockCommand(player, modeRaw);
+});
+
+mp.events.addCommand('hlock', (player, _, modeRaw) => {
+    handleHouseLockCommand(player, modeRaw);
+});
+
+mp.events.addCommand('houseinv', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const property = getPlayerCurrentProperty(player);
+    if (!property || !canAccessProperty(player, property)) {
+        return player.outputChatBox('!{#e74c3c}House inventory pasiekiamas tik jusu property viduje.');
+    }
+
+    if (!Array.isArray(property.inventory) || property.inventory.length === 0) {
+        return player.outputChatBox('!{#f7dc6f}House inventory tuscias.');
+    }
+
+    player.outputChatBox(`!{#85c1e9}===== ${property.name} Inventory =====`);
+    property.inventory.forEach((item) => {
+        if (!item) return;
+        player.outputChatBox(`!{#d6eaf8}${item.name} (${item.type}) - ${item.quantity} vnt.`);
+    });
+});
+
+mp.events.addCommand('hdeposit', (player, _, itemId, amountRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const property = getPlayerCurrentProperty(player);
+    if (!property || !canAccessProperty(player, property)) {
+        return player.outputChatBox('!{#e74c3c}Daiktus i namus galite deti tik budami savo property viduje.');
+    }
+
+    if (!itemId) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /hdeposit [inventory item ID] [kiekis]');
+    }
+
+    const amount = Math.max(1, parseInt(amountRaw, 10) || 1);
+    const itemEntry = getInventoryItemById(player, itemId);
+    if (!itemEntry || !itemEntry.item) {
+        return player.outputChatBox('!{#e74c3c}Nerastas toks item jusu inventoriuje.');
+    }
+
+    if (itemEntry.item.quantity < amount) {
+        return player.outputChatBox('!{#e74c3c}Neturite tiek vienetu.');
+    }
+
+    const itemType = itemEntry.item.type;
+    const itemName = itemEntry.item.name;
+    removeInventoryItemAmount(player, itemId, amount);
+    addPropertyInventoryItem(property, itemType, amount);
+
+    persistInventory(player);
+    persistPropertyState(property);
+    sendInventoryUpdate(player, `Perkelta i namu inventory: ${amount}x ${itemName}.`, true);
+    player.outputChatBox(`!{#7aa164}Perkelta i ${property.name} inventory: ${amount}x ${itemName}.`);
+});
+
+mp.events.addCommand('hwithdraw', (player, _, itemTypeRaw, amountRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const property = getPlayerCurrentProperty(player);
+    if (!property || !canAccessProperty(player, property)) {
+        return player.outputChatBox('!{#e74c3c}Daiktus is namu galite paimti tik budami savo property viduje.');
+    }
+
+    if (!itemTypeRaw) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /hwithdraw [item type] [kiekis]');
+    }
+
+    const itemType = normalizeInventoryItemType(String(itemTypeRaw));
+    if (!itemType) {
+        return player.outputChatBox('!{#e74c3c}Netinkamas item type.');
+    }
+
+    const amount = Math.max(1, parseInt(amountRaw, 10) || 1);
+    const existing = Array.isArray(property.inventory)
+        ? property.inventory.find(item => item && item.type === itemType)
+        : null;
+
+    if (!existing || existing.quantity < amount) {
+        return player.outputChatBox('!{#e74c3c}House inventory neturi tiek vienetu sio item.');
+    }
+
+    removePropertyInventoryItemByType(property, itemType, amount);
+    addInventoryItem(player, itemType, amount);
+
+    persistPropertyState(property);
+    persistInventory(player);
+    sendInventoryUpdate(player, `Paimta is namu inventory: ${amount}x ${existing.name}.`, true);
+    player.outputChatBox(`!{#7aa164}Paimta is ${property.name} inventory: ${amount}x ${existing.name}.`);
+});
+
+mp.events.addCommand('rent', (player, _, subRaw, arg2Raw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const sub = String(subRaw || '').trim().toLowerCase();
+
+    if (sub === 'stop') {
+        const ownerProperty = getOwnedPropertyContext(player);
+        if (ownerProperty && Number(ownerProperty.tenantCharId) > 0) {
+            const oldTenantId = ownerProperty.tenantCharId;
+            const oldTenantName = ownerProperty.tenantCharName || `ID ${oldTenantId}`;
+            clearTenantFromProperty(ownerProperty);
+            persistPropertyState(ownerProperty);
+
+            const tenantOnline = findOnlinePlayerByCharId(oldTenantId);
+            if (tenantOnline) {
+                tenantOnline.outputChatBox(`!{#e67e22}Jusu nuoma nutraukta: ${ownerProperty.name}.`);
+            }
+
+            return player.outputChatBox(`!{#7aa164}Nutraukete nuoma su ${oldTenantName}.`);
+        }
+
+        const tenantProperty = getPropertyRentedByCharId(player.charId);
+        if (!tenantProperty) {
+            return player.outputChatBox('!{#f7dc6f}Jus nesate aktyvus nuomininkas jokiam bustui.');
+        }
+
+        const ownerOnline = findOnlinePlayerByCharId(tenantProperty.ownerCharId);
+        clearTenantFromProperty(tenantProperty);
+        persistPropertyState(tenantProperty);
+
+        player.outputChatBox(`!{#7aa164}Nutraukete nuoma: ${tenantProperty.name}.`);
+        if (ownerOnline) {
+            ownerOnline.outputChatBox(`!{#e67e22}${player.charName} nutrauke nuoma (${tenantProperty.name}).`);
+        }
+        return;
+    }
+
+    if (sub === 'info') {
+        const nearbyProperty = getNearbyProperty(player, PROPERTY_INTERACT_RADIUS);
+        if (!nearbyProperty) {
+            return player.outputChatBox('!{#f7dc6f}Prieikite prie busto iejimo ir bandykite dar karta.');
+        }
+
+        sendPropertyInfo(player, nearbyProperty);
+        return;
+    }
+
+    if (sub) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /rent (prie laisvo busto) | /rent stop | /rent info');
+    }
+
+    const property = getNearbyProperty(player, PROPERTY_INTERACT_RADIUS);
+    if (!property) {
+        return player.outputChatBox('!{#e74c3c}Prieikite arciau busto iejimo, kad galetumete nuomotis.');
+    }
+
+    if (!Number(property.ownerCharId) || Number(property.ownerCharId) <= 0) {
+        return player.outputChatBox('!{#e74c3c}Sis bustas neturi savininko, jo nuomotis negalima.');
+    }
+
+    if (Number(property.ownerCharId) === Number(player.charId)) {
+        return player.outputChatBox('!{#f7dc6f}Tai jusu bustas. Nuoma nereikalinga.');
+    }
+
+    const rentAmount = Math.max(0, parseInt(property.settings?.rentPerPaycheck, 10) || 0);
+    if (rentAmount <= 0) {
+        return player.outputChatBox('!{#e74c3c}Sis bustas nesiulomas nuomai.');
+    }
+
+    if (Number(property.tenantCharId) > 0 && Number(property.tenantCharId) !== Number(player.charId)) {
+        return player.outputChatBox('!{#e74c3c}Sis bustas jau turi kita nuomininka.');
+    }
+
+    const existingTenantProperty = getPropertyRentedByCharId(player.charId);
+    if (existingTenantProperty && Number(existingTenantProperty.id) !== Number(property.id)) {
+        return player.outputChatBox(`!{#e74c3c}Jus jau nuomojates ${existingTenantProperty.name}. Pirmiausia nutraukite /rent stop.`);
+    }
+
+    if (Number(property.tenantCharId) === Number(player.charId)) {
+        return player.outputChatBox(`!{#f7dc6f}Jus jau nuomojates ${property.name}.`);
+    }
+
+    setTenantForProperty(property, player);
+    persistPropertyState(property);
+
+    player.outputChatBox(`!{#7aa164}Issinuomojote ${property.name} uz $${rentAmount}/paycheck.`);
+    player.outputChatBox('!{#7aa164}Galite naudoti: /houselock (/hlock), /houseinv, /hdeposit, /hwithdraw.');
+
+    const ownerOnline = findOnlinePlayerByCharId(property.ownerCharId);
+    if (ownerOnline && ownerOnline.id !== player.id) {
+        ownerOnline.outputChatBox(`!{#7aa164}${player.charName} issinuomojo jusu busta ${property.name} uz $${rentAmount}/paycheck.`);
+    }
+});
+
+mp.events.addCommand('aprop', (player, fullText) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    isAdmin(player, 1, (error, hasPermission) => {
+        if (error || !hasPermission) {
+            return player.outputChatBox('!{#e74c3c}Neturite teises naudoti sios komandos.');
+        }
+
+        const args = String(fullText || '').trim().split(/\s+/).filter(Boolean);
+        const action = String(args[0] || '').toLowerCase();
+
+        if (!action) {
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /aprop list');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /aprop create [price]');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /aprop select, /aprop setentry [propertyId], /aprop setinterior [interiorId|list], /aprop setexit [propertyId(optional)], /aprop setprice [propertyId] [price]');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /aprop setowner [id] [ID/vardas/none], /aprop delete [id], /aprop tpentry [id], /aprop tpinterior [id], /aprop reload');
+            return;
+        }
+
+        if (action === 'list') {
+            if (propertiesById.size === 0) {
+                return player.outputChatBox('!{#f7dc6f}Property sarasas tuscias.');
+            }
+
+            player.outputChatBox('!{#85c1e9}===== ADMIN PROPERTY LIST =====');
+            propertiesById.forEach((property) => {
+                const owner = property.ownerCharName || 'Server';
+                const tenant = property.tenantCharName || 'Nera';
+                player.outputChatBox(`!{#d6eaf8}#${property.id} ${property.name} | $${property.price} | dim ${property.dimension} | owner ${owner} | tenant ${tenant}`);
+            });
+            return;
+        }
+
+        if (action === 'reload') {
+            loadPropertiesFromDatabase();
+            return player.outputChatBox('!{#7aa164}Property sarasas perkraunamas is duomenu bazes.');
+        }
+
+        if (action === 'create') {
+            const rawPrice = parseInt(args[1], 10);
+            const price = Math.max(0, rawPrice || 0);
+
+            if (!Number.isFinite(rawPrice)) {
+                return player.outputChatBox('!{#e74c3c}Naudojimas: /aprop create [price]');
+            }
+
+            const safeName = 'Nuosavybė';
+            const key = `custom-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+            const dim = 8000 + Math.floor(Math.random() * 100000);
+            const pos = player.position;
+            const heading = Number.isFinite(player.heading) ? player.heading : 0;
+            const settingsJson = JSON.stringify(getDefaultPropertySettings());
+            const autoAddress = getAutoPropertyAddressFromPosition(pos);
+
+            db.query(
+                'INSERT INTO server_properties (property_key, name, address, price, entry_x, entry_y, entry_z, entry_h, interior_x, interior_y, interior_z, interior_h, dimension, inventory, settings) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [key, safeName, autoAddress, price, pos.x, pos.y, pos.z, heading, pos.x, pos.y, pos.z, heading, dim, '[]', settingsJson],
+                (insertErr, result) => {
+                    if (insertErr) {
+                        console.error('[HOUSING] /aprop create failed:', insertErr.message);
+                        return player.outputChatBox('!{#e74c3c}Nepavyko sukurti property.');
+                    }
+
+                    const property = {
+                        id: Number(result.insertId),
+                        key,
+                        name: getLocalizedPropertyName(result.insertId),
+                        address: autoAddress,
+                        price,
+                        entryPos: new mp.Vector3(pos.x, pos.y, pos.z),
+                        entryHeading: heading,
+                        interiorPos: new mp.Vector3(pos.x, pos.y, pos.z),
+                        interiorHeading: heading,
+                        exitPos: new mp.Vector3(pos.x, pos.y, pos.z),
+                        exitHeading: heading,
+                        dimension: getUniquePropertyDimension(result.insertId),
+                        ownerCharId: null,
+                        ownerCharName: null,
+                        tenantCharId: null,
+                        tenantCharName: null,
+                        inventory: [],
+                        settings: getDefaultPropertySettings(),
+                    };
+
+                    propertiesById.set(property.id, property);
+                    player.apropSelectedPropertyId = property.id;
+                    db.query('UPDATE server_properties SET name = ?, address = ?, dimension = ? WHERE id = ?', [property.name, property.address, property.dimension, property.id]);
+                    requestNativePropertyAddressResolution(player, property);
+                    player.outputChatBox(`!{#7aa164}Sukurtas property #${property.id}: ${property.name} (dim ${property.dimension}).`);
+                    player.outputChatBox('!{#f7dc6f}Patarimas: nustatykite interior su /aprop setinterior [interiorId], tada /tpinterior [interiorId] ir /aprop setexit.');
+                }
+            );
+            return;
+        }
+
+        if (action === 'setinterior') {
+            const interiorRaw = String(args[1] || '').trim().toLowerCase();
+            if (!interiorRaw) {
+                return player.outputChatBox('!{#e74c3c}Naudojimas: /aprop setinterior [interiorId|list]');
+            }
+
+            if (interiorRaw === 'list') {
+                player.outputChatBox('!{#85c1e9}Galimi interior ID:');
+                APROP_INTERIOR_PRESET_LIST.forEach((preset) => {
+                    player.outputChatBox(`!{#d6eaf8}[${preset.id}] ${preset.label}`);
+                });
+                return;
+            }
+
+            const selectedPropertyId = parseInt(player.apropSelectedPropertyId, 10);
+            const property = Number.isFinite(selectedPropertyId)
+                ? getPropertyById(selectedPropertyId)
+                : null;
+
+            if (!property) {
+                return player.outputChatBox('!{#e74c3c}Nera pasirinkto property. Sukurkite su /aprop create [price] arba naudokite /aprop setentry [propertyId].');
+            }
+
+            const interiorId = parseInt(interiorRaw, 10);
+            let preset = null;
+
+            if (Number.isFinite(interiorId)) {
+                preset = APROP_INTERIOR_PRESETS_BY_ID.get(interiorId) || null;
+            }
+
+            if (!preset) {
+                preset = APROP_INTERIOR_PRESETS_BY_KEY.get(interiorRaw) || null;
+            }
+
+            if (!preset) {
+                return player.outputChatBox('!{#e74c3c}Nerastas interior ID. Naudokite /aprop setinterior list');
+            }
+
+            property.interiorPos = new mp.Vector3(preset.pos.x, preset.pos.y, preset.pos.z);
+            property.interiorHeading = 0;
+            property.dimension = getUniquePropertyDimension(property.id);
+
+            if (!property.exitPos) {
+                property.exitPos = new mp.Vector3(preset.pos.x, preset.pos.y, preset.pos.z);
+            }
+
+            db.query(
+                'UPDATE server_properties SET interior_x = ?, interior_y = ?, interior_z = ?, interior_h = ?, dimension = ? WHERE id = ?',
+                [preset.pos.x, preset.pos.y, preset.pos.z, 0, property.dimension, property.id]
+            );
+
+            return player.outputChatBox(`!{#7aa164}Property #${property.id} interior nustatytas: [${preset.id}] ${preset.label}. Dim: ${property.dimension}`);
+        }
+
+        if (action === 'select') {
+            const property = getNearbyProperty(player, 12.0);
+            if (!property) {
+                return player.outputChatBox('!{#e74c3c}Salia nerastas property pasirinkimui. Prieikite arciau entry tasko.');
+            }
+
+            player.apropSelectedPropertyId = property.id;
+            return player.outputChatBox(`!{#7aa164}Pasirinkote property #${property.id}: ${property.name}.`);
+        }
+
+        const fallbackSelectedPropertyId = parseInt(player.apropSelectedPropertyId, 10);
+        const propertyIdArg = parseInt(args[1], 10);
+        const resolvedPropertyId = Number.isFinite(propertyIdArg)
+            ? propertyIdArg
+            : ((action === 'setexit' && Number.isFinite(fallbackSelectedPropertyId)) ? fallbackSelectedPropertyId : NaN);
+
+        const property = getPropertyById(resolvedPropertyId);
+        if (!property) {
+            return player.outputChatBox('!{#e74c3c}Nerastas property pagal ID.');
+        }
+
+        player.apropSelectedPropertyId = property.id;
+
+        if (action === 'delete') {
+            propertiesById.delete(property.id);
+            db.query('DELETE FROM server_properties WHERE id = ?', [property.id]);
+            return player.outputChatBox(`!{#7aa164}Property #${property.id} istrintas.`);
+        }
+
+        if (action === 'setentry') {
+            const pos = player.position;
+            const heading = Number.isFinite(player.heading) ? player.heading : 0;
+            property.entryPos = new mp.Vector3(pos.x, pos.y, pos.z);
+            property.entryHeading = heading;
+            property.address = getAutoPropertyAddressFromPosition(pos);
+            db.query('UPDATE server_properties SET entry_x = ?, entry_y = ?, entry_z = ?, entry_h = ?, address = ? WHERE id = ?', [pos.x, pos.y, pos.z, heading, property.address, property.id]);
+            requestNativePropertyAddressResolution(player, property);
+            return player.outputChatBox(`!{#7aa164}Atnaujinote entry taska property #${property.id}.`);
+        }
+
+        if (action === 'setexit') {
+            const pos = player.position;
+            const heading = Number.isFinite(player.heading) ? player.heading : 0;
+
+            property.exitPos = new mp.Vector3(pos.x, pos.y, pos.z);
+            property.exitHeading = heading;
+            property.interiorPos = new mp.Vector3(pos.x, pos.y, pos.z);
+            property.interiorHeading = heading;
+
+            db.query('UPDATE server_properties SET interior_x = ?, interior_y = ?, interior_z = ?, interior_h = ? WHERE id = ?', [pos.x, pos.y, pos.z, heading, property.id]);
+            return player.outputChatBox(`!{#7aa164}Property #${property.id} exit taskas nustatytas interior viduje.`);
+        }
+
+        if (action === 'setprice') {
+            const nextPrice = Math.max(0, parseInt(args[2], 10) || 0);
+            property.price = nextPrice;
+            db.query('UPDATE server_properties SET price = ? WHERE id = ?', [nextPrice, property.id]);
+            return player.outputChatBox(`!{#7aa164}Property #${property.id} kaina: $${nextPrice}.`);
+        }
+
+        if (action === 'setowner') {
+            const targetIdentifier = String(args[2] || '').trim();
+            if (!targetIdentifier) {
+                return player.outputChatBox('!{#e74c3c}Naudojimas: /aprop setowner [id] [ID/vardas/none]');
+            }
+
+            if (targetIdentifier.toLowerCase() === 'none') {
+                property.ownerCharId = null;
+                property.ownerCharName = null;
+                clearTenantFromProperty(property);
+                persistPropertyState(property);
+                return player.outputChatBox(`!{#7aa164}Property #${property.id} grazintas serveriui.`);
+            }
+
+            const targetPlayer = getPlayerByIDOrName(targetIdentifier);
+            if (!targetPlayer || !targetPlayer.charName || !targetPlayer.charId) {
+                return player.outputChatBox('!{#e74c3c}Nerastas online zaidejas pagal nurodyta identifikatoriu.');
+            }
+
+            property.ownerCharId = targetPlayer.charId;
+            property.ownerCharName = targetPlayer.charName;
+            clearTenantFromProperty(property);
+            property.settings.locked = 1;
+            persistPropertyState(property);
+
+            targetPlayer.outputChatBox(`!{#7aa164}Administratorius priskyre jums property: ${property.name}.`);
+            return player.outputChatBox(`!{#7aa164}Property #${property.id} priskirtas ${targetPlayer.charName}.`);
+        }
+
+        if (action === 'tpentry') {
+            player.dimension = 0;
+            player.position = property.entryPos;
+            player.heading = property.entryHeading;
+            player.currentPropertyId = null;
+            return player.outputChatBox(`!{#7aa164}Teleportuota prie property #${property.id} entry.`);
+        }
+
+        if (action === 'tpinterior') {
+            player.dimension = property.dimension;
+            player.position = property.interiorPos;
+            player.heading = property.interiorHeading;
+            player.currentPropertyId = property.id;
+            return player.outputChatBox(`!{#7aa164}Teleportuota i property #${property.id} interior.`);
+        }
+
+        player.outputChatBox('!{#e74c3c}Nezinomas /aprop veiksmas. Naudokite /aprop be argumentu.');
+    });
+});
+
+mp.events.addCommand('tpinterior', (player, _, interiorIdRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    isAdmin(player, 1, (error, hasPermission) => {
+        if (error || !hasPermission) {
+            return player.outputChatBox('!{#e74c3c}Neturite teises naudoti sios komandos.');
+        }
+
+        const interiorId = parseInt(interiorIdRaw, 10);
+        if (!Number.isFinite(interiorId)) {
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /tpinterior [interiorId]');
+            APROP_INTERIOR_PRESET_LIST.forEach((preset) => {
+                player.outputChatBox(`!{#d6eaf8}[${preset.id}] ${preset.label}`);
+            });
+            return;
+        }
+
+        const preset = APROP_INTERIOR_PRESETS_BY_ID.get(interiorId);
+        if (!preset) {
+            return player.outputChatBox('!{#e74c3c}Nerastas interior ID. Naudokite /tpinterior be argumento, kad pamatytumete sarasa.');
+        }
+
+        player.dimension = 0;
+        player.position = preset.pos;
+        player.heading = 0;
+        player.currentPropertyId = null;
+        player.outputChatBox(`!{#7aa164}Teleportuota i interior [${preset.id}] ${preset.label}.`);
+    });
+
+    mp.events.add('propertyNativeAddressResolved', (player, propertyIdRaw, addressRaw) => {
+        if (!player || !player.charId) return;
+
+        const propertyId = parseInt(propertyIdRaw, 10);
+        if (!Number.isFinite(propertyId)) return;
+
+        const property = getPropertyById(propertyId);
+        if (!property) return;
+
+        const sanitizedAddress = sanitizePropertyAddress(addressRaw);
+        if (!sanitizedAddress) return;
+
+        if (String(property.address || '') === sanitizedAddress) return;
+
+        property.address = sanitizedAddress;
+        db.query('UPDATE server_properties SET address = ? WHERE id = ?', [sanitizedAddress, property.id], (err) => {
+            if (err) {
+                console.error('[HOUSING] Failed to save native property address:', err.message);
+            }
+        });
+    });
+});
+
 mp.events.addCommand('engine', (player) => {
     if (!player.charId || !player.charName) {
         return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
@@ -2761,6 +4622,7 @@ function sendUsageInstructions(player, command) {
         'takeweapon': "[TAKEWEAPON] Naudojimas: /takeweapon [id] - paima ginkla is masinos pagal saraso nr.",
         'buildpackage': "[BUILDPACKAGE] Naudojimas: /buildpackage - ideda wheel ginkla i paketa (max 5).",
         'putpackage': "[PUTPACKAGE] Naudojimas: /putpackage - perkelia visa paketa i jusu masina.",
+        'viewpackage': "[VIEWPACKAGE] Naudojimas: /viewpackage - parodo jusu ginklu paketo turini.",
         'admingiveweapon': "[ADMINGIVEWEAPON] Naudojimas: /admingiveweapon [ID arba vardas] [weapon] [ammo]",
     };
     player.outputChatBox(instructions[command] || "Netinkamas komandos pavadinimas.");
@@ -2821,24 +4683,18 @@ mp.events.addCommand('buildpackage', (player) => {
 mp.events.addCommand('putpackage', (player) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!player.vehicle) {
-        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte.');
-    }
-
-    const record = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
-    if (!record) {
-        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+        return player.outputChatBox('!{#e74c3c}Turite buti kokiame nors transporte.');
     }
 
     if (!Array.isArray(player.weaponPackageWeapons) || player.weaponPackageWeapons.length === 0) {
         return player.outputChatBox('!{#e74c3c}Jusu ginklu paketas tuscias. Naudokite /buildpackage.');
     }
 
-    if (!Array.isArray(record.weaponInventory)) {
-        record.weaponInventory = [];
-    }
-
-    const vehicleCount = record.weaponInventory.length;
+    const vehicle = player.vehicle;
+    const stash = getVehicleWeaponStash(vehicle);
+    const vehicleCount = stash.length;
     const packageCount = player.weaponPackageWeapons.length;
+
     if (vehicleCount + packageCount > VEHICLE_WEAPON_STASH_LIMIT) {
         return player.outputChatBox(`!{#e74c3c}Nepakanka vietos transporte. Dabar: ${vehicleCount}/${VEHICLE_WEAPON_STASH_LIMIT}, pakete: ${packageCount}.`);
     }
@@ -2846,28 +4702,35 @@ mp.events.addCommand('putpackage', (player) => {
     player.weaponPackageWeapons.forEach((entry) => {
         const weaponHash = sanitizeWeaponHash(entry && entry.weaponHash);
         if (!weaponHash) return;
-        record.weaponInventory.push({
-            weaponHash,
-            label: getWeaponLabel(weaponHash),
-        });
+        stash.push({ weaponHash, label: getWeaponLabel(weaponHash) });
     });
 
     const movedCount = player.weaponPackageWeapons.length;
     player.weaponPackageWeapons = [];
-    persistOwnedVehicleState(record);
+    setVehicleWeaponStash(vehicle, stash);
+    persistVehicleWeaponStash(vehicle);
     persistWeaponPackage(player);
-    player.outputChatBox(`!{#7aa164}Perkėlėte ${movedCount} ginklus i transporto saugykla (${record.weaponInventory.length}/${VEHICLE_WEAPON_STASH_LIMIT}).`);
+    player.outputChatBox(`!{#7aa164}Perkėlėte ${movedCount} ginklus i transporto saugykla (${stash.length}/${VEHICLE_WEAPON_STASH_LIMIT}).`);
+});
+
+mp.events.addCommand('viewpackage', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+
+    if (!Array.isArray(player.weaponPackageWeapons) || player.weaponPackageWeapons.length === 0) {
+        return player.outputChatBox('!{#e74c3c}Jusu ginklu paketas tuscias. Naudokite /buildpackage.');
+    }
+
+    player.outputChatBox(`!{#85c1e9}===== Jusu ginklu paketas (${player.weaponPackageWeapons.length}/${WEAPON_PACKAGE_LIMIT}) =====`);
+    player.weaponPackageWeapons.forEach((entry, index) => {
+        const label = (entry && entry.label) || getWeaponLabel(entry && entry.weaponHash);
+        player.outputChatBox(`!{#d6eaf8}[${index + 1}] ${label}`);
+    });
 });
 
 mp.events.addCommand('stashweapon', (player) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!player.vehicle) {
-        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte.');
-    }
-
-    const record = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
-    if (!record) {
-        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+        return player.outputChatBox('!{#e74c3c}Turite buti kokiame nors transporte.');
     }
 
     const wheelWeaponHash = getCurrentHoldableWeaponHash(player) || sanitizeWeaponHash(player.savedEquippedWeaponHash);
@@ -2875,42 +4738,33 @@ mp.events.addCommand('stashweapon', (player) => {
         return player.outputChatBox('!{#e74c3c}Jusu ginklu wheel neturi padedamo ginklo.');
     }
 
-    if (!Array.isArray(record.weaponInventory)) {
-        record.weaponInventory = [];
-    }
+    const vehicle = player.vehicle;
+    const stash = getVehicleWeaponStash(vehicle);
 
-    if (record.weaponInventory.length >= VEHICLE_WEAPON_STASH_LIMIT) {
+    if (stash.length >= VEHICLE_WEAPON_STASH_LIMIT) {
         return player.outputChatBox(`!{#e74c3c}Sio transporto ginklu saugykla pilna (${VEHICLE_WEAPON_STASH_LIMIT}/${VEHICLE_WEAPON_STASH_LIMIT}).`);
     }
 
     const weaponLabel = getWeaponLabel(wheelWeaponHash);
-    record.weaponInventory.push({
-        weaponHash: wheelWeaponHash,
-        label: weaponLabel,
-    });
+    stash.push({ weaponHash: wheelWeaponHash, label: weaponLabel });
 
     const removed = setSingleWeaponForPlayer(player, WEAPON_UNARMED_HASH, 0);
     if (!removed) {
-        record.weaponInventory.pop();
+        stash.pop();
         return player.outputChatBox('!{#e74c3c}Nepavyko padeti ginklo i masina.');
     }
 
-    persistOwnedVehicleState(record);
+    setVehicleWeaponStash(vehicle, stash);
+    persistVehicleWeaponStash(vehicle);
     persistEquippedWeapon(player);
 
-    const slot = record.weaponInventory.length;
-    player.outputChatBox(`!{#7aa164}Padedote ${weaponLabel} i transporta. Slotas: ${slot}.`);
+    player.outputChatBox(`!{#7aa164}Padedote ${weaponLabel} i transporta. Slotas: ${stash.length}.`);
 });
 
 mp.events.addCommand('takeweapon', (player, _, slotRaw) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!player.vehicle) {
-        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte.');
-    }
-
-    const record = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
-    if (!record) {
-        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+        return player.outputChatBox('!{#e74c3c}Turite buti kokiame nors transporte.');
     }
 
     if (!slotRaw) {
@@ -2922,16 +4776,19 @@ mp.events.addCommand('takeweapon', (player, _, slotRaw) => {
         return player.outputChatBox('!{#e74c3c}Jau laikote ginkla. Pirma naudokite /dropweapon arba /stashweapon.');
     }
 
-    if (!Array.isArray(record.weaponInventory) || record.weaponInventory.length === 0) {
+    const vehicle = player.vehicle;
+    const stash = getVehicleWeaponStash(vehicle);
+
+    if (stash.length === 0) {
         return player.outputChatBox('!{#e74c3c}Sio transporto ginklu saugykla tuscia.');
     }
 
     const slot = parseInt(slotRaw, 10);
-    if (!Number.isFinite(slot) || slot < 1 || slot > record.weaponInventory.length) {
-        return player.outputChatBox(`!{#e74c3c}Neteisingas slot ID. Galimi: 1-${record.weaponInventory.length}.`);
+    if (!Number.isFinite(slot) || slot < 1 || slot > stash.length) {
+        return player.outputChatBox(`!{#e74c3c}Neteisingas slot ID. Galimi: 1-${stash.length}.`);
     }
 
-    const entry = record.weaponInventory[slot - 1];
+    const entry = stash[slot - 1];
     const weaponHash = sanitizeWeaponHash(entry && entry.weaponHash);
     if (!weaponHash) {
         return player.outputChatBox('!{#e74c3c}Nepavyko paimti ginklo is nurodyto sloto.');
@@ -2942,8 +4799,9 @@ mp.events.addCommand('takeweapon', (player, _, slotRaw) => {
         return player.outputChatBox('!{#e74c3c}Nepavyko paimti ginklo is transporto.');
     }
 
-    const [takenEntry] = record.weaponInventory.splice(slot - 1, 1);
-    persistOwnedVehicleState(record);
+    const [takenEntry] = stash.splice(slot - 1, 1);
+    setVehicleWeaponStash(vehicle, stash);
+    persistVehicleWeaponStash(vehicle);
     persistEquippedWeapon(player);
 
     player.outputChatBox(`!{#7aa164}Pasiemete ${takenEntry.label || getWeaponLabel(weaponHash)} is transporto sloto ${slot}.`);
@@ -3413,6 +5271,15 @@ mp.events.addCommand('changechar', (player) => {
     player.contacts = null;
     player.phoneNumber = null;
     player.isPhoneOpen = false;
+    player.currentPropertyId = null;
+    player.dimension = 0;
+    pendingRentOffers.delete(player.id);
+
+    for (const [targetId, offer] of pendingRentOffers.entries()) {
+        if (offer && Number(offer.ownerPlayerId) === Number(player.id)) {
+            pendingRentOffers.delete(targetId);
+        }
+    }
     player.inventory = null;
     player.weaponPackageWeapons = [];
     player.ownedVehicles = new Map();
@@ -3484,6 +5351,26 @@ mp.events.add('requestInventoryOpen', (player) => {
 mp.events.add('requestInventoryRefresh', (player) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     sendInventoryUpdate(player, 'Inventorius atnaujintas.', true);
+});
+
+mp.events.add('requestClearEmptyWeapon', (player, weaponHashRaw) => {
+    if (!player || !player.charId) return;
+
+    const requestedWeaponHash = sanitizeWeaponHash(weaponHashRaw);
+    if (!requestedWeaponHash) return;
+
+    const currentWeaponHash = sanitizeWeaponHash(getCurrentHoldableWeaponHash(player));
+    const savedWeaponHash = sanitizeWeaponHash(player.savedEquippedWeaponHash);
+
+    // Reject stale or spoofed requests that don't match what the player actually has.
+    if (currentWeaponHash && currentWeaponHash !== requestedWeaponHash) return;
+    if (!currentWeaponHash && savedWeaponHash && savedWeaponHash !== requestedWeaponHash) return;
+    if (!currentWeaponHash && !savedWeaponHash) return;
+
+    const cleared = setSingleWeaponForPlayer(player, WEAPON_UNARMED_HASH, 0);
+    if (!cleared) return;
+
+    persistEquippedWeapon(player);
 });
 
 mp.events.add('inventoryUseItem', (player, itemId) => {
@@ -3894,6 +5781,14 @@ mp.events.add('playerQuit', (player) => {
     // Clean up phone state
     player.contacts = null;
     player.isPhoneOpen = false;
+    player.currentPropertyId = null;
+    pendingRentOffers.delete(player.id);
+
+    for (const [targetId, offer] of pendingRentOffers.entries()) {
+        if (offer && Number(offer.ownerPlayerId) === Number(player.id)) {
+            pendingRentOffers.delete(targetId);
+        }
+    }
 
     // Handle active calls
     if (activeCalls.has(player.id)) {

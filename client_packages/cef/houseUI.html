@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="lt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>House Panel</title>
+    <style>
+        :root {
+            --panel: #f2efe7;
+            --panel-soft: #fbf9f3;
+            --line: #d8d2c3;
+            --ink: #2e352e;
+            --muted: #687067;
+            --good: #2f7d55;
+            --bad: #b85a4a;
+            --accent: #6f8f5f;
+            --shadow: 0 20px 55px rgba(19, 24, 17, 0.28);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: transparent;
+            font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+            color: var(--ink);
+        }
+
+        body {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .panel {
+            width: min(480px, 95vw);
+            background: linear-gradient(180deg, var(--panel-soft), var(--panel));
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            box-shadow: var(--shadow);
+            padding: 14px;
+        }
+
+        .head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .title {
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: 0.01em;
+        }
+
+        .close {
+            border: 1px solid var(--line);
+            background: #fff;
+            border-radius: 9px;
+            height: 34px;
+            padding: 0 12px;
+            cursor: pointer;
+        }
+
+        .box {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            margin-bottom: 10px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 2px;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .btn {
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            height: 36px;
+            padding: 0 10px;
+            background: #fff;
+            color: var(--ink);
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .btn.primary {
+            background: #edf5e8;
+            border-color: #bdd1b2;
+            color: #2f5f3b;
+        }
+
+        .btn.danger {
+            background: #fff0ec;
+            border-color: #e6beb5;
+            color: #8f3e31;
+        }
+
+        .field {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        input {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            height: 34px;
+            padding: 0 9px;
+            font: inherit;
+            background: #fff;
+            color: var(--ink);
+        }
+
+        .status {
+            min-height: 24px;
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            background: rgba(255, 255, 255, 0.65);
+            color: var(--muted);
+            padding: 6px 8px;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+
+        .status.good {
+            color: var(--good);
+        }
+
+        .status.bad {
+            color: var(--bad);
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="panel">
+        <div class="head">
+            <h1 class="title">House Panel</h1>
+            <button class="close" onclick="closePanel()">Uzdaryti</button>
+        </div>
+
+        <div class="box">
+            <div class="row"><strong id="houseName">-</strong><span class="muted" id="houseId">#0</span></div>
+            <div class="row"><span class="muted">Savininkas</span><span id="ownerText">-</span></div>
+            <div class="row"><span class="muted">Nuomininkas</span><span id="tenantText">-</span></div>
+            <div class="row"><span class="muted">Durys</span><span id="lockText">-</span></div>
+            <div class="row"><span class="muted">Nuoma / paycheck</span><span id="rentText">$0</span></div>
+            <div class="row"><span class="muted">Jusu role</span><span id="roleText">guest</span></div>
+        </div>
+
+        <div class="grid">
+            <button class="btn primary" onclick="enterExit()" id="enterExitBtn">Ieiti</button>
+            <button class="btn" onclick="refreshPanel()">Atnaujinti</button>
+        </div>
+
+        <div id="ownerControls" class="box hidden">
+            <div class="grid">
+                <button class="btn" onclick="toggleLock()">Toggle Lock</button>
+                <button class="btn danger" onclick="stopRent()">Nutraukti nuoma</button>
+            </div>
+            <div class="field">
+                <input id="rentInput" type="number" min="0" placeholder="Nuoma per paycheck">
+                <button class="btn" onclick="setRent()">Nustatyti nuoma</button>
+            </div>
+            <div class="field">
+                <input id="tenantInput" type="text" placeholder="Nuomininko ID/vardas">
+                <button class="btn" onclick="offerRent()">Siulyti nuoma</button>
+            </div>
+        </div>
+
+        <div id="tenantControls" class="box hidden">
+            <div class="grid">
+                <button class="btn danger" onclick="stopRent()">Nutraukti mano nuoma</button>
+                <button class="btn" onclick="refreshPanel()">Atnaujinti statusa</button>
+            </div>
+        </div>
+
+        <div id="status" class="status">Paruosta.</div>
+    </div>
+
+    <script>
+        let state = null;
+
+        function safeTrigger(eventName, ...args) {
+            if (typeof mp !== 'undefined' && typeof mp.trigger === 'function') {
+                mp.trigger(eventName, ...args);
+            }
+        }
+
+        function setStatus(text, ok = true) {
+            const status = document.getElementById('status');
+            status.textContent = text || '';
+            status.classList.remove('good', 'bad');
+            status.classList.add(ok ? 'good' : 'bad');
+        }
+
+        function parsePayload(payloadJson) {
+            if (!payloadJson) return null;
+            if (typeof payloadJson === 'object') return payloadJson;
+            try {
+                return JSON.parse(payloadJson);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function applyState(payload, statusText = '', success = true) {
+            if (!payload) {
+                setStatus('Nepavyko atnaujinti paneles.', false);
+                return;
+            }
+
+            state = payload;
+            document.getElementById('houseName').textContent = payload.name || '-';
+            document.getElementById('houseId').textContent = `#${payload.id || 0}`;
+            document.getElementById('ownerText').textContent = payload.owner || '-';
+            document.getElementById('tenantText').textContent = payload.tenant || 'Nera';
+            document.getElementById('lockText').textContent = Number(payload.locked) ? 'Uzrakinta' : 'Atrakinta';
+            document.getElementById('rentText').textContent = `$${Number(payload.rentPerPaycheck || 0)}`;
+            document.getElementById('roleText').textContent = payload.role || 'guest';
+            document.getElementById('enterExitBtn').textContent = payload.isInside ? 'Iseiti' : 'Ieiti';
+
+            const ownerControls = document.getElementById('ownerControls');
+            const tenantControls = document.getElementById('tenantControls');
+            ownerControls.classList.toggle('hidden', payload.role !== 'owner');
+            tenantControls.classList.toggle('hidden', payload.role !== 'tenant');
+
+            if (statusText) {
+                setStatus(statusText, success);
+            } else {
+                setStatus('Paruosta.', true);
+            }
+        }
+
+        function enterExit() {
+            safeTrigger('houseUiEnterExit');
+        }
+
+        function refreshPanel() {
+            safeTrigger('houseUiRequestRefresh');
+        }
+
+        function toggleLock() {
+            safeTrigger('houseUiToggleLock');
+        }
+
+        function setRent() {
+            const value = document.getElementById('rentInput').value;
+            safeTrigger('houseUiSetRent', String(value || '0'));
+        }
+
+        function offerRent() {
+            const target = document.getElementById('tenantInput').value.trim();
+            const rent = document.getElementById('rentInput').value;
+            if (!target) {
+                setStatus('Iveskite nuomininko ID arba varda.', false);
+                return;
+            }
+            safeTrigger('houseUiOfferRent', target, String(rent || '0'));
+        }
+
+        function stopRent() {
+            safeTrigger('houseUiStopRent');
+        }
+
+        function closePanel() {
+            safeTrigger('houseUiClose');
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                closePanel();
+            }
+        });
+
+        window.initHousePanel = (payloadJson, statusText = '', success = true) => {
+            applyState(parsePayload(payloadJson), statusText, success);
+        };
+
+        window.updateHousePanel = (payloadJson, statusText = '', success = true) => {
+            applyState(parsePayload(payloadJson), statusText, success);
+        };
+    </script>
+</body>
+
+</html>
