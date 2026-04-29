@@ -34,7 +34,8 @@ Upload this into existing RageMP server files - https://wiki.rage.mp/wiki/Gettin
 - **Barber and clothes shop**
   You can modify your clothes and beard, hair.
 
-
+- **Housing and business systems**
+  Add a house or a business
 
 ---
 
