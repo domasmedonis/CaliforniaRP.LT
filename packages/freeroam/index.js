@@ -155,6 +155,53 @@ const DEALERSHIP_PURCHASE_SPAWN_POS = new mp.Vector3(-49.89, -1111.67, 26.44);
 const PROPERTY_INTERACT_RADIUS = 3.0;
 const PROPERTY_SELL_RADIUS = 10.0;
 const PROPERTY_ADDRESS_HINT_RADIUS = 4.0;
+const BUSINESS_INTERACT_RADIUS = 3.0;
+const BUSINESS_EXIT_RADIUS = 6.0;
+
+const BUSINESS_TYPE_DEFS = Object.freeze({
+    shop: {
+        label: 'Parduotuve',
+        blipColor: 2,
+        markerColor: [52, 152, 219, 150],
+        buyEnabled: true,
+        products: [
+            { key: 'water', label: 'Vanduo', itemType: 'water', price: 5 },
+            { key: 'burger', label: 'Burgeris', itemType: 'burger', price: 12 },
+            { key: 'bandage', label: 'Bintas', itemType: 'bandage', price: 25 },
+            { key: 'medkit', label: 'Vaistinele', itemType: 'medkit', price: 60 },
+        ],
+    },
+    gas_station: {
+        label: 'Degaline',
+        blipColor: 5,
+        markerColor: [241, 196, 15, 150],
+        buyEnabled: true,
+        products: [
+            { key: 'water', label: 'Vanduo', itemType: 'water', price: 6 },
+            { key: 'beer', label: 'Alus', itemType: 'beer', price: 9 },
+            { key: 'cigarettes', label: 'Cigaretes', itemType: 'cigarettes', price: 15 },
+        ],
+    },
+    restaurant: {
+        label: 'Restoranas',
+        blipColor: 1,
+        markerColor: [231, 76, 60, 150],
+        buyEnabled: false,
+        products: [],
+    },
+});
+
+const BUSINESS_TYPE_ALIASES = Object.freeze({
+    shop: 'shop',
+    store: 'shop',
+    parduotuve: 'shop',
+    gas: 'gas_station',
+    gasstation: 'gas_station',
+    gas_station: 'gas_station',
+    degaline: 'gas_station',
+    restaurant: 'restaurant',
+    restoranas: 'restaurant',
+});
 
 const PROPERTY_CATALOG = Object.freeze([
     {
@@ -234,8 +281,16 @@ function getUniquePropertyDimension(propertyId) {
     return 90000 + safePropertyId;
 }
 
+function getUniqueBusinessDimension(businessId) {
+    const safeBusinessId = Math.max(1, parseInt(businessId, 10) || 1);
+    return 120000 + safeBusinessId;
+}
+
 const propertiesById = new Map();
 let propertiesLoaded = false;
+const businessesById = new Map();
+const businessVisualsById = new Map();
+let businessesLoaded = false;
 
 const VEHICLE_CATALOG = Object.freeze([
     { key: 'sultan', name: 'Karin Sultan', model: 'sultan', price: 28000 },
@@ -862,6 +917,320 @@ function movePlayerIntoProperty(player, property) {
     player.position = targetPos;
     player.heading = targetHeading;
     player.currentPropertyId = property.id;
+    player.currentBusinessId = null;
+}
+
+function normalizeBusinessType(typeRaw) {
+    const key = String(typeRaw || '').trim().toLowerCase();
+    return BUSINESS_TYPE_ALIASES[key] || null;
+}
+
+function getBusinessTypeDefinition(typeRaw) {
+    const type = normalizeBusinessType(typeRaw) || String(typeRaw || '').trim().toLowerCase();
+    return BUSINESS_TYPE_DEFS[type] || null;
+}
+
+function getBusinessTypeLabel(typeRaw) {
+    const definition = getBusinessTypeDefinition(typeRaw);
+    return definition ? definition.label : 'Verslas';
+}
+
+function sanitizeBusinessName(nameRaw) {
+    const name = String(nameRaw || '').replace(/\s+/g, ' ').trim();
+    return name.slice(0, 80);
+}
+
+function getDefaultBusinessName(typeRaw, businessIdRaw = null) {
+    const baseLabel = getBusinessTypeLabel(typeRaw);
+    const businessId = parseInt(businessIdRaw, 10);
+    if (!Number.isFinite(businessId)) return baseLabel;
+    return `${baseLabel} #${businessId}`;
+}
+
+function destroyBusinessVisualById(businessIdRaw) {
+    const businessId = parseInt(businessIdRaw, 10);
+    if (!Number.isFinite(businessId)) return;
+
+    const visuals = businessVisualsById.get(businessId);
+    if (!visuals) return;
+
+    if (visuals.blip && typeof visuals.blip.destroy === 'function') {
+        try {
+            visuals.blip.destroy();
+        } catch (error) {
+            console.error('[BUSINESS] Failed to destroy blip:', error.message);
+        }
+    }
+
+    if (visuals.marker && typeof visuals.marker.destroy === 'function') {
+        try {
+            visuals.marker.destroy();
+        } catch (error) {
+            console.error('[BUSINESS] Failed to destroy marker:', error.message);
+        }
+    }
+
+    businessVisualsById.delete(businessId);
+}
+
+function clearBusinessVisuals() {
+    Array.from(businessVisualsById.keys()).forEach((businessId) => {
+        destroyBusinessVisualById(businessId);
+    });
+}
+
+function refreshBusinessVisual(business) {
+    if (!business || !business.id || !business.entryPos) return;
+
+    destroyBusinessVisualById(business.id);
+
+    const typeDef = getBusinessTypeDefinition(business.type) || BUSINESS_TYPE_DEFS.shop;
+    const entryPos = new mp.Vector3(business.entryPos.x, business.entryPos.y, business.entryPos.z);
+    const blip = mp.blips.new(52, entryPos, {
+        name: business.name || getDefaultBusinessName(business.type, business.id),
+        color: typeDef.blipColor,
+        shortRange: true,
+        scale: 0.8,
+    });
+    const marker = mp.markers.new(1, new mp.Vector3(entryPos.x, entryPos.y, entryPos.z - 1.0), 1.0, {
+        color: typeDef.markerColor,
+        visible: true,
+        dimension: 0,
+    });
+
+    businessVisualsById.set(Number(business.id), { blip, marker });
+}
+
+function getBusinessAddressForDisplay(business) {
+    if (!business) return '1000 San Andreas Avenue';
+
+    const storedAddress = sanitizePropertyAddress(business.address);
+    if (storedAddress) return storedAddress;
+
+    return getAutoPropertyAddressFromPosition(business.entryPos || business.interiorPos || null);
+}
+
+function persistBusinessState(business) {
+    if (!business || !business.id) return;
+
+    db.query(
+        'UPDATE server_businesses SET name = ?, business_type = ?, address = ?, owner_char_id = ?, owner_char_name = ?, bank_balance = ?, entry_x = ?, entry_y = ?, entry_z = ?, entry_h = ?, interior_x = ?, interior_y = ?, interior_z = ?, interior_h = ?, exit_x = ?, exit_y = ?, exit_z = ?, exit_h = ?, dimension = ? WHERE id = ?',
+        [
+            business.name,
+            business.type,
+            getBusinessAddressForDisplay(business),
+            business.ownerCharId || null,
+            business.ownerCharName || null,
+            Math.max(0, parseInt(business.bankBalance, 10) || 0),
+            business.entryPos.x,
+            business.entryPos.y,
+            business.entryPos.z,
+            Number.isFinite(business.entryHeading) ? business.entryHeading : 0,
+            business.interiorPos.x,
+            business.interiorPos.y,
+            business.interiorPos.z,
+            Number.isFinite(business.interiorHeading) ? business.interiorHeading : 0,
+            business.exitPos.x,
+            business.exitPos.y,
+            business.exitPos.z,
+            Number.isFinite(business.exitHeading) ? business.exitHeading : 0,
+            business.dimension,
+            business.id,
+        ],
+        (err) => {
+            if (err) {
+                console.error('[BUSINESS] Failed to persist business state:', err.message);
+            }
+        }
+    );
+}
+
+function loadBusinessesFromDatabase() {
+    db.query('SELECT * FROM server_businesses ORDER BY id ASC', (err, rows) => {
+        if (err) {
+            console.error('[BUSINESS] Failed to load businesses:', err.message);
+            return;
+        }
+
+        businessesById.clear();
+        clearBusinessVisuals();
+
+        rows.forEach((row) => {
+            const businessId = Number(row.id);
+            const normalizedType = normalizeBusinessType(row.business_type) || 'shop';
+            const storedName = sanitizeBusinessName(row.name);
+            const defaultName = getDefaultBusinessName(normalizedType, businessId);
+            const resolvedName = storedName || defaultName;
+            const resolvedAddress = sanitizePropertyAddress(row.address)
+                || getAutoPropertyAddressFromPosition({ x: row.entry_x, y: row.entry_y, z: row.entry_z });
+
+            const business = {
+                id: businessId,
+                key: row.business_key,
+                name: resolvedName,
+                type: normalizedType,
+                address: resolvedAddress,
+                ownerCharId: row.owner_char_id ? Number(row.owner_char_id) : null,
+                ownerCharName: row.owner_char_name || null,
+                bankBalance: Math.max(0, parseInt(row.bank_balance, 10) || 0),
+                entryPos: new mp.Vector3(Number(row.entry_x), Number(row.entry_y), Number(row.entry_z)),
+                entryHeading: Number.isFinite(Number(row.entry_h)) ? Number(row.entry_h) : 0,
+                interiorPos: new mp.Vector3(Number(row.interior_x), Number(row.interior_y), Number(row.interior_z)),
+                interiorHeading: Number.isFinite(Number(row.interior_h)) ? Number(row.interior_h) : 0,
+                exitPos: new mp.Vector3(Number(row.exit_x), Number(row.exit_y), Number(row.exit_z)),
+                exitHeading: Number.isFinite(Number(row.exit_h)) ? Number(row.exit_h) : 0,
+                dimension: Math.max(1, parseInt(row.dimension, 10) || getUniqueBusinessDimension(businessId)),
+            };
+
+            businessesById.set(business.id, business);
+            refreshBusinessVisual(business);
+
+            if (!storedName || storedName !== resolvedName) {
+                db.query('UPDATE server_businesses SET name = ? WHERE id = ?', [resolvedName, businessId]);
+            }
+
+            if (!sanitizePropertyAddress(row.address)) {
+                db.query('UPDATE server_businesses SET address = ? WHERE id = ?', [resolvedAddress, businessId]);
+            }
+
+            if (normalizeBusinessType(row.business_type) !== normalizedType) {
+                db.query('UPDATE server_businesses SET business_type = ? WHERE id = ?', [normalizedType, businessId]);
+            }
+        });
+
+        businessesLoaded = true;
+        console.log(`[BUSINESS] Loaded ${businessesById.size} businesses.`);
+    });
+}
+
+function getBusinessById(businessIdRaw) {
+    const businessId = parseInt(businessIdRaw, 10);
+    if (!Number.isFinite(businessId)) return null;
+    return businessesById.get(businessId) || null;
+}
+
+function getNearbyBusiness(player, radius = BUSINESS_INTERACT_RADIUS) {
+    if (!player || !player.position || Number(player.dimension) !== 0) return null;
+
+    let closest = null;
+    let closestDistance = Number(radius);
+
+    businessesById.forEach((business) => {
+        const distance = getDistanceBetweenPositions(player.position, business.entryPos);
+        if (distance <= closestDistance) {
+            closestDistance = distance;
+            closest = business;
+        }
+    });
+
+    return closest;
+}
+
+function getPlayerCurrentBusiness(player) {
+    if (!player) return null;
+
+    const currentBusinessId = parseInt(player.currentBusinessId, 10);
+    if (Number.isFinite(currentBusinessId)) {
+        const byId = businessesById.get(currentBusinessId);
+        if (byId) return byId;
+    }
+
+    if (Number(player.dimension) <= 0) return null;
+
+    for (const business of businessesById.values()) {
+        if (Number(business.dimension) === Number(player.dimension)) {
+            return business;
+        }
+    }
+
+    return null;
+}
+
+function movePlayerIntoBusiness(player, business) {
+    if (!player || !business) return;
+
+    player.dimension = business.dimension;
+    player.position = business.interiorPos;
+    player.heading = Number.isFinite(business.interiorHeading) ? business.interiorHeading : 0;
+    player.currentBusinessId = business.id;
+    player.currentPropertyId = null;
+}
+
+function movePlayerOutOfBusiness(player, business) {
+    if (!player || !business) return;
+
+    player.dimension = 0;
+    player.position = business.entryPos;
+    player.heading = Number.isFinite(business.entryHeading) ? business.entryHeading : 0;
+    player.currentBusinessId = null;
+}
+
+function isBusinessOwner(player, business) {
+    if (!player || !business || !player.charId) return false;
+    return Number(player.charId) === Number(business.ownerCharId);
+}
+
+function getOwnedBusinessContext(player) {
+    if (!player || !player.charId) return null;
+
+    const currentBusiness = getPlayerCurrentBusiness(player);
+    if (currentBusiness && isBusinessOwner(player, currentBusiness)) {
+        return currentBusiness;
+    }
+
+    const nearbyBusiness = getNearbyBusiness(player, 12.0);
+    if (nearbyBusiness && isBusinessOwner(player, nearbyBusiness)) {
+        return nearbyBusiness;
+    }
+
+    return null;
+}
+
+function getClosestEnterTarget(player) {
+    const nearbyProperty = propertiesLoaded ? getNearbyProperty(player, PROPERTY_INTERACT_RADIUS) : null;
+    const nearbyBusiness = businessesLoaded ? getNearbyBusiness(player, BUSINESS_INTERACT_RADIUS) : null;
+
+    if (!nearbyProperty && !nearbyBusiness) {
+        return null;
+    }
+
+    if (nearbyProperty && !nearbyBusiness) {
+        return { kind: 'property', target: nearbyProperty };
+    }
+
+    if (nearbyBusiness && !nearbyProperty) {
+        return { kind: 'business', target: nearbyBusiness };
+    }
+
+    const propertyDistance = getDistanceBetweenPositions(player.position, nearbyProperty.entryPos);
+    const businessDistance = getDistanceBetweenPositions(player.position, nearbyBusiness.entryPos);
+
+    if (businessDistance < propertyDistance) {
+        return { kind: 'business', target: nearbyBusiness };
+    }
+
+    return { kind: 'property', target: nearbyProperty };
+}
+
+function persistPlayerMoney(player) {
+    if (!player || !player.charId) return;
+
+    player.call('updateMoneyHUD', [player.money || 0]);
+    db.query('UPDATE characters SET money = ? WHERE id = ?', [player.money || 0, player.charId], (err) => {
+        if (err) {
+            console.error('[MONEY] Failed to save player money:', err.message);
+        }
+    });
+}
+
+function getBusinessProductList(business) {
+    const definition = business ? getBusinessTypeDefinition(business.type) : null;
+    return Array.isArray(definition?.products) ? definition.products : [];
+}
+
+function getBusinessProduct(business, productRaw) {
+    const normalizedType = normalizeInventoryItemType(productRaw) || String(productRaw || '').trim().toLowerCase();
+    return getBusinessProductList(business).find(product => product.key === normalizedType || product.itemType === normalizedType) || null;
 }
 
 function getPropertyRoleForPlayer(player, property) {
@@ -1723,9 +2092,9 @@ const db = mysql.createPool({
     waitForConnections: true,
     queueLimit: 0,
     host: 'californiarp.lt',
-    user: 'u845910951_ingamedatabase',
-    password: 'Yv4V&y0D',
-    database: 'u845910951_ingamedatabase'
+    user: 'u845910951_californiarplt',
+    password: '@lD7:O>a2',
+    database: 'u845910951_ingamemysqldat'
 });
 
 function bootstrapDatabase() {
@@ -1797,6 +2166,14 @@ function bootstrapDatabase() {
             console.error('[WEAPONS] Failed to add equipped_weapon_ammo column:', err.message);
         } else {
             console.log('[WEAPONS] equipped_weapon_ammo column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE bans ADD COLUMN ucp_name VARCHAR(64) NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[BANS] Failed to add ucp_name column:', err.message);
+        } else {
+            console.log('[BANS] ucp_name column ready.');
         }
     });
 
@@ -1917,6 +2294,64 @@ function bootstrapDatabase() {
 
         seedAndLoadProperties();
     });
+
+    db.query(`CREATE TABLE IF NOT EXISTS server_businesses (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        business_key VARCHAR(64) NOT NULL UNIQUE,
+        name VARCHAR(80) NOT NULL,
+        business_type VARCHAR(32) NOT NULL,
+        address VARCHAR(128) NULL,
+        owner_char_id INT NULL,
+        owner_char_name VARCHAR(64) NULL,
+        bank_balance INT NOT NULL DEFAULT 0,
+        entry_x FLOAT NOT NULL,
+        entry_y FLOAT NOT NULL,
+        entry_z FLOAT NOT NULL,
+        entry_h FLOAT NOT NULL DEFAULT 0,
+        interior_x FLOAT NOT NULL,
+        interior_y FLOAT NOT NULL,
+        interior_z FLOAT NOT NULL,
+        interior_h FLOAT NOT NULL DEFAULT 0,
+        exit_x FLOAT NOT NULL,
+        exit_y FLOAT NOT NULL,
+        exit_z FLOAT NOT NULL,
+        exit_h FLOAT NOT NULL DEFAULT 0,
+        dimension INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`, (createErr) => {
+        if (createErr) {
+            console.error('[BUSINESS] Failed to create server_businesses table:', createErr.message);
+            return;
+        }
+
+        console.log('[BUSINESS] server_businesses table ready.');
+
+        db.query('ALTER TABLE server_businesses ADD COLUMN address VARCHAR(128) NULL', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[BUSINESS] Failed to add address column:', alterErr.message);
+            }
+        });
+
+        db.query('ALTER TABLE server_businesses ADD COLUMN owner_char_id INT NULL', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[BUSINESS] Failed to add owner_char_id column:', alterErr.message);
+            }
+        });
+
+        db.query('ALTER TABLE server_businesses ADD COLUMN owner_char_name VARCHAR(64) NULL', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[BUSINESS] Failed to add owner_char_name column:', alterErr.message);
+            }
+        });
+
+        db.query('ALTER TABLE server_businesses ADD COLUMN bank_balance INT NOT NULL DEFAULT 0', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[BUSINESS] Failed to add bank_balance column:', alterErr.message);
+            }
+        });
+
+        loadBusinessesFromDatabase();
+    });
 }
 
 db.getConnection((err, connection) => {
@@ -2035,22 +2470,37 @@ mp.events.add('validateLogin', (player, username, password) => {
 
         const storedPassword = results[0].password;
 
-        bcrypt.compare(password, storedPassword, (err, isMatch) => {
-            if (err) {
-                console.error('[BCRYPT ERROR]', err);
-                player.call('login:error', ['⚠️ Klaida tikrinant slaptažodį. Bandykite dar kartą.']);
+        db.query('SELECT * FROM bans WHERE ucp_name = ? LIMIT 1', [username], (banError, banResults) => {
+            if (banError) {
+                console.error('[DATABASE ERROR] Failed to check UCP ban status:', banError);
+                player.call('login:error', ['⚠️ Duomenų bazės klaida! Bandykite vėliau.']);
                 return;
             }
 
-            if (isMatch) {
-                console.log(`[LOGIN SUCCESS] User "${username}" logged in.`);
-                player.name = username; // UCP username
-                player.call('login:success');
-                loadCharacterSelection(player);
-            } else {
-                console.log(`[LOGIN FAILED] Incorrect password for "${username}".`);
-                player.call('login:error', ['❌ Neteisingas slaptažodis!']);
+            if (banResults.length > 0) {
+                const reason = banResults[0].reason || 'Nenurodyta priežastis';
+                console.log(`[LOGIN BLOCKED] Banned UCP "${username}" attempted to log in.`);
+                player.call('login:error', [`❌ Šis UCP yra užblokuotas. Priežastis: ${reason}`]);
+                return;
             }
+
+            bcrypt.compare(password, storedPassword, (err, isMatch) => {
+                if (err) {
+                    console.error('[BCRYPT ERROR]', err);
+                    player.call('login:error', ['⚠️ Klaida tikrinant slaptažodį. Bandykite dar kartą.']);
+                    return;
+                }
+
+                if (isMatch) {
+                    console.log(`[LOGIN SUCCESS] User "${username}" logged in.`);
+                    player.name = username; // UCP username
+                    player.call('login:success');
+                    loadCharacterSelection(player);
+                } else {
+                    console.log(`[LOGIN FAILED] Incorrect password for "${username}".`);
+                    player.call('login:error', ['❌ Neteisingas slaptažodis!']);
+                }
+            });
         });
     });
 });
@@ -2191,6 +2641,7 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.call('updateBankHUD', [player.bankBalance]);
         player.call('updatePhoneNumber', [player.phoneNumber]);
         player.currentPropertyId = null;
+        player.currentBusinessId = null;
         player.dimension = 0;
         player.outputChatBox(`!{#7aa164}Pasirinkote veikėją: ${charData.char_name}. Sveiki atvykę į CaliforniaRP.LT!`);
 
@@ -2379,29 +2830,41 @@ setInterval(() => {
         const nearbyProperty = getNearbyProperty(player, PROPERTY_ADDRESS_HINT_RADIUS);
         if (!nearbyProperty) {
             player.lastPropertyAddressHintId = null;
-            return;
-        }
+        } else {
+            const nearbyPropertyId = Number(nearbyProperty.id);
+            const lastPropertyAddressHintId = parseInt(player.lastPropertyAddressHintId, 10);
+            if (!(Number.isFinite(lastPropertyAddressHintId) && lastPropertyAddressHintId === nearbyPropertyId)) {
+                player.lastPropertyAddressHintId = nearbyPropertyId;
 
-        const nearbyPropertyId = Number(nearbyProperty.id);
-        const lastPropertyAddressHintId = parseInt(player.lastPropertyAddressHintId, 10);
-        if (Number.isFinite(lastPropertyAddressHintId) && lastPropertyAddressHintId === nearbyPropertyId) {
+                const propertyName = getLocalizedPropertyName(nearbyProperty.id);
+                const addressText = getPropertyAddressForDisplay(nearbyProperty);
+                player.outputChatBox(`!{#f7dc6f}${propertyName} | Adresas: ${addressText}`);
+
+                const rentPrice = Math.max(0, parseInt(nearbyProperty.settings?.rentPerPaycheck, 10) || 0);
+                const hasOwner = Number(nearbyProperty.ownerCharId) > 0;
+                const isAvailableForRent = hasOwner && !Number(nearbyProperty.tenantCharId) && rentPrice > 0;
+                if (isAvailableForRent) {
+                    player.outputChatBox(`!{#58d68d}Sis bustas laisvas nuomai: $${rentPrice}/paycheck. Rasykite /rent salia iejimo.`);
+                }
+            }
+
             requestNativePropertyAddressResolution(player, nearbyProperty);
+        }
+
+        const nearbyBusiness = getNearbyBusiness(player, BUSINESS_INTERACT_RADIUS + 1.0);
+        if (!nearbyBusiness) {
+            player.lastBusinessNameHintId = null;
             return;
         }
 
-        player.lastPropertyAddressHintId = nearbyPropertyId;
-        requestNativePropertyAddressResolution(player, nearbyProperty);
-
-        const propertyName = getLocalizedPropertyName(nearbyProperty.id);
-        const addressText = getPropertyAddressForDisplay(nearbyProperty);
-        player.outputChatBox(`!{#f7dc6f}${propertyName} | Adresas: ${addressText}`);
-
-        const rentPrice = Math.max(0, parseInt(nearbyProperty.settings?.rentPerPaycheck, 10) || 0);
-        const hasOwner = Number(nearbyProperty.ownerCharId) > 0;
-        const isAvailableForRent = hasOwner && !Number(nearbyProperty.tenantCharId) && rentPrice > 0;
-        if (isAvailableForRent) {
-            player.outputChatBox(`!{#58d68d}Sis bustas laisvas nuomai: $${rentPrice}/paycheck. Rasykite /rent salia iejimo.`);
+        const nearbyBusinessId = Number(nearbyBusiness.id);
+        const lastBusinessNameHintId = parseInt(player.lastBusinessNameHintId, 10);
+        if (Number.isFinite(lastBusinessNameHintId) && lastBusinessNameHintId === nearbyBusinessId) {
+            return;
         }
+
+        player.lastBusinessNameHintId = nearbyBusinessId;
+        player.outputChatBox(`!{#5dade2}Verslas: ${nearbyBusiness.name}. Naudokite /enter.`);
     });
 }, 1000);
 
@@ -2651,7 +3114,7 @@ const knownCommands = new Set([
     'helpme', 'accepthelp', 'declinehelp',
     'report', 'acceptreport', 'declinereport',
     'admins', 'setaname', 'changechar', 'coords', 'createtwittertables',
-    'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'aprop', 'tpinterior',
+    'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'buy', 'bizbank', 'bizbankwithdraw', 'setbizname', 'sellbiz', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'aprop', 'abiz', 'tpinterior',
     'ph', 'phone', 'acceptdrive',
     'call', 'answer', 'decline', 'hangup',
     'sharenumber', 'sms',
@@ -3586,22 +4049,29 @@ mp.events.addCommand('enter', (player) => {
         return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
     }
 
-    if (!propertiesLoaded) {
-        return player.outputChatBox('!{#f7dc6f}Property sistema dar kraunasi.');
+    if (!propertiesLoaded && !businessesLoaded) {
+        return player.outputChatBox('!{#f7dc6f}Interjeru sistema dar kraunasi.');
     }
 
     if (player.vehicle) {
-        return player.outputChatBox('!{#e74c3c}I property vidu su transportu ivaziuoti negalima.');
+        return player.outputChatBox('!{#e74c3c}I vidu su transportu ivaziuoti negalima.');
     }
 
     if (Number(player.dimension) !== 0) {
-        return player.outputChatBox('!{#f7dc6f}Jau esate property viduje. Naudokite /exithouse.');
+        return player.outputChatBox('!{#f7dc6f}Jau esate viduje. Naudokite /exit.');
     }
 
-    const property = getNearbyProperty(player, PROPERTY_INTERACT_RADIUS);
-    if (!property) {
-        return player.outputChatBox('!{#e74c3c}Nesate prie property iejimo.');
+    const closestTarget = getClosestEnterTarget(player);
+    if (!closestTarget) {
+        return player.outputChatBox('!{#e74c3c}Nesate prie jokio iejimo.');
     }
+
+    if (closestTarget.kind === 'business') {
+        movePlayerIntoBusiness(player, closestTarget.target);
+        return player.outputChatBox(`!{#7aa164}Iejote i ${closestTarget.target.name}.`);
+    }
+
+    const property = closestTarget.target;
 
     if (!property.ownerCharId) {
         return player.outputChatBox('!{#f7dc6f}Sis property neparduotas. Naudokite /buyproperty.');
@@ -3634,6 +4104,7 @@ mp.events.addCommand('exithouse', (player) => {
     player.position = property.entryPos;
     player.heading = property.entryHeading;
     player.currentPropertyId = null;
+    player.currentBusinessId = null;
 
     player.outputChatBox(`!{#7aa164}Isėjote is ${property.name}.`);
 });
@@ -3644,21 +4115,211 @@ mp.events.addCommand('exit', (player) => {
     }
 
     const property = getPlayerCurrentProperty(player);
-    if (!property) {
-        return player.outputChatBox('!{#f7dc6f}Nesate jokio property viduje.');
+    if (property) {
+        const exitDistance = getDistanceBetweenPositions(player.position, property.exitPos);
+        if (exitDistance > 6.0) {
+            return player.outputChatBox('!{#f7dc6f}Prieikite prie isejimo tasko property viduje.');
+        }
+
+        player.dimension = 0;
+        player.position = property.entryPos;
+        player.heading = property.entryHeading;
+        player.currentPropertyId = null;
+        player.currentBusinessId = null;
+
+        return player.outputChatBox(`!{#7aa164}Isėjote is ${property.name}.`);
     }
 
-    const exitDistance = getDistanceBetweenPositions(player.position, property.exitPos);
-    if (exitDistance > 6.0) {
-        return player.outputChatBox('!{#f7dc6f}Prieikite prie isejimo tasko property viduje.');
+    const business = getPlayerCurrentBusiness(player);
+    if (!business) {
+        return player.outputChatBox('!{#f7dc6f}Nesate jokio property ar verslo viduje.');
     }
 
-    player.dimension = 0;
-    player.position = property.entryPos;
-    player.heading = property.entryHeading;
+    const exitDistance = getDistanceBetweenPositions(player.position, business.exitPos);
+    if (exitDistance > BUSINESS_EXIT_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Prieikite prie verslo isejimo tasko.');
+    }
+
+    movePlayerOutOfBusiness(player, business);
     player.currentPropertyId = null;
+    player.outputChatBox(`!{#7aa164}Isejote is ${business.name}.`);
+});
 
-    player.outputChatBox(`!{#7aa164}Isėjote is ${property.name}.`);
+mp.events.addCommand('buy', (player, fullText) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const business = getPlayerCurrentBusiness(player);
+    if (!business) {
+        return player.outputChatBox('!{#f7dc6f}Pirkti galite tik budami verslo viduje.');
+    }
+
+    const typeDef = getBusinessTypeDefinition(business.type);
+    if (!typeDef || !typeDef.buyEnabled) {
+        return player.outputChatBox('!{#f7dc6f}Siame versle pirkimas dar neijungtas.');
+    }
+
+    const args = String(fullText || '').trim().split(/\s+/).filter(Boolean);
+    const productRaw = args[0];
+    const amount = Math.max(1, parseInt(args[1], 10) || 1);
+
+    if (!productRaw) {
+        const offers = getBusinessProductList(business)
+            .map(product => `${product.key} ($${product.price})`)
+            .join(', ');
+        return player.outputChatBox(`!{#f7dc6f}Naudojimas: /buy [item] [kiekis]. Galite pirkti: ${offers}`);
+    }
+
+    const product = getBusinessProduct(business, productRaw);
+    if (!product) {
+        const offers = getBusinessProductList(business)
+            .map(entry => entry.key)
+            .join(', ');
+        return player.outputChatBox(`!{#e74c3c}Sis verslas neparduoda sio daikto. Galimi: ${offers}`);
+    }
+
+    const totalPrice = Math.max(1, amount) * product.price;
+    if ((player.money || 0) < totalPrice) {
+        return player.outputChatBox(`!{#e74c3c}Nepakanka grynuju. Reikia $${totalPrice}, turite $${player.money || 0}.`);
+    }
+
+    if (!Array.isArray(player.inventory)) {
+        player.inventory = [];
+    }
+
+    const item = addInventoryItem(player, product.itemType, amount);
+    if (!item) {
+        return player.outputChatBox('!{#e74c3c}Nepavyko prideti daikto i inventoriu.');
+    }
+
+    player.money -= totalPrice;
+    business.bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0) + totalPrice;
+    persistPlayerMoney(player);
+    persistInventory(player);
+    persistBusinessState(business);
+
+    player.outputChatBox(`!{#7aa164}Nusipirkote ${amount}x ${product.label} uz $${totalPrice} versle ${business.name}.`);
+});
+
+mp.events.addCommand('bizbank', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const business = getOwnedBusinessContext(player);
+    if (!business) {
+        return player.outputChatBox('!{#e74c3c}Turite buti savo versle arba prie jo iejimo.');
+    }
+
+    const bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0);
+    player.outputChatBox(`!{#85c1e9}${business.name} bankas: $${bankBalance}.`);
+});
+
+mp.events.addCommand('bizbankwithdraw', (player, _, amountRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!amountRaw) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /bizbankwithdraw [suma]');
+    }
+
+    const business = getOwnedBusinessContext(player);
+    if (!business) {
+        return player.outputChatBox('!{#e74c3c}Turite buti savo versle arba prie jo iejimo.');
+    }
+
+    const amount = parseInt(amountRaw, 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return player.outputChatBox('!{#e74c3c}Nurodykite teisinga suma.');
+    }
+
+    const bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0);
+    if (amount > bankBalance) {
+        return player.outputChatBox(`!{#e74c3c}Verslo banke nepakanka lesu. Balansas: $${bankBalance}.`);
+    }
+
+    business.bankBalance = bankBalance - amount;
+    player.money = Math.max(0, parseInt(player.money, 10) || 0) + amount;
+
+    persistBusinessState(business);
+    persistPlayerMoney(player);
+
+    player.outputChatBox(`!{#7aa164}Isiemete $${amount} is ${business.name} banko. Naujas balansas: $${business.bankBalance}.`);
+});
+
+mp.events.addCommand('setbizname', (player, fullText) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const business = getOwnedBusinessContext(player);
+    if (!business) {
+        return player.outputChatBox('!{#e74c3c}Galite pervadinti tik savo versla budami jame arba prie iejimo.');
+    }
+
+    const nextName = sanitizeBusinessName(fullText);
+    if (!nextName) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /setbizname [naujas pavadinimas]');
+    }
+
+    business.name = nextName;
+    persistBusinessState(business);
+    refreshBusinessVisual(business);
+
+    player.outputChatBox(`!{#7aa164}Verslo pavadinimas pakeistas i: ${business.name}.`);
+});
+
+mp.events.addCommand('sellbiz', (player, _, targetIdentifier, priceRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!targetIdentifier || !priceRaw) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /sellbiz [zaidejo ID/vardas] [kaina]');
+    }
+
+    const business = getOwnedBusinessContext(player);
+    if (!business) {
+        return player.outputChatBox('!{#e74c3c}Galite parduoti tik savo versla (budami jame arba prie iejimo).');
+    }
+
+    const targetPlayer = getPlayerByIDOrName(targetIdentifier);
+    if (!targetPlayer || !targetPlayer.charName || !targetPlayer.charId) {
+        return player.outputChatBox('!{#e74c3c}Pirkejas nerastas arba nepasirinko veikejo.');
+    }
+
+    if (targetPlayer.id === player.id) {
+        return player.outputChatBox('!{#f7dc6f}Negalite parduoti verslo sau.');
+    }
+
+    const price = parseInt(priceRaw, 10);
+    if (!Number.isFinite(price) || price <= 0) {
+        return player.outputChatBox('!{#f7dc6f}Nurodykite teisinga kaina.');
+    }
+
+    const distance = getDistanceBetweenPositions(player.position, targetPlayer.position);
+    if (distance > PROPERTY_SELL_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Pirkejas turi buti salia jusu.');
+    }
+
+    if ((targetPlayer.money || 0) < price) {
+        return player.outputChatBox(`!{#e74c3c}Pirkejui truksta grynuju. Turi tik $${targetPlayer.money || 0}.`);
+    }
+
+    player.money = Math.max(0, parseInt(player.money, 10) || 0) + price;
+    targetPlayer.money = Math.max(0, parseInt(targetPlayer.money, 10) || 0) - price;
+
+    persistPlayerMoney(player);
+    persistPlayerMoney(targetPlayer);
+
+    business.ownerCharId = targetPlayer.charId;
+    business.ownerCharName = targetPlayer.charName;
+    persistBusinessState(business);
+
+    player.outputChatBox(`!{#7aa164}Pardavete versla ${business.name} zaidejui ${targetPlayer.charName} uz $${price}.`);
+    targetPlayer.outputChatBox(`!{#7aa164}Nusipirkote versla ${business.name} is ${player.charName} uz $${price}.`);
 });
 
 mp.events.addCommand('sellproperty', (player, _, targetIdentifier, priceRaw) => {
@@ -4209,6 +4870,7 @@ mp.events.addCommand('aprop', (player, fullText) => {
             player.position = property.entryPos;
             player.heading = property.entryHeading;
             player.currentPropertyId = null;
+            player.currentBusinessId = null;
             return player.outputChatBox(`!{#7aa164}Teleportuota prie property #${property.id} entry.`);
         }
 
@@ -4217,10 +4879,226 @@ mp.events.addCommand('aprop', (player, fullText) => {
             player.position = property.interiorPos;
             player.heading = property.interiorHeading;
             player.currentPropertyId = property.id;
+            player.currentBusinessId = null;
             return player.outputChatBox(`!{#7aa164}Teleportuota i property #${property.id} interior.`);
         }
 
         player.outputChatBox('!{#e74c3c}Nezinomas /aprop veiksmas. Naudokite /aprop be argumentu.');
+    });
+});
+
+mp.events.addCommand('abiz', (player, fullText) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    isAdmin(player, 1, (error, hasPermission) => {
+        if (error || !hasPermission) {
+            return player.outputChatBox('!{#e74c3c}Neturite teises naudoti sios komandos.');
+        }
+
+        const args = String(fullText || '').trim().split(/\s+/).filter(Boolean);
+        const action = String(args[0] || '').toLowerCase();
+
+        if (!action) {
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz list, /abiz reload, /abiz select');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz create [shop|gasstation|restaurant] [pavadinimas(optional)]');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz setentry [id], /abiz setinterior [interiorId|list], /abiz setexit [id(optional)]');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz delete [id], /abiz tpentry [id], /abiz tpinterior [id]');
+            return;
+        }
+
+        if (action === 'list') {
+            if (businessesById.size === 0) {
+                return player.outputChatBox('!{#f7dc6f}Verslu sarasas tuscias.');
+            }
+
+            player.outputChatBox('!{#85c1e9}===== ADMIN BUSINESS LIST =====');
+            businessesById.forEach((business) => {
+                player.outputChatBox(`!{#d6eaf8}#${business.id} ${business.name} | ${getBusinessTypeLabel(business.type)} | dim ${business.dimension} | ${getBusinessAddressForDisplay(business)}`);
+            });
+            return;
+        }
+
+        if (action === 'reload') {
+            loadBusinessesFromDatabase();
+            return player.outputChatBox('!{#7aa164}Verslu sarasas perkraunamas is duomenu bazes.');
+        }
+
+        if (action === 'select') {
+            const business = getNearbyBusiness(player, 12.0);
+            if (!business) {
+                return player.outputChatBox('!{#e74c3c}Salia nerastas verslas pasirinkimui.');
+            }
+
+            player.abizSelectedBusinessId = business.id;
+            return player.outputChatBox(`!{#7aa164}Pasirinkote versla #${business.id}: ${business.name}.`);
+        }
+
+        if (action === 'create') {
+            const type = normalizeBusinessType(args[1]);
+            if (!type) {
+                return player.outputChatBox('!{#e74c3c}Naudojimas: /abiz create [shop|gasstation|restaurant] [pavadinimas(optional)]');
+            }
+
+            const pos = player.position;
+            const heading = Number.isFinite(player.heading) ? player.heading : 0;
+            const key = `biz-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
+            const rawName = sanitizeBusinessName(args.slice(2).join(' '));
+            const initialName = rawName || getBusinessTypeLabel(type);
+            const address = getAutoPropertyAddressFromPosition(pos);
+
+            db.query(
+                'INSERT INTO server_businesses (business_key, name, business_type, address, owner_char_id, owner_char_name, bank_balance, entry_x, entry_y, entry_z, entry_h, interior_x, interior_y, interior_z, interior_h, exit_x, exit_y, exit_z, exit_h, dimension) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [key, initialName, type, address, player.charId, player.charName, 0, pos.x, pos.y, pos.z, heading, pos.x, pos.y, pos.z, heading, pos.x, pos.y, pos.z, heading, 0],
+                (insertErr, result) => {
+                    if (insertErr) {
+                        console.error('[BUSINESS] /abiz create failed:', insertErr.message);
+                        return player.outputChatBox('!{#e74c3c}Nepavyko sukurti verslo.');
+                    }
+
+                    const business = {
+                        id: Number(result.insertId),
+                        key,
+                        name: rawName || getDefaultBusinessName(type, result.insertId),
+                        type,
+                        address,
+                        ownerCharId: player.charId,
+                        ownerCharName: player.charName,
+                        bankBalance: 0,
+                        entryPos: new mp.Vector3(pos.x, pos.y, pos.z),
+                        entryHeading: heading,
+                        interiorPos: new mp.Vector3(pos.x, pos.y, pos.z),
+                        interiorHeading: heading,
+                        exitPos: new mp.Vector3(pos.x, pos.y, pos.z),
+                        exitHeading: heading,
+                        dimension: getUniqueBusinessDimension(result.insertId),
+                    };
+
+                    businessesById.set(business.id, business);
+                    player.abizSelectedBusinessId = business.id;
+                    refreshBusinessVisual(business);
+
+                    db.query('UPDATE server_businesses SET name = ?, dimension = ?, owner_char_id = ?, owner_char_name = ?, bank_balance = ? WHERE id = ?', [business.name, business.dimension, business.ownerCharId, business.ownerCharName, business.bankBalance, business.id]);
+
+                    player.outputChatBox(`!{#7aa164}Sukurtas verslas #${business.id}: ${business.name} (${getBusinessTypeLabel(type)}).`);
+                    player.outputChatBox('!{#f7dc6f}Patarimas: naudokite /abiz setinterior [interiorId], tada /abiz tpinterior [id] ir /abiz setexit.');
+                }
+            );
+            return;
+        }
+
+        if (action === 'setinterior') {
+            const interiorRaw = String(args[1] || '').trim().toLowerCase();
+            if (!interiorRaw) {
+                return player.outputChatBox('!{#e74c3c}Naudojimas: /abiz setinterior [interiorId|list]');
+            }
+
+            if (interiorRaw === 'list') {
+                player.outputChatBox('!{#85c1e9}Galimi interior ID:');
+                APROP_INTERIOR_PRESET_LIST.forEach((preset) => {
+                    player.outputChatBox(`!{#d6eaf8}[${preset.id}] ${preset.label}`);
+                });
+                return;
+            }
+
+            const selectedBusinessId = parseInt(player.abizSelectedBusinessId, 10);
+            const business = Number.isFinite(selectedBusinessId)
+                ? getBusinessById(selectedBusinessId)
+                : null;
+
+            if (!business) {
+                return player.outputChatBox('!{#e74c3c}Nera pasirinkto verslo. Sukurkite su /abiz create arba naudokite /abiz select.');
+            }
+
+            const interiorId = parseInt(interiorRaw, 10);
+            let preset = null;
+
+            if (Number.isFinite(interiorId)) {
+                preset = APROP_INTERIOR_PRESETS_BY_ID.get(interiorId) || null;
+            }
+
+            if (!preset) {
+                preset = APROP_INTERIOR_PRESETS_BY_KEY.get(interiorRaw) || null;
+            }
+
+            if (!preset) {
+                return player.outputChatBox('!{#e74c3c}Nerastas interior ID. Naudokite /abiz setinterior list');
+            }
+
+            business.interiorPos = new mp.Vector3(preset.pos.x, preset.pos.y, preset.pos.z);
+            business.interiorHeading = 0;
+            business.exitPos = new mp.Vector3(preset.pos.x, preset.pos.y, preset.pos.z);
+            business.exitHeading = 0;
+            business.dimension = getUniqueBusinessDimension(business.id);
+
+            db.query(
+                'UPDATE server_businesses SET interior_x = ?, interior_y = ?, interior_z = ?, interior_h = ?, exit_x = ?, exit_y = ?, exit_z = ?, exit_h = ?, dimension = ? WHERE id = ?',
+                [preset.pos.x, preset.pos.y, preset.pos.z, 0, preset.pos.x, preset.pos.y, preset.pos.z, 0, business.dimension, business.id]
+            );
+
+            return player.outputChatBox(`!{#7aa164}Verslo #${business.id} interjeras nustatytas: [${preset.id}] ${preset.label}. Dim: ${business.dimension}`);
+        }
+
+        const fallbackSelectedBusinessId = parseInt(player.abizSelectedBusinessId, 10);
+        const businessIdArg = parseInt(args[1], 10);
+        const resolvedBusinessId = Number.isFinite(businessIdArg)
+            ? businessIdArg
+            : ((action === 'setexit' && Number.isFinite(fallbackSelectedBusinessId)) ? fallbackSelectedBusinessId : NaN);
+        const business = getBusinessById(resolvedBusinessId);
+
+        if (!business) {
+            return player.outputChatBox('!{#e74c3c}Nerastas verslas pagal ID.');
+        }
+
+        player.abizSelectedBusinessId = business.id;
+
+        if (action === 'delete') {
+            businessesById.delete(business.id);
+            destroyBusinessVisualById(business.id);
+            db.query('DELETE FROM server_businesses WHERE id = ?', [business.id]);
+            return player.outputChatBox(`!{#7aa164}Verslas #${business.id} istrintas.`);
+        }
+
+        if (action === 'setentry') {
+            const pos = player.position;
+            const heading = Number.isFinite(player.heading) ? player.heading : 0;
+            business.entryPos = new mp.Vector3(pos.x, pos.y, pos.z);
+            business.entryHeading = heading;
+            business.address = getAutoPropertyAddressFromPosition(pos);
+            db.query('UPDATE server_businesses SET entry_x = ?, entry_y = ?, entry_z = ?, entry_h = ?, address = ? WHERE id = ?', [pos.x, pos.y, pos.z, heading, business.address, business.id]);
+            refreshBusinessVisual(business);
+            return player.outputChatBox(`!{#7aa164}Atnaujinote iejimo taska verslui #${business.id}.`);
+        }
+
+        if (action === 'setexit') {
+            const pos = player.position;
+            const heading = Number.isFinite(player.heading) ? player.heading : 0;
+            business.exitPos = new mp.Vector3(pos.x, pos.y, pos.z);
+            business.exitHeading = heading;
+            db.query('UPDATE server_businesses SET exit_x = ?, exit_y = ?, exit_z = ?, exit_h = ? WHERE id = ?', [pos.x, pos.y, pos.z, heading, business.id]);
+            return player.outputChatBox(`!{#7aa164}Verslo #${business.id} isejimo taskas nustatytas.`);
+        }
+
+        if (action === 'tpentry') {
+            player.dimension = 0;
+            player.position = business.entryPos;
+            player.heading = business.entryHeading;
+            player.currentPropertyId = null;
+            player.currentBusinessId = null;
+            return player.outputChatBox(`!{#7aa164}Teleportuota prie verslo #${business.id} iejimo.`);
+        }
+
+        if (action === 'tpinterior') {
+            player.dimension = business.dimension;
+            player.position = business.interiorPos;
+            player.heading = business.interiorHeading;
+            player.currentPropertyId = null;
+            player.currentBusinessId = business.id;
+            return player.outputChatBox(`!{#7aa164}Teleportuota i verslo #${business.id} interjera.`);
+        }
+
+        player.outputChatBox('!{#e74c3c}Nezinomas /abiz veiksmas. Naudokite /abiz be argumentu.');
     });
 });
 
@@ -4252,6 +5130,7 @@ mp.events.addCommand('tpinterior', (player, _, interiorIdRaw) => {
         player.position = preset.pos;
         player.heading = 0;
         player.currentPropertyId = null;
+        player.currentBusinessId = null;
         player.outputChatBox(`!{#7aa164}Teleportuota i interior [${preset.id}] ${preset.label}.`);
     });
 
@@ -4615,6 +5494,11 @@ function sendUsageInstructions(player, command) {
         'goto': "[GOTO] Naudojimas: /goto [ID arba vardas] - Eiti pas žaidėją.",
         'bring': "[BRING] Naudojimas: /bring [ID arba vardas] - Atnešti žaidėją pas tave.",
         'ban': "[BAN] Naudojimas: /ban [ID arba vardas] [Priežastis] - Užblokuoti žaidėją.",
+        'buy': "[BUY] Naudojimas: /buy [item] [kiekis] - Pirkti daiktus versle.",
+        'bizbank': "[BIZBANK] Naudojimas: /bizbank - Parodo jusu verslo banko likuti.",
+        'bizbankwithdraw': "[BIZBANKWITHDRAW] Naudojimas: /bizbankwithdraw [suma] - Isimti pinigus is verslo banko.",
+        'setbizname': "[SETBIZNAME] Naudojimas: /setbizname [pavadinimas] - Pervadinti savo versla.",
+        'sellbiz': "[SELLBIZ] Naudojimas: /sellbiz [zaidejo ID/vardas] [kaina] - Parduoti savo versla.",
         'giveitem': "[GIVEITEM] Naudojimas: /giveitem [ID arba vardas] [item] [kiekis]",
         'giveweapon': "[GIVEWEAPON] Naudojimas: /giveweapon [zaidejo ID salia] - perduoda laikoma ginkla.",
         'dropweapon': "[DROPWEAPON] Naudojimas: /dropweapon - sunaikina dabar laikoma ginkla.",
@@ -5009,11 +5893,13 @@ mp.events.addCommand('ban', (player, fullText) => {
         if (!target) return player.outputChatBox("[KLAIDA] Žaidėjas nerastas.");
 
         const ip = target.ip;
-        db.query('INSERT INTO bans (ip, reason, admin) VALUES (?, ?, ?)', [ip, reason, player.charName], (error) => {
+        const ucpName = target.name;
+
+        db.query('INSERT INTO bans (ip, ucp_name, reason, admin) VALUES (?, ?, ?, ?)', [ip, ucpName, reason, player.charName], (error) => {
             if (error) return player.outputChatBox("[KLAIDA] Įvyko klaida bandant užblokuoti žaidėją.");
 
             target.kick(`Buvo užblokuotas. Priežastis: ${reason}`);
-            player.outputChatBox(`[INFO] Jūs užblokavote žaidėją ${target.charName || target.name} (IP: ${ip}). Priežastis: ${reason}`);
+            player.outputChatBox(`[INFO] Jūs užblokavote žaidėją ${target.charName || target.name} (UCP: ${ucpName}, IP: ${ip}). Priežastis: ${reason}`);
             mp.players.broadcast(`[INFO] Žaidėjas ${target.charName || target.name} buvo užblokuotas. Priežastis: ${reason}`);
         });
     });
@@ -5272,6 +6158,7 @@ mp.events.addCommand('changechar', (player) => {
     player.phoneNumber = null;
     player.isPhoneOpen = false;
     player.currentPropertyId = null;
+    player.currentBusinessId = null;
     player.dimension = 0;
     pendingRentOffers.delete(player.id);
 
@@ -5782,6 +6669,7 @@ mp.events.add('playerQuit', (player) => {
     player.contacts = null;
     player.isPhoneOpen = false;
     player.currentPropertyId = null;
+    player.currentBusinessId = null;
     pendingRentOffers.delete(player.id);
 
     for (const [targetId, offer] of pendingRentOffers.entries()) {
