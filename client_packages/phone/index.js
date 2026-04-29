@@ -181,11 +181,11 @@ mp.events.add('twitterFeedUpdated', (tweetsJson) => {
 
 
 // ==================== BANK APP ====================
-mp.events.add('loadBankData', (balance, charName, transactionsJson) => {
+mp.events.add('loadBankData', (balance, charName, transactionsJson, accountNumber) => {
     if (browser && browser.active) {
         browser.execute(`
             document.getElementById('balanceDisplay').innerText = '$${parseInt(balance).toLocaleString('lt-LT')}';
-            document.getElementById('charNameDisplay').innerText = '${charName}';
+            document.getElementById('charNameDisplay').innerText = '${accountNumber || charName}';
             renderTransactions(${JSON.stringify(transactionsJson)});
         `);
     }

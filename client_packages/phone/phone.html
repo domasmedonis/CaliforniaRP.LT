@@ -921,9 +921,10 @@
                     <!-- Transfer Form -->
                     <div class="section-card" style="margin-bottom:14px;">
                         <h3 style="margin:0 0 10px 0; font-size:15px; font-weight:600;">Siųsti pinigus</h3>
-                        <input type="text" id="recipientInput" placeholder="Gavėjo vardas (char_name)"
+                        <input type="text" id="recipientInput" placeholder="Banko sąskaitos numeris"
+                            onkeypress="return /[0-9]/.test(event.key)"
                             style="width:100%; padding:11px 12px; margin-bottom:8px; border-radius:10px; border:0.5px solid #c6c6c8; font-size:14px; box-sizing:border-box; outline:none; font-family:inherit;">
-                        <input type="number" id="amountInput" placeholder="Suma"
+                        <input type="number" id="amountInput" placeholder="Suma" min="1" step="1"
                             style="width:100%; padding:11px 12px; margin-bottom:12px; border-radius:10px; border:0.5px solid #c6c6c8; font-size:14px; box-sizing:border-box; outline:none; font-family:inherit;">
                         <button id="sendBankBtn" type="button" onclick="sendBankTransfer()"
                             style="width:100%; background:#34c759; color:white; padding:12px; border:none; border-radius:12px; font-weight:600; font-size:15px; box-sizing:border-box;">
@@ -2042,12 +2043,20 @@
             const parsedAmount = parseInt(amount, 10);
 
             if (!recipient || !amount) {
-                showBankNotification('error', 'Įveskite gavėją ir sumą.');
+                showBankNotification('error', 'Įveskite sąskaitos numerį ir sumą.');
                 if (!recipient) {
                     recipientInput.focus();
                 } else {
                     amountInput.focus();
                 }
+                return;
+            }
+
+            // Validate account number (10 digits)
+            if (!/^\d{10}$/.test(recipient)) {
+                showBankNotification('error', 'Sąskaitos numeris turi būti 10 skaitmenų!');
+                recipientInput.focus();
+                recipientInput.select();
                 return;
             }
 
@@ -2069,7 +2078,7 @@
             amountInput.disabled = true;
 
             bankTransferPending = true;
-            mp.trigger('bankTransfer', recipient, String(parsedAmount));
+            mp.trigger('bankTransferByAccount', recipient, String(parsedAmount));
 
             bankTransferTimeout = setTimeout(() => {
                 if (bankTransferPending) {

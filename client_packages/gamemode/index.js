@@ -1573,6 +1573,75 @@ mp.events.add('render', () => {
     });
 });
 
+// Fuel Gauge Display
+mp.events.add('render', () => {
+    const localPlayer = mp.players.local;
+    if (!localPlayer || !localPlayer.vehicle) return;
+
+    const vehicle = localPlayer.vehicle;
+    const fuel = vehicle.getVariable('vehicleFuel') || 0;
+    const maxFuel = 100;
+    const fuelPercent = Math.max(0, Math.min(100, (fuel / maxFuel) * 100));
+
+    // Position: below the speedometer on the right side
+    const gaugeX = 0.9;
+    const gaugeY = 0.93;
+
+    // Determine color based on fuel level
+    let fuelColor = [52, 199, 89, 255]; // Green (normal)
+    if (fuelPercent < 30) {
+        fuelColor = [240, 93, 101, 255]; // Red (critical)
+    } else if (fuelPercent < 50) {
+        fuelColor = [255, 159, 64, 255]; // Orange (warning)
+    }
+
+    // Draw fuel label
+    mp.game.graphics.drawText('Fuel', [gaugeX, gaugeY - 0.035], {
+        font: 4,
+        color: [255, 255, 255, 200],
+        scale: [0.35, 0.35],
+        outline: true,
+        alignment: 2,
+    });
+
+    // Draw fuel bar background (dark rectangle)
+    mp.game.graphics.drawRect(gaugeX - 0.025, gaugeY, 0.055, 0.018, 0, 0, 0, 100);
+
+    // Draw fuel bar fill (colored rectangle based on fuel percentage)
+    const fillWidth = 0.055 * (fuelPercent / 100);
+    mp.game.graphics.drawRect(
+        gaugeX - 0.025 + (fillWidth / 2),
+        gaugeY,
+        fillWidth,
+        0.018,
+        fuelColor[0],
+        fuelColor[1],
+        fuelColor[2],
+        fuelColor[3]
+    );
+
+    // Draw fuel bar outline (white border)
+    mp.game.graphics.drawRect(gaugeX - 0.025, gaugeY, 0.055, 0.018, 255, 255, 255, 0);
+
+    // Draw fuel percentage text
+    mp.game.graphics.drawText(`${Math.round(fuelPercent)}%`, [gaugeX + 0.035, gaugeY - 0.005], {
+        font: 4,
+        color: fuelColor,
+        scale: [0.32, 0.32],
+        outline: true,
+        alignment: 0,
+    });
+
+    // Draw fuel liters text (small)
+    mp.game.graphics.drawText(`${Math.round(fuel)}L`, [gaugeX + 0.035, gaugeY + 0.008], {
+        font: 4,
+        color: [200, 200, 200, 200],
+        scale: [0.25, 0.25],
+        outline: true,
+        alignment: 0,
+    });
+});
+
 mp.events.add('render', () => {
     const now = Date.now();
     if (now - lastAmmoCheckAt < 220) return;
