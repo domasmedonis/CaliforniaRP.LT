@@ -8,6 +8,7 @@ const activeDrivers = new Map();
 const activeRides = new Map();
 const activeCalls = new Map();
 const pendingRentOffers = new Map();
+const vehicleFuelRuntimeState = new Map();
 
 const INVENTORY_GIVE_RADIUS = 5.0;
 const WEAPON_GIVE_RADIUS = 5.0;
@@ -125,13 +126,13 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
         giveable: true,
         consumeOnUse: true,
     },
-    sim_card: {
-        name: 'SIM Kortelė',
-        description: 'Suaktyvinkite šią SIM kortelę telefonui gauti.',
-        icon: 'sim_card',
-        usable: true,
-        droppable: true,
-        giveable: true,
+    simcard: {
+        name: 'SIM kortele',
+        description: 'Aktyvuoja telefono numeri.',
+        icon: 'simcard',
+        usable: false,
+        droppable: false,
+        giveable: false,
         consumeOnUse: true,
     },
 });
@@ -151,9 +152,10 @@ const INVENTORY_ITEM_ALIASES = Object.freeze({
     cigaretes: 'cigarettes',
     beer: 'beer',
     alus: 'beer',
-    sim_card: 'sim_card',
-    simcard: 'sim_card',
-    sim: 'sim_card',
+    sim: 'simcard',
+    simcard: 'simcard',
+    simkortele: 'simcard',
+    sim_kortele: 'simcard',
 });
 
 const TWITTER_COOLDOWN = 3600000; // 1 hour between posts
@@ -169,6 +171,60 @@ const PROPERTY_SELL_RADIUS = 10.0;
 const PROPERTY_ADDRESS_HINT_RADIUS = 4.0;
 const BUSINESS_INTERACT_RADIUS = 3.0;
 const BUSINESS_EXIT_RADIUS = 6.0;
+const SHOP_REGISTER_INTERACT_RADIUS = 2.5;
+const GAS_STATION_REFILL_RADIUS = 12.0;
+const VEHICLE_FUEL_MAX = 100;
+const VEHICLE_FUEL_MIN_CONSUMPTION = 0.04;
+const VEHICLE_FUEL_DISTANCE_MULTIPLIER = 0.16;
+const FUEL_PRICE_PER_UNIT = 7;
+const FLEECA_OPEN_BANK_RADIUS = 6.0;
+const BANK_ACCOUNT_NUMBER_LENGTH = 10;
+const STATIC_247_SHOP_REGISTERS = Object.freeze([
+    { x: 24.47, y: -1347.35, z: 29.5 },
+    { x: -46.62, y: -1757.93, z: 29.42 },
+    { x: -706.12, y: -913.65, z: 19.22 },
+    { x: -1221.92, y: -908.38, z: 12.33 },
+    { x: 372.99, y: 328.57, z: 103.57 },
+    { x: 1163.96, y: -323.71, z: 69.21 },
+    { x: 1134.21, y: -982.39, z: 46.42 },
+    { x: 2557.14, y: 382.95, z: 108.62 },
+    { x: -3039.16, y: 584.36, z: 7.91 },
+    { x: -3242.12, y: 1000.33, z: 12.83 },
+    { x: -1820.39, y: 792.85, z: 138.11 },
+    { x: 547.65, y: 2669.72, z: 42.16 },
+    { x: 1165.3, y: 2709.55, z: 38.16 },
+    { x: 2678.23, y: 3279.42, z: 55.24 },
+    { x: 1960.13, y: 3741.08, z: 32.34 },
+    { x: 1392.63, y: 3604.95, z: 34.98 },
+    { x: 1698.1, y: 4924.49, z: 42.06 },
+    { x: 1728.89, y: 6414.11, z: 35.04 },
+    { x: -1487.59, y: -379.55, z: 40.16 },
+    { x: -2966.41, y: 391.62, z: 15.04 },
+]);
+
+const GAS_STATION_REFILL_POINTS = Object.freeze([
+    { x: 262.10, y: -1259.94, z: 28.43 },
+    { x: 49.42, y: 2778.79, z: 58.04 },
+    { x: 264.15, y: 2608.77, z: 44.98 },
+    { x: 1039.35, y: 2671.78, z: 39.55 },
+    { x: 1207.26, y: 2660.18, z: 37.9 },
+    { x: 2539.68, y: 2594.19, z: 37.94 },
+    { x: 2679.85, y: 3264.77, z: 55.24 },
+    { x: 2005.06, y: 3773.89, z: 32.4 },
+    { x: 1687.47, y: 4929.53, z: 42.08 },
+    { x: 1701.4, y: 6416.06, z: 32.76 },
+    { x: 179.86, y: 6602.84, z: 31.86 },
+    { x: -94.46, y: 6419.59, z: 31.49 },
+    { x: -2554.99, y: 2334.4, z: 33.08 },
+    { x: -1800.09, y: 803.53, z: 138.65 },
+    { x: -1437.62, y: -276.75, z: 46.21 },
+    { x: -2096.24, y: -320.29, z: 13.17 },
+    { x: -724.57, y: -935.89, z: 19.21 },
+    { x: -526.02, y: -1211.0, z: 18.18 },
+    { x: 818.87, y: -1028.37, z: 26.4 },
+    { x: 1181.38, y: -330.84, z: 69.32 },
+    { x: 620.84, y: 269.1, z: 103.09 },
+]);
 
 const BUSINESS_TYPE_DEFS = Object.freeze({
     shop: {
@@ -181,7 +237,7 @@ const BUSINESS_TYPE_DEFS = Object.freeze({
             { key: 'burger', label: 'Burgeris', itemType: 'burger', price: 12 },
             { key: 'bandage', label: 'Bintas', itemType: 'bandage', price: 25 },
             { key: 'medkit', label: 'Vaistinele', itemType: 'medkit', price: 60 },
-            { key: 'sim_card', label: 'SIM Kortelė', itemType: 'sim_card', price: 50 },
+            { key: 'simcard', label: 'SIM kortele', itemType: 'simcard', price: 250 },
         ],
     },
     gas_station: {
@@ -193,7 +249,6 @@ const BUSINESS_TYPE_DEFS = Object.freeze({
             { key: 'water', label: 'Vanduo', itemType: 'water', price: 6 },
             { key: 'beer', label: 'Alus', itemType: 'beer', price: 9 },
             { key: 'cigarettes', label: 'Cigaretes', itemType: 'cigarettes', price: 15 },
-            { key: 'sim_card', label: 'SIM Kortelė', itemType: 'sim_card', price: 50 },
         ],
     },
     restaurant: {
@@ -341,12 +396,6 @@ PROPERTY_CATALOG.forEach((propertyDef) => {
         color: 2,
         shortRange: true,
         scale: 0.7,
-    });
-
-    mp.markers.new(1, new mp.Vector3(entry.x, entry.y, entry.z - 1.0), 1.0, {
-        color: [46, 204, 113, 150],
-        visible: true,
-        dimension: 0,
     });
 });
 
@@ -1140,6 +1189,104 @@ function getNearbyBusiness(player, radius = BUSINESS_INTERACT_RADIUS) {
     return closest;
 }
 
+function getNearbyStatic247ShopRegister(player, radius = SHOP_REGISTER_INTERACT_RADIUS) {
+    if (!player || !player.position || Number(player.dimension) !== 0) return null;
+
+    let closest = null;
+    let closestDistance = Number(radius);
+
+    STATIC_247_SHOP_REGISTERS.forEach((registerPos) => {
+        const distance = getDistanceBetweenPositions(player.position, registerPos);
+        if (distance <= closestDistance) {
+            closestDistance = distance;
+            closest = registerPos;
+        }
+    });
+
+    return closest;
+}
+
+function sanitizeFuelLevel(rawFuel) {
+    const value = Number(rawFuel);
+    if (!Number.isFinite(value)) return VEHICLE_FUEL_MAX;
+    return Math.max(0, Math.min(VEHICLE_FUEL_MAX, Math.round(value * 100) / 100));
+}
+
+function hasPhoneSim(player) {
+    if (!player) return false;
+    const value = String(player.phoneNumber || '').trim();
+    return /^\d{6,15}$/.test(value);
+}
+
+function requirePhoneSim(player) {
+    if (hasPhoneSim(player)) return true;
+    if (player && typeof player.outputChatBox === 'function') {
+        player.outputChatBox('!{#e74c3c}Jums reikia SIM korteles. Nusipirkite ja 24/7 su /buy simcard.');
+    }
+    return false;
+}
+
+function generateUniquePhoneNumber(callback, attempt = 0) {
+    const maxAttempts = 20;
+    if (attempt >= maxAttempts) {
+        callback(new Error('Failed to generate unique phone number after max attempts.'), null);
+        return;
+    }
+
+    const generated = `86${Math.floor(100000 + (Math.random() * 900000))}`;
+    db.query('SELECT id FROM characters WHERE phone_number = ? LIMIT 1', [generated], (err, rows) => {
+        if (err) {
+            callback(err, null);
+            return;
+        }
+
+        if (rows && rows.length > 0) {
+            generateUniquePhoneNumber(callback, attempt + 1);
+            return;
+        }
+
+        callback(null, generated);
+    });
+}
+
+function normalizeBankAccountNumber(inputRaw) {
+    const digits = String(inputRaw || '').replace(/\D+/g, '');
+    if (digits.length !== BANK_ACCOUNT_NUMBER_LENGTH) return null;
+    return digits;
+}
+
+function generateUniqueBankAccountNumber(callback, attempt = 0) {
+    const maxAttempts = 30;
+    if (attempt >= maxAttempts) {
+        callback(new Error('Failed to generate unique bank account number after max attempts.'), null);
+        return;
+    }
+
+    const prefix = '47';
+    const suffixLength = BANK_ACCOUNT_NUMBER_LENGTH - prefix.length;
+    const suffix = Math.floor(Math.random() * (10 ** suffixLength)).toString().padStart(suffixLength, '0');
+    const accountNumber = `${prefix}${suffix}`;
+
+    db.query('SELECT char_name FROM bank_accounts WHERE account_number = ? LIMIT 1', [accountNumber], (err, rows) => {
+        if (err) {
+            callback(err, null);
+            return;
+        }
+
+        if (rows && rows.length > 0) {
+            generateUniqueBankAccountNumber(callback, attempt + 1);
+            return;
+        }
+
+        callback(null, accountNumber);
+    });
+}
+
+function isNearGasStation(player, radius = GAS_STATION_REFILL_RADIUS) {
+    if (!player || !player.position || Number(player.dimension) !== 0) return false;
+    return GAS_STATION_REFILL_POINTS.some((point) => getDistanceBetweenPositions(player.position, point) <= Number(radius));
+}
+
 function getPlayerCurrentBusiness(player) {
     if (!player) return null;
 
@@ -1444,7 +1591,7 @@ function spawnOwnedVehicleForPlayer(player, record, spawnPos = DEALERSHIP_DELIVE
     entity.setVariable('manualLightsOn', 0);
     entity.setVariable('ownedVehicleId', record.id);
     entity.setVariable('ownedByCharId', player.charId);
-    entity.setVariable('vehicleFuel', record.fuel || 100);
+    entity.setVariable('fuelLevel', sanitizeFuelLevel(record.fuel));
     setVehicleWeaponStash(entity, record.weaponInventory || []);
 
     record.entity = entity;
@@ -1461,10 +1608,20 @@ function spawnOwnedVehicleForPlayer(player, record, spawnPos = DEALERSHIP_DELIVE
     return entity;
 }
 
+function setOwnedVehicleFuel(record, fuelLevel, syncEntity = true) {
+    if (!record) return;
+    const sanitized = sanitizeFuelLevel(fuelLevel);
+    record.fuel = sanitized;
+
+    if (syncEntity && record.entity && record.entity.handle && typeof record.entity.setVariable === 'function') {
+        record.entity.setVariable('fuelLevel', sanitized);
+    }
+}
+
 function persistOwnedVehicleState(record) {
     if (!record || !record.id) return;
     db.query(
-        'UPDATE player_vehicles SET parked = ?, park_x = ?, park_y = ?, park_z = ?, park_h = ?, locked = ?, primary_color = ?, secondary_color = ?, weapon_inventory = ?, fuel = ? WHERE id = ?',
+        'UPDATE player_vehicles SET parked = ?, park_x = ?, park_y = ?, park_z = ?, park_h = ?, locked = ?, primary_color = ?, secondary_color = ?, fuel = ?, weapon_inventory = ? WHERE id = ?',
         [
             record.parked ? 1 : 0,
             record.parkX,
@@ -1474,8 +1631,8 @@ function persistOwnedVehicleState(record) {
             record.locked ? 1 : 0,
             parseVehicleColorIndex(record.primaryColor),
             parseVehicleColorIndex(record.secondaryColor),
+            sanitizeFuelLevel(record.fuel),
             getVehicleWeaponInventoryJson(record),
-            Math.max(0, record.fuel || 100),
             record.id,
         ]
     );
@@ -1550,6 +1707,7 @@ function cleanupPlayerOwnedVehicles(player, forceParked = true) {
 
     player.ownedVehicles.forEach((record) => {
         if (!record) return;
+        vehicleFuelRuntimeState.delete(Number(record.id));
         record.blip = null;
         if (record.entity && record.entity.handle) {
             if (forceParked) {
@@ -1563,7 +1721,6 @@ function cleanupPlayerOwnedVehicles(player, forceParked = true) {
             }
 
             record.weaponInventory = getVehicleWeaponStash(record.entity);
-            record.fuel = record.entity.getVariable('vehicleFuel') || 100;
             record.entity.destroy();
             record.entity = null;
             persistOwnedVehicleState(record);
@@ -1598,6 +1755,7 @@ function loadOwnedVehiclesForPlayer(player) {
                 price: row.price,
                 primaryColor: row.primary_color,
                 secondaryColor: row.secondary_color,
+                fuel: sanitizeFuelLevel(row.fuel),
                 parked: row.parked,
                 parkX: row.park_x,
                 parkY: row.park_y,
@@ -1605,11 +1763,14 @@ function loadOwnedVehiclesForPlayer(player) {
                 parkH: row.park_h,
                 locked: row.locked,
                 plate: row.plate,
-                fuel: row.fuel || 100,
                 weaponInventory: parseVehicleWeaponInventory(row.weapon_inventory),
                 entity: null,
                 blip: null,
             };
+
+            if (!Number.isFinite(Number(row.fuel))) {
+                db.query('UPDATE player_vehicles SET fuel = ? WHERE id = ?', [record.fuel, record.id]);
+            }
 
             player.ownedVehicles.set(record.id, record);
         });
@@ -2110,9 +2271,9 @@ const db = mysql.createPool({
     waitForConnections: true,
     queueLimit: 0,
     host: 'californiarp.lt',
-    user: 'u845910951_californiarplt',
-    password: '@lD7:O>a2',
-    database: 'u845910951_ingamemysqldat'
+    user: 'u845910951_californiarole',
+    password: 'TuK3K1zw;r4&',
+    database: 'u845910951_allingamedataM'
 });
 
 function bootstrapDatabase() {
@@ -2195,6 +2356,20 @@ function bootstrapDatabase() {
         }
     });
 
+    db.query('ALTER TABLE bank_accounts ADD COLUMN account_number VARCHAR(16) NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[BANK] Failed to add account_number column:', err.message);
+        } else {
+            console.log('[BANK] account_number column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE bank_accounts ADD UNIQUE KEY uq_bank_accounts_account_number (account_number)', (err) => {
+        if (err && err.code !== 'ER_DUP_KEYNAME') {
+            console.error('[BANK] Failed to add unique index for account_number:', err.message);
+        }
+    });
+
     // Fix rows where ammo was stored as 120 default but no weapon is equipped
     db.query('UPDATE characters SET equipped_weapon_ammo = NULL WHERE equipped_weapon_hash IS NULL AND equipped_weapon_ammo IS NOT NULL', (err) => {
         if (err) console.error('[WEAPONS] Failed to clean up orphan ammo values:', err.message);
@@ -2214,6 +2389,7 @@ function bootstrapDatabase() {
         park_y FLOAT NULL,
         park_z FLOAT NULL,
         park_h FLOAT NULL,
+        fuel FLOAT NOT NULL DEFAULT 100,
         locked TINYINT(1) NOT NULL DEFAULT 0,
         plate VARCHAR(16) NOT NULL,
         weapon_inventory TEXT NULL,
@@ -2236,11 +2412,11 @@ function bootstrapDatabase() {
         }
     });
 
-    db.query('ALTER TABLE player_vehicles ADD COLUMN fuel FLOAT DEFAULT 100', (err) => {
+    db.query('ALTER TABLE player_vehicles ADD COLUMN fuel FLOAT NOT NULL DEFAULT 100', (err) => {
         if (err && err.code !== 'ER_DUP_FIELDNAME') {
-            console.error('[FUEL] Failed to add fuel column:', err.message);
+            console.error('[VEHICLES] Failed to add fuel column:', err.message);
         } else {
-            console.log('[FUEL] vehicle fuel column ready.');
+            console.log('[VEHICLES] fuel column ready.');
         }
     });
 
@@ -2377,14 +2553,6 @@ function bootstrapDatabase() {
         });
 
         loadBusinessesFromDatabase();
-    });
-
-    db.query('ALTER TABLE bank_accounts ADD COLUMN bank_account_number VARCHAR(16) UNIQUE NULL', (err) => {
-        if (err && err.code !== 'ER_DUP_FIELDNAME') {
-            console.error('[BANK] Failed to add bank_account_number column:', err.message);
-        } else {
-            console.log('[BANK] bank_account_number column ready.');
-        }
     });
 }
 
@@ -2606,7 +2774,8 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.position = hasSavedPosition ? new mp.Vector3(posX, posY, posZ) : player.position;
         player.isPMEnabled = charData.is_pm_enabled;
         player.adminLevel = charData.admin_level;
-        player.phoneNumber = charData.phone_number;
+        const normalizedPhoneNumber = String(charData.phone_number || '').trim();
+        player.phoneNumber = /^\d{6,15}$/.test(normalizedPhoneNumber) ? normalizedPhoneNumber : null;
         player.inventory = loadInventory(charData.inventory);
         player.weaponPackageWeapons = parseWeaponPackage(charData.weapon_package);
         player.savedEquippedWeaponHash = sanitizeWeaponHash(charData.equipped_weapon_hash);
@@ -2624,10 +2793,12 @@ mp.events.add('selectCharacter', (player, charId) => {
             }
 
             if (bankResults.length === 0) {
-                db.query('INSERT INTO bank_accounts (char_name, balance) VALUES (?, ?)', [player.charName, 0]);
+                db.query('INSERT INTO bank_accounts (char_name, balance, account_number) VALUES (?, ?, NULL)', [player.charName, 0]);
                 player.bankBalance = 0;
+                player.bankAccountNumber = null;
             } else {
                 player.bankBalance = bankResults[0].balance;
+                player.bankAccountNumber = normalizeBankAccountNumber(bankResults[0].account_number);
             }
             player.call('updateBankHUD', [player.bankBalance]);
         });
@@ -2635,6 +2806,15 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.spawn(player.position);
         const restoredAmmo = (player.savedEquippedWeaponHash) ? (player.savedEquippedWeaponAmmo ?? DEFAULT_WEAPON_AMMO) : 0;
         setSingleWeaponForPlayer(player, player.savedEquippedWeaponHash || WEAPON_UNARMED_HASH, restoredAmmo);
+
+        // Reset visible clothing components first so a previous character outfit does not leak.
+        for (let component = 0; component <= 11; component += 1) {
+            try {
+                player.setClothes(component, 0, 0, 2);
+            } catch (e) {
+                // Ignore unavailable component indices for the current model.
+            }
+        }
 
         // Apply saved clothes
         if (charData.clothes) {
@@ -2673,7 +2853,7 @@ mp.events.add('selectCharacter', (player, charId) => {
 
         player.call('updateMoneyHUD', [player.money]);
         player.call('updateBankHUD', [player.bankBalance]);
-        player.call('updatePhoneNumber', [player.phoneNumber]);
+        player.call('updatePhoneNumber', [player.phoneNumber || '']);
         player.currentPropertyId = null;
         player.currentBusinessId = null;
         player.dimension = 0;
@@ -2902,6 +3082,62 @@ setInterval(() => {
     });
 }, 1000);
 
+// Vehicle fuel usage loop for drivers.
+setInterval(() => {
+    mp.players.forEach((player) => {
+        if (!player || !player.charId || !player.vehicle) return;
+        if (player.seat !== -1 && player.seat !== 0) return;
+
+        const record = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
+        if (!record) return;
+
+        const vehicle = player.vehicle;
+        const ownedVehicleId = Number(record.id);
+        if (!Number.isFinite(ownedVehicleId)) return;
+
+        const engineOn = Number(vehicle.getVariable('manualEngineOn')) === 1 || Boolean(vehicle.engine);
+        if (!engineOn) {
+            setOwnedVehicleFuel(record, record.fuel, true);
+            vehicleFuelRuntimeState.delete(ownedVehicleId);
+            return;
+        }
+
+        const now = Date.now();
+        const currentPos = vehicle.position;
+        const state = vehicleFuelRuntimeState.get(ownedVehicleId) || null;
+        const distanceSinceLastTick = state && state.lastPos
+            ? getDistanceBetweenPositions(currentPos, state.lastPos)
+            : 0;
+
+        const consumeByDistance = Math.max(0, distanceSinceLastTick) * VEHICLE_FUEL_DISTANCE_MULTIPLIER;
+        const consumeAmount = VEHICLE_FUEL_MIN_CONSUMPTION + consumeByDistance;
+        const currentFuel = sanitizeFuelLevel(record.fuel);
+        const nextFuel = sanitizeFuelLevel(currentFuel - consumeAmount);
+
+        setOwnedVehicleFuel(record, nextFuel, true);
+
+        vehicleFuelRuntimeState.set(ownedVehicleId, {
+            lastPos: { x: currentPos.x, y: currentPos.y, z: currentPos.z },
+            lastUpdateAt: now,
+        });
+
+        if (nextFuel <= 0) {
+            vehicle.engine = false;
+            vehicle.setVariable('manualEngineOn', 0);
+            if (!record.outOfFuelWarnedAt || (now - record.outOfFuelWarnedAt) > 12000) {
+                record.outOfFuelWarnedAt = now;
+                player.outputChatBox('!{#e74c3c}Kuras baigesi. Naudokite /refill degalineje.');
+            }
+        }
+
+        const shouldPersistFuel = !record.lastFuelPersistAt || (now - record.lastFuelPersistAt) >= 15000;
+        if (shouldPersistFuel) {
+            record.lastFuelPersistAt = now;
+            persistOwnedVehicleState(record);
+        }
+    });
+}, 1000);
+
 // World time sync
 setInterval(() => {
     const currentHour = moment().tz('Europe/Vilnius').hour();
@@ -3024,7 +3260,7 @@ mp.events.addCommand('b', (player, _, ...messageArray) => {
 mp.events.addCommand('help', (player) => {
     player.outputChatBox(`!{#ADD8E6}----- Galimos komandos -----`);
     player.outputChatBox(`ROLEPLAY KOMANDOS - /me, /do, /b, /s, /low, /pm, /id, /try`);
-    player.outputChatBox(`KITOS KOMANDOS - /stats, /pay, /bank, /withdraw, /deposit, /changechar, /report, /admins`);
+    player.outputChatBox(`KITOS KOMANDOS - /stats, /pay, /bank, /withdraw, /deposit, /openbank, /changechar, /report, /admins`);
     player.outputChatBox(`KITOS KOMANDOS - /togglepm, /time, /barber, /changeclothes, /inv`);
     player.outputChatBox(`TURTAS - /helphouse, /helpvehicle`);
     player.outputChatBox(`!{#ADD8E6}----------------------------`);
@@ -3041,7 +3277,7 @@ mp.events.addCommand('helphouse', (player) => {
 
 mp.events.addCommand('helpvehicle', (player) => {
     player.outputChatBox(`TRANSPORTAS - /buyvehicle, /buypark, /vehicles, /get, /park, /lock`);
-    player.outputChatBox(`TRANSPORTAS - /engine, /sellto [zaidejoId] [kaina]`);
+    player.outputChatBox(`TRANSPORTAS - /engine, /refill, /sellto [zaidejoId] [kaina]`);
     player.outputChatBox(`TRANSPORTAS - /scrap, /scrapconfirm`);
 });
 
@@ -3107,6 +3343,7 @@ mp.events.addCommand('stats', player => {
     player.outputChatBox(`UCP vartotojo vardas: ${player.name}, Veikėjo vardas: ${player.charName}`); // Show UCP username
     player.outputChatBox(`------------------------------------------------------`);
     player.outputChatBox(`Telefono numeris: ${player.phoneNumber || 'Nėra'}`);
+    player.outputChatBox(`Banko saskaitos numeris: ${player.bankAccountNumber || 'Neatidaryta'} (atidaryti: /openbank Fleeca banke)`);
     player.outputChatBox(`Gyvybės: ${player.health}, Žaidimo laikas: ${Math.floor(player.playtime / 60)} val. ${player.playtime % 60} min.`);
     player.outputChatBox(`Grynieji pinigai: $${player.money}, Banko sąskaitos balansas: $${player.bankBalance}`);
 });
@@ -3143,7 +3380,7 @@ mp.events.addCommand('time', (player) => {
 
 const knownCommands = new Set([
     'me', 'do', 's', 'low', 'b', 'help', 'id', 'pm', 'stats', 'try', 'time',
-    'bank', 'withdraw', 'deposit', 'transfer', 'inventory', 'inv',
+    'bank', 'withdraw', 'deposit', 'transfer', 'openbank', 'inventory', 'inv',
     'kick', 'freeze', 'goto', 'bring', 'ban', 'giveitem', 'giveweapon', 'dropweapon', 'stashweapon', 'takeweapon', 'buildpackage', 'putpackage', 'viewpackage', 'admingiveweapon',
     'helpme', 'accepthelp', 'declinehelp',
     'report', 'acceptreport', 'declinereport',
@@ -3153,7 +3390,7 @@ const knownCommands = new Set([
     'call', 'answer', 'decline', 'hangup',
     'sharenumber', 'sms',
     'pay', 'togglepm',
-    'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock', 'scrap', 'scrapconfirm', 'sellto'
+    'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock', 'refill', 'scrap', 'scrapconfirm', 'sellto'
 ]);
 
 mp.events.add('playerCommand', (player, command) => {
@@ -3358,6 +3595,7 @@ function purchaseVehicleForPlayer(player, selected, primaryColorRaw = '0', secon
                 price: selected.price,
                 primaryColor,
                 secondaryColor,
+                fuel: VEHICLE_FUEL_MAX,
                 parked: 0,
                 parkX: DEALERSHIP_PURCHASE_SPAWN_POS.x,
                 parkY: DEALERSHIP_PURCHASE_SPAWN_POS.y,
@@ -4185,13 +4423,19 @@ mp.events.addCommand('buy', (player, fullText) => {
     }
 
     const business = getPlayerCurrentBusiness(player);
-    if (!business) {
-        return player.outputChatBox('!{#f7dc6f}Pirkti galite tik budami verslo viduje.');
-    }
+    const isAt247Register = Boolean(getNearbyStatic247ShopRegister(player));
 
-    const typeDef = getBusinessTypeDefinition(business.type);
-    if (!typeDef || !typeDef.buyEnabled) {
-        return player.outputChatBox('!{#f7dc6f}Siame versle pirkimas dar neijungtas.');
+    let productList = [];
+    if (business) {
+        const typeDef = getBusinessTypeDefinition(business.type);
+        if (!typeDef || !typeDef.buyEnabled) {
+            return player.outputChatBox('!{#f7dc6f}Siame versle pirkimas dar neijungtas.');
+        }
+        productList = getBusinessProductList(business);
+    } else if (isAt247Register) {
+        productList = Array.isArray(BUSINESS_TYPE_DEFS.shop.products) ? BUSINESS_TYPE_DEFS.shop.products : [];
+    } else {
+        return player.outputChatBox('!{#f7dc6f}Pirkti galite budami verslo viduje arba prie 24/7 kasos.');
     }
 
     const args = String(fullText || '').trim().split(/\s+/).filter(Boolean);
@@ -4199,23 +4443,61 @@ mp.events.addCommand('buy', (player, fullText) => {
     const amount = Math.max(1, parseInt(args[1], 10) || 1);
 
     if (!productRaw) {
-        const offers = getBusinessProductList(business)
+        const offers = productList
             .map(product => `${product.key} ($${product.price})`)
             .join(', ');
         return player.outputChatBox(`!{#f7dc6f}Naudojimas: /buy [item] [kiekis]. Galite pirkti: ${offers}`);
     }
 
-    const product = getBusinessProduct(business, productRaw);
+    const normalizedType = normalizeInventoryItemType(productRaw) || String(productRaw || '').trim().toLowerCase();
+    const product = productList.find(entry => entry.key === normalizedType || entry.itemType === normalizedType) || null;
     if (!product) {
-        const offers = getBusinessProductList(business)
+        const offers = productList
             .map(entry => entry.key)
             .join(', ');
-        return player.outputChatBox(`!{#e74c3c}Sis verslas neparduoda sio daikto. Galimi: ${offers}`);
+        return player.outputChatBox(`!{#e74c3c}Sioje vietoje neparduodamas sis daiktas. Galimi: ${offers}`);
     }
 
     const totalPrice = Math.max(1, amount) * product.price;
     if ((player.money || 0) < totalPrice) {
         return player.outputChatBox(`!{#e74c3c}Nepakanka grynuju. Reikia $${totalPrice}, turite $${player.money || 0}.`);
+    }
+
+    if (product.itemType === 'simcard') {
+        if (hasPhoneSim(player)) {
+            return player.outputChatBox('!{#f7dc6f}Jusu telefonas jau turi aktyvia SIM kortele.');
+        }
+
+        generateUniquePhoneNumber((error, generatedPhoneNumber) => {
+            if (error || !generatedPhoneNumber) {
+                console.error('[PHONE] Failed to generate SIM phone number:', error ? error.message : 'unknown');
+                player.outputChatBox('!{#e74c3c}Nepavyko aktyvuoti SIM korteles. Bandykite veliau.');
+                return;
+            }
+
+            db.query('UPDATE characters SET phone_number = ? WHERE id = ?', [generatedPhoneNumber, player.charId], (updateErr) => {
+                if (updateErr) {
+                    console.error('[PHONE] Failed to persist phone number from SIM purchase:', updateErr.message);
+                    player.outputChatBox('!{#e74c3c}Nepavyko issaugoti telefono numerio. Bandykite veliau.');
+                    return;
+                }
+
+                player.phoneNumber = generatedPhoneNumber;
+                player.money -= totalPrice;
+                persistPlayerMoney(player);
+                player.call('updatePhoneNumber', [generatedPhoneNumber]);
+
+                if (business) {
+                    business.bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0) + totalPrice;
+                    persistBusinessState(business);
+                    player.outputChatBox(`!{#7aa164}Nusipirkote SIM kortele uz $${totalPrice} versle ${business.name}. Jusu numeris: ${generatedPhoneNumber}.`);
+                } else {
+                    player.outputChatBox(`!{#7aa164}Nusipirkote SIM kortele uz $${totalPrice}. Jusu numeris: ${generatedPhoneNumber}.`);
+                }
+            });
+        });
+
+        return;
     }
 
     if (!Array.isArray(player.inventory)) {
@@ -4228,12 +4510,18 @@ mp.events.addCommand('buy', (player, fullText) => {
     }
 
     player.money -= totalPrice;
-    business.bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0) + totalPrice;
     persistPlayerMoney(player);
     persistInventory(player);
-    persistBusinessState(business);
+    if (business) {
+        business.bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0) + totalPrice;
+        persistBusinessState(business);
+    }
 
-    player.outputChatBox(`!{#7aa164}Nusipirkote ${amount}x ${product.label} uz $${totalPrice} versle ${business.name}.`);
+    if (business) {
+        player.outputChatBox(`!{#7aa164}Nusipirkote ${amount}x ${product.label} uz $${totalPrice} versle ${business.name}.`);
+    } else {
+        player.outputChatBox(`!{#7aa164}Nusipirkote ${amount}x ${product.label} uz $${totalPrice} prie 24/7 kasos.`);
+    }
 });
 
 mp.events.addCommand('bizbank', (player) => {
@@ -5213,9 +5501,15 @@ mp.events.addCommand('engine', (player) => {
     const currentEngineStateFromVariable = Number(player.vehicle.getVariable('manualEngineOn')) === 1;
     const currentEngineStateFromEntity = Boolean(player.vehicle.engine);
     const currentEngineState = currentEngineStateFromVariable || currentEngineStateFromEntity;
-    player.outputChatBox(`!{#f7dc6f}Variklių dabartinė būsena: ${currentEngineState ? 'ĮJUNGTAS' : 'IŠJUNGTAS'}`);
 
     const nextEngineState = !currentEngineState;
+    if (nextEngineState) {
+        const fuelLevel = sanitizeFuelLevel(record.fuel);
+        if (fuelLevel <= 0) {
+            return player.outputChatBox('!{#e74c3c}Bakas tuscias. Naudokite /refill degalineje.');
+        }
+    }
+
     player.vehicle.engine = nextEngineState;
     player.vehicle.setVariable('manualEngineOn', nextEngineState ? 1 : 0);
 
@@ -5224,6 +5518,48 @@ mp.events.addCommand('engine', (player) => {
     } else {
         player.outputChatBox('!{#e67e22}Isjungote varikli.');
     }
+});
+
+mp.events.addCommand('refill', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!player.vehicle) {
+        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte.');
+    }
+
+    if (player.seat !== -1 && player.seat !== 0) {
+        return player.outputChatBox('!{#e74c3c}Pildyti kura gali tik vairuotojas.');
+    }
+
+    if (!isNearGasStation(player)) {
+        return player.outputChatBox('!{#e74c3c}Turite buti salia degalines koloneles.');
+    }
+
+    const record = getPlayerOwnedVehicleFromEntity(player, player.vehicle);
+    if (!record) {
+        return player.outputChatBox('!{#e74c3c}Sis transportas nepriklauso jums.');
+    }
+
+    const currentFuel = sanitizeFuelLevel(record.fuel);
+    const missingFuel = Math.max(0, VEHICLE_FUEL_MAX - currentFuel);
+    if (missingFuel <= 0.01) {
+        return player.outputChatBox('!{#f7dc6f}Bakas jau pilnas.');
+    }
+
+    const refillCost = Math.max(1, Math.ceil(missingFuel * FUEL_PRICE_PER_UNIT));
+    if ((player.money || 0) < refillCost) {
+        return player.outputChatBox(`!{#e74c3c}Nepakanka grynuju. Reikia $${refillCost}.`);
+    }
+
+    player.money -= refillCost;
+    persistPlayerMoney(player);
+
+    setOwnedVehicleFuel(record, VEHICLE_FUEL_MAX, true);
+    persistOwnedVehicleState(record);
+
+    player.outputChatBox(`!{#7aa164}Sekmingai pripildete baka uz $${refillCost}.`);
 });
 
 mp.events.add('updateServerTime', () => {
@@ -5344,6 +5680,44 @@ function isNearATMOrBank(player) {
     return false;
 }
 
+function isNearFleecaBank(player, radius = FLEECA_OPEN_BANK_RADIUS) {
+    if (!player || !player.position) return false;
+    return FLEECA_BANK_LOCATIONS.some((bankPos) => getDistanceBetweenPositions(player.position, bankPos) <= Number(radius));
+}
+
+mp.events.addCommand('openbank', (player) => {
+    if (!player.charName || !player.charId) {
+        return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    }
+
+    if (!isNearFleecaBank(player)) {
+        return player.outputChatBox('!{#e74c3c}Saskaita galima atidaryti tik Fleeca banke.');
+    }
+
+    if (normalizeBankAccountNumber(player.bankAccountNumber)) {
+        return player.outputChatBox(`!{#f7dc6f}Jusu banko saskaita jau aktyvi: ${player.bankAccountNumber}.`);
+    }
+
+    generateUniqueBankAccountNumber((error, accountNumber) => {
+        if (error || !accountNumber) {
+            console.error('[BANK] Failed to generate account number:', error ? error.message : 'unknown');
+            player.outputChatBox('!{#e74c3c}Nepavyko sukurti banko saskaitos numerio. Bandykite veliau.');
+            return;
+        }
+
+        db.query('UPDATE bank_accounts SET account_number = ? WHERE char_name = ?', [accountNumber, player.charName], (updateErr) => {
+            if (updateErr) {
+                console.error('[BANK] Failed to save account number:', updateErr.message);
+                player.outputChatBox('!{#e74c3c}Nepavyko issaugoti banko saskaitos numerio.');
+                return;
+            }
+
+            player.bankAccountNumber = accountNumber;
+            player.outputChatBox(`!{#7aa164}Banko saskaita atidaryta. Jusu numeris: ${accountNumber}.`);
+        });
+    });
+});
+
 mp.events.addCommand('bank', (player) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
     if (!isNearATMOrBank(player)) {
@@ -5351,19 +5725,10 @@ mp.events.addCommand('bank', (player) => {
         return;
     }
 
-    db.query('SELECT bank_account_number, balance FROM bank_accounts WHERE char_name = ?', [player.charName], (err, accountRes) => {
-        if (err || !accountRes || accountRes.length === 0) {
-            return player.outputChatBox('!{#e74c3c}Klaida naudojant banką.');
-        }
+    db.query('SELECT transaction_type, amount, date FROM bank_transactions WHERE char_name = ? ORDER BY date DESC LIMIT 5', [player.charName], (err, results) => {
+        if (err) return;
 
-        const accountNumber = accountRes[0].bank_account_number || '';
-        player.bankAccountNumber = accountNumber;
-
-        db.query('SELECT transaction_type, amount, date FROM bank_transactions WHERE char_name = ? ORDER BY date DESC LIMIT 5', [player.charName], (err, results) => {
-            if (err) return;
-
-            player.call('openBankUI', [player.bankBalance, player.money, JSON.stringify(results), accountNumber]);
-        });
+        player.call('openBankUI', [player.bankBalance, player.money, player.bankAccountNumber || '', JSON.stringify(results)]);
     });
 });
 
@@ -5378,7 +5743,7 @@ mp.events.add('bankAction', (player, type, amount) => {
     const refreshAndNotify = (charName, balance, money) => {
         db.query('SELECT transaction_type, amount, date FROM bank_transactions WHERE char_name = ? ORDER BY date DESC LIMIT 10', [charName], (err, results) => {
             const history = err ? [] : results;
-            player.call('updateBankUI', [balance, money, JSON.stringify(history)]);
+            player.call('updateBankUI', [balance, money, player.bankAccountNumber || '', JSON.stringify(history)]);
             player.call('updateMoneyHUD', [money]);
         });
     };
@@ -5464,33 +5829,45 @@ mp.events.addCommand('deposit', (player, amount) => {
     }
 });
 
-mp.events.addCommand('transfer', (player, fullText, targetName, amount) => {
+mp.events.addCommand('transfer', (player, fullText, targetAccountNumberRaw, amount) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    amount = parseInt(amount);
-    if (!targetName || isNaN(amount) || amount <= 0) return player.outputChatBox("Naudojimas: /transfer [gavėjo vardas] [suma]");
+    if (!normalizeBankAccountNumber(player.bankAccountNumber)) {
+        return player.outputChatBox('!{#e74c3c}Neturite aktyvios banko saskaitos. Naudokite /openbank Fleeca banke.');
+    }
 
-    db.query('SELECT * FROM bank_accounts WHERE char_name = ?', [targetName], (err, results) => {
+    amount = parseInt(amount);
+    const targetAccountNumber = normalizeBankAccountNumber(targetAccountNumberRaw);
+    if (!targetAccountNumber || isNaN(amount) || amount <= 0) return player.outputChatBox('Naudojimas: /transfer [banko_saskaitos_numeris] [suma]');
+
+    if (targetAccountNumber === normalizeBankAccountNumber(player.bankAccountNumber)) {
+        return player.outputChatBox('!{#e74c3c}Negalite pervesti i savo saskaita.');
+    }
+
+    db.query('SELECT char_name, balance FROM bank_accounts WHERE account_number = ?', [targetAccountNumber], (err, results) => {
         if (err || results.length === 0) {
-            return player.outputChatBox("!{#FF0000}Gavėjo sąskaita nerasta.");
+            return player.outputChatBox('!{#FF0000}Gavejo banko saskaita nerasta.');
         }
 
         if (player.bankBalance >= amount) {
             player.bankBalance -= amount;
-            let targetBalance = results[0].balance + amount;
+            const targetName = results[0].char_name;
+            const targetBalance = results[0].balance + amount;
 
             db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
             db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [targetBalance, targetName]);
+            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, "transfer_out", ?, NOW())', [player.charName, amount]);
+            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, "transfer_in", ?, NOW())', [targetName, amount]);
 
             player.call('updateBankHUD', [player.bankBalance]);
-            player.outputChatBox(`!{#229954}Jūs pervedėte $${amount} žaidėjui ${targetName}.`);
+            player.outputChatBox(`!{#229954}Pervedete $${amount} i saskaita ${targetAccountNumber}.`);
 
             let target = mp.players.toArray().find(p => p.charName === targetName);
             if (target) {
                 target.call('updateBankHUD', [targetBalance]);
-                target.outputChatBox(`!{#229954}Jūs gavote $${amount} iš ${player.charName}.`);
+                target.outputChatBox(`!{#229954}Jus gavote $${amount} i banko saskaita (${targetAccountNumber}).`);
             }
         } else {
-            player.outputChatBox("!{#FF0000}Jūsų banko sąskaitoje nėra pakankamai pinigų.");
+            player.outputChatBox('!{#FF0000}Jusu banko saskaitoje nera pakankamai pinigu.');
         }
     });
 });
@@ -5797,7 +6174,7 @@ mp.events.addCommand('giveitem', (admin, fullText, targetIdentifier, rawItemType
 
         const itemType = normalizeInventoryItemType(rawItemType);
         if (!itemType || !INVENTORY_ITEM_DEFS[itemType]) {
-            return admin.outputChatBox('!{#e74c3c}Nežinomas daiktas. Galimi: water, burger, bandage, medkit, cigarettes, beer, sim_card');
+            return admin.outputChatBox('!{#e74c3c}Nežinomas daiktas. Galimi: water, burger, bandage, medkit, cigarettes, beer');
         }
 
         const amount = Math.max(1, parseInt(amountStr, 10) || 1);
@@ -6199,7 +6576,10 @@ mp.events.addCommand('changechar', (player) => {
     player.adminLevel = 0;
     player.contacts = null;
     player.phoneNumber = null;
+    player.bankAccountNumber = null;
     player.isPhoneOpen = false;
+    player.outfitData = null;
+    player.barberData = null;
     player.currentPropertyId = null;
     player.currentBusinessId = null;
     player.dimension = 0;
@@ -6349,45 +6729,6 @@ mp.events.add('inventoryUseItem', (player, itemId) => {
             nextHealth = Math.min(100, currentHealth + 3);
             statusText = 'Isgerete alaus.';
             break;
-        case 'sim_card':
-            // Activate SIM card
-            db.query('SELECT bank_account_number FROM bank_accounts WHERE char_name = ?', [player.charName], (err, bankResult) => {
-                if (err) {
-                    return sendInventoryUpdate(player, 'Klaida aktivuojant SIM kortele.', false);
-                }
-
-                // Check if player already has phone number
-                if (player.phoneNumber && player.phoneNumber.length > 0) {
-                    return sendInventoryUpdate(player, 'Jus jau turite telefono numeri!', false);
-                }
-
-                // Generate 6-digit phone number
-                const phoneNumber = String(Math.floor(100000 + Math.random() * 900000));
-
-                // Check if this number already exists
-                db.query('SELECT id FROM characters WHERE phone_number = ?', [phoneNumber], (checkErr, checkResult) => {
-                    if (checkErr || (checkResult && checkResult.length > 0)) {
-                        return sendInventoryUpdate(player, 'Nepavyko generuoti telefono numerio. Bandykite dar karta.', false);
-                    }
-
-                    // Update character with phone number
-                    db.query('UPDATE characters SET phone_number = ? WHERE id = ?', [phoneNumber, player.charId], (updateErr) => {
-                        if (updateErr) {
-                            return sendInventoryUpdate(player, 'Klaida issaugant telefono numeri.', false);
-                        }
-
-                        player.phoneNumber = phoneNumber;
-                        removeInventoryItemAmount(player, itemId, 1);
-                        persistInventory(player);
-                        player.call('updateMoneyHUD', [player.money || 0]);
-                        player.call('updatePhoneNumber', [phoneNumber]);
-                        statusText = `Jus suaktyvavote SIM kortele! Jusu numeris: ${phoneNumber}`;
-                        player.outputChatBox(`!{#7aa164}${statusText}`);
-                        sendInventoryUpdate(player, statusText, true);
-                    });
-                });
-            });
-            return;
         default:
             return sendInventoryUpdate(player, 'Sio daikto naudoti negalima.', false);
     }
@@ -6647,22 +6988,22 @@ mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
 mp.events.addCommand('call', (player, phoneNumber) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
     if (!phoneNumber) return player.outputChatBox('Naudojimas: /call [telefono numeris]');
-    if (!player.phoneNumber) return player.outputChatBox('!{#e74c3c}Jūs neturite telefono numerio.');
+    if (!requirePhoneSim(player)) return;
     if (activeCalls.has(player.id)) return player.outputChatBox('!{#e74c3c}Jūs jau esate skambutyje arba laukiate atsakymo.');
 
     const target = mp.players.toArray().find(p => p.phoneNumber === phoneNumber);
     if (!target || !target.charName) {
-        player.call('callFailed', 'Šis telefono numeris nerastas arba žaidėjas neprisijungęs.');
+        player.call('callFailed', ['Šis telefono numeris nerastas arba žaidėjas neprisijungęs.']);
         return player.outputChatBox('!{#f7dc6f}Šis telefono numeris nerastas arba žaidėjas neprisijungęs.');
     }
 
     if (target.id === player.id) {
-        player.call('callFailed', 'Negalite skambinti sau!');
+        player.call('callFailed', ['Negalite skambinti sau!']);
         return player.outputChatBox('!{#e74c3c}Negalite skambinti sau!');
     }
 
     if (!startCall(player, target)) {
-        player.call('callFailed', 'Skambutis negali būti pradėtas.');
+        player.call('callFailed', ['Skambutis negali būti pradėtas.']);
         return player.outputChatBox('!{#e74c3c}Skambutis negali būti pradėtas.');
     }
 });
@@ -6978,9 +7319,7 @@ mp.events.addCommand('sharenumber', (player, fullText, targetId, contactName) =>
     if (!target.charId) {
         return player.outputChatBox('!{#e74c3c}Žaidėjas dar nepasirinko veikėjo.');
     }
-    if (!player.phoneNumber) {
-        return player.outputChatBox('!{#e74c3c}Jūs neturite telefono numerio!');
-    }
+    if (!requirePhoneSim(player)) return;
 
     db.query('SELECT * FROM contacts WHERE char_id = ? AND contact_number = ?', [target.charId, player.phoneNumber], (err, results) => {
         if (err) {
@@ -7008,7 +7347,7 @@ mp.events.addCommand('sharenumber', (player, fullText, targetId, contactName) =>
 
 mp.events.add('call', (player, number) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!player.phoneNumber) return player.outputChatBox('!{#e74c3c}Jūs neturite telefono numerio!');
+    if (!requirePhoneSim(player)) return;
 
     const target = mp.players.toArray().find(p => p.phoneNumber === number);
     if (!target) {
@@ -7117,7 +7456,7 @@ function sendMessageNotification(recipient, senderNumber, senderName, messageTex
 // /sms command (from chat)
 mp.events.addCommand('sms', (player, fullText, targetNumber, ...messageArray) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!player.phoneNumber) return player.outputChatBox('!{#e74c3c}Jūs neturite telefono numerio!');
+    if (!requirePhoneSim(player)) return;
     if (!targetNumber || messageArray.length === 0) {
         return player.outputChatBox('Naudojimas: /sms [telefono numeris] [žinutė]');
     }
@@ -7167,7 +7506,7 @@ mp.events.add('sendMessage', (player, recipientNumber, messageText) => {
     console.log(`[DEBUG] Phone UI sendMessage: ${player.charName} → ${recipientNumber}`);
 
     if (!player.charName || !player.charId) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!player.phoneNumber) return player.outputChatBox('!{#e74c3c}Jūs neturite telefono numerio!');
+    if (!requirePhoneSim(player)) return;
     if (!recipientNumber || !messageText || messageText.trim().length === 0) {
         return player.outputChatBox('!{#e74c3c}Įveskite gavėją ir žinutę!');
     }
@@ -7420,17 +7759,15 @@ mp.events.add('postTweet', (player, content) => {
 mp.events.add('openBankApp', (player) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
 
-    // Get balance, account number + last 5 transactions
+    // Get balance + last 5 transactions
     db.query(`
-        SELECT balance, bank_account_number FROM bank_accounts WHERE char_name = ?
+        SELECT balance FROM bank_accounts WHERE char_name = ?
     `, [player.charName], (err, balanceRes) => {
         if (err || balanceRes.length === 0) {
-            return player.call('loadBankData', [0, player.charName, '[]', '']);
+            return player.call('loadBankData', [0, player.charName, player.bankAccountNumber || '', '[]']);
         }
 
         const balance = balanceRes[0].balance;
-        const accountNumber = balanceRes[0].bank_account_number || '';
-        player.bankAccountNumber = accountNumber;
 
         db.query(`
             SELECT transaction_type, amount, date 
@@ -7447,15 +7784,28 @@ mp.events.add('openBankApp', (player) => {
             player.call('loadBankData', [
                 balance,
                 player.charName,
-                JSON.stringify(transactions),
-                accountNumber
+                player.bankAccountNumber || '',
+                JSON.stringify(transactions)
             ]);
         });
     });
 });
 
-mp.events.add('bankTransfer', (player, recipientName, amountStr) => {
+mp.events.add('bankTransfer', (player, recipientAccountRaw, amountStr) => {
     if (!player.charName) return;
+    const senderAccountNumber = normalizeBankAccountNumber(player.bankAccountNumber);
+    if (!senderAccountNumber) {
+        return player.call('bankTransferResult', [false, 'Neturite aktyvios banko saskaitos. Naudokite /openbank Fleeca banke.']);
+    }
+
+    const recipientAccountNumber = normalizeBankAccountNumber(recipientAccountRaw);
+    if (!recipientAccountNumber) {
+        return player.call('bankTransferResult', [false, 'Neteisingas gavejo banko saskaitos numeris.']);
+    }
+
+    if (recipientAccountNumber === senderAccountNumber) {
+        return player.call('bankTransferResult', [false, 'Negalite pervesti i savo banko saskaita.']);
+    }
 
     const amount = parseInt(amountStr);
     if (isNaN(amount) || amount <= 0) {
@@ -7465,27 +7815,22 @@ mp.events.add('bankTransfer', (player, recipientName, amountStr) => {
     // Check if sender has enough
     db.query('SELECT balance FROM bank_accounts WHERE char_name = ?', [player.charName], (err, senderRes) => {
         if (err || senderRes.length === 0) {
-            console.log('[BANK] bankTransfer failed sender lookup', player.charName, recipientName, amount, err);
+            console.log('[BANK] bankTransfer failed sender lookup', player.charName, recipientAccountNumber, amount, err);
             return player.call('bankTransferResult', [false, 'Nepakanka lėšų sąskaitoje!']);
         }
         if (senderRes[0].balance < amount) {
-            console.log('[BANK] bankTransfer insufficient balance', player.charName, recipientName, amount);
+            console.log('[BANK] bankTransfer insufficient balance', player.charName, recipientAccountNumber, amount);
             return player.call('bankTransferResult', [false, 'Nepakanka lėšų sąskaitoje!']);
         }
 
         // Check recipient exists
-        db.query('SELECT balance FROM bank_accounts WHERE char_name = ?', [recipientName], (err, targetRes) => {
+        db.query('SELECT char_name, balance FROM bank_accounts WHERE account_number = ?', [recipientAccountNumber], (err, targetRes) => {
             if (err || targetRes.length === 0) {
-                console.log('[BANK] bankTransfer recipient not found', recipientName);
-                return player.call('bankTransferResult', [false, 'Banko sąskaita negalima']);
+                console.log('[BANK] bankTransfer recipient not found', recipientAccountNumber);
+                return player.call('bankTransferResult', [false, 'Banko saskaita nerasta']);
             }
 
-            // Only allow transfers to players who are currently online
-            const recipientPlayer = mp.players.toArray().find(p => p.charName === recipientName);
-            if (!recipientPlayer) {
-                console.log('[BANK] bankTransfer recipient offline', recipientName);
-                return player.call('bankTransferResult', [false, 'Banko sąskaita negalima']);
-            }
+            const recipientName = targetRes[0].char_name;
 
             const newSenderBalance = senderRes[0].balance - amount;
             const newTargetBalance = targetRes[0].balance + amount;
@@ -7501,334 +7846,20 @@ mp.events.add('bankTransfer', (player, recipientName, amountStr) => {
             // Notify sender
             player.bankBalance = newSenderBalance;
             player.call('updateBankHUD', [newSenderBalance]);
-            player.call('bankTransferResult', [true, `Sėkmingai pervesta $${amount} žaidėjui ${recipientName}`, recipientName, amount]);
+            player.call('bankTransferResult', [true, `Sekmingai pervesta $${amount} i ${recipientAccountNumber}`, recipientAccountNumber, amount]);
 
             // Notify recipient if online
             const targetPlayer = mp.players.toArray().find(p => p.charName === recipientName);
             if (targetPlayer) {
                 targetPlayer.bankBalance = newTargetBalance;
                 targetPlayer.call('updateBankHUD', [newTargetBalance]);
-                targetPlayer.outputChatBox(`!{#229954}Jūs gavote $${amount} iš ${player.charName} per mobilųjį banką.`);
+                targetPlayer.outputChatBox(`!{#229954}Jus gavote $${amount} i banko saskaita ${recipientAccountNumber}.`);
             }
         });
     });
 });
 
-// New: Transfer by bank account number (for UI and phone app)
-mp.events.add('bankTransferByAccount', (player, targetAccountNumber, amountStr) => {
-    if (!player.charName) return;
-
-    const amount = parseInt(amountStr);
-    if (isNaN(amount) || amount <= 0) {
-        return player.call('bankTransferResult', [false, 'Neteisinga suma!']);
-    }
-
-    if (!targetAccountNumber || String(targetAccountNumber).length !== 10) {
-        return player.call('bankTransferResult', [false, 'Neteisingas sąskaitos numeris!']);
-    }
-
-    // Check if sender has account and enough balance
-    db.query('SELECT balance, bank_account_number FROM bank_accounts WHERE char_name = ?', [player.charName], (err, senderRes) => {
-        if (err || !senderRes || senderRes.length === 0) {
-            console.log('[BANK] bankTransferByAccount sender not found', player.charName, targetAccountNumber);
-            return player.call('bankTransferResult', [false, 'Turite atidaryti banko sąskaitą!']);
-        }
-
-        if (!senderRes[0].bank_account_number) {
-            return player.call('bankTransferResult', [false, 'Turite atidaryti banko sąskaitą!']);
-        }
-
-        if (senderRes[0].balance < amount) {
-            return player.call('bankTransferResult', [false, 'Nepakanka lėšų sąskaitoje!']);
-        }
-
-        // Find recipient by account number
-        db.query('SELECT char_name, balance FROM bank_accounts WHERE bank_account_number = ?', [targetAccountNumber], (err, targetRes) => {
-            if (err || !targetRes || targetRes.length === 0) {
-                console.log('[BANK] bankTransferByAccount recipient account not found', targetAccountNumber);
-                return player.call('bankTransferResult', [false, 'Sąskaitos numeris nerastas!']);
-            }
-
-            const recipientName = targetRes[0].char_name;
-            const newSenderBalance = senderRes[0].balance - amount;
-            const newTargetBalance = targetRes[0].balance + amount;
-
-            // Update both accounts
-            db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [newSenderBalance, player.charName]);
-            db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [newTargetBalance, recipientName]);
-
-            // Log transactions
-            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, "transfer_out", ?, NOW())', [player.charName, amount]);
-            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, "transfer_in", ?, NOW())', [recipientName, amount]);
-
-            // Update sender
-            player.bankBalance = newSenderBalance;
-            player.call('updateBankHUD', [newSenderBalance]);
-            player.call('bankTransferResult', [true, `Sėkmingai pervesta $${amount} į sąskaitą ${targetAccountNumber}`, targetAccountNumber, amount]);
-
-            // Notify recipient if online
-            const recipientPlayer = mp.players.toArray().find(p => p.charName === recipientName);
-            if (recipientPlayer) {
-                recipientPlayer.bankBalance = newTargetBalance;
-                recipientPlayer.call('updateBankHUD', [newTargetBalance]);
-                recipientPlayer.outputChatBox(`!{#229954}Jūs gavote $${amount} į sąskaitą iš ${player.charName}.`);
-            }
-
-            console.log(`[BANK] Transfer successful: ${player.charName} -> ${targetAccountNumber} ($${amount})`);
-        });
-    });
-});
-
-// ====================== FUEL SYSTEM ======================
-
-const FUEL_CONSUMPTION_RATE = 0.05; // Liters per update (per second approximately)
-const FUEL_TANK_CAPACITY = 100;
-const REFUEL_COST_PER_LITER = 2;
-const REFUEL_SPEED = 2; // Liters per second
-
-function generateBankAccountNumber() {
-    // Generate 10-digit bank account number
-    return String(Math.floor(1000000000 + Math.random() * 9000000000));
-}
-
-// Load fuel when vehicle is loaded
-mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
-    if (!player || !vehicle || !player.charId) return;
-
-    // Only driver can use fuel
-    if (seat === -1 || seat === 0) {
-        const vehicleDbId = vehicle.getVariable('ownedVehicleId');
-        if (vehicleDbId) {
-            db.query('SELECT fuel FROM player_vehicles WHERE id = ?', [vehicleDbId], (err, result) => {
-                if (!err && result && result.length > 0) {
-                    vehicle.setVariable('vehicleFuel', result[0].fuel || 100);
-                    player.vehicleCurrentFuel = result[0].fuel || 100;
-                } else {
-                    vehicle.setVariable('vehicleFuel', 100);
-                    player.vehicleCurrentFuel = 100;
-                }
-            });
-        }
-    }
-});
-
-// Fuel consumption loop
-setInterval(() => {
-    mp.players.forEach(player => {
-        if (!player || !player.vehicle || !player.charId) return;
-
-        const vehicle = player.vehicle;
-        const vehicleDbId = vehicle.getVariable('ownedVehicleId');
-        const ownedByCharId = vehicle.getVariable('ownedByCharId');
-
-        // Only consume fuel if player is driving their own vehicle
-        if (!vehicleDbId || Number(ownedByCharId) !== Number(player.charId)) return;
-
-        // Only consume when engine is on
-        if (!vehicle.engine) return;
-
-        let currentFuel = vehicle.getVariable('vehicleFuel') || 100;
-        currentFuel = Math.max(0, currentFuel - FUEL_CONSUMPTION_RATE);
-        vehicle.setVariable('vehicleFuel', currentFuel);
-        player.vehicleCurrentFuel = currentFuel;
-
-        // Show warning when fuel is low
-        if (currentFuel < 15 && currentFuel > 10) {
-            player.call('showNotification', ['~r~⚠ Greitai baigs degalai!', 3000]);
-        }
-
-        // Turn off engine when fuel runs out
-        if (currentFuel <= 0) {
-            vehicle.engine = false;
-            vehicle.setVariable('manualEngineOn', 0);
-            player.outputChatBox('!{#e74c3c}Degalai baige! Negali paleisti variklio.');
-            player.call('showNotification', ['~r~Negali paleisti variklio - nėra degalų!', 5000]);
-        }
-    });
-}, 1000); // Update every second
-
-// Prevent engine start if fuel is empty
-mp.events.add('playerDriveVehicle', (player, vehicle) => {
-    if (!player || !vehicle || !player.charId) return;
-
-    const vehicleDbId = vehicle.getVariable('ownedVehicleId');
-    const ownedByCharId = vehicle.getVariable('ownedByCharId');
-
-    if (!vehicleDbId || Number(ownedByCharId) !== Number(player.charId)) return;
-
-    const fuel = vehicle.getVariable('vehicleFuel') || 0;
-    if (fuel <= 0) {
-        vehicle.engine = false;
-        vehicle.setVariable('manualEngineOn', 0);
-        player.outputChatBox('!{#e74c3c}Negali paleisti variklio - degalai baige!');
-        player.call('showNotification', ['~r~Negali paleisti variklio - nėra degalų!', 5000]);
-    }
-});
-
-// /refuel command at gas stations
-mp.events.addCommand('refuel', (player, fullText, amountStr = '100') => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!player.vehicle) return player.outputChatBox('!{#e74c3c}Turite būti transporto priemonėje!');
-
-    const vehicle = player.vehicle;
-    const vehicleDbId = vehicle.getVariable('ownedVehicleId');
-    const ownedByCharId = vehicle.getVariable('ownedByCharId');
-
-    if (!vehicleDbId || Number(ownedByCharId) !== Number(player.charId)) {
-        return player.outputChatBox('!{#e74c3c}Tai nėra jūsų transportas!');
-    }
-
-    // Check if near gas station
-    if (!isNearAGasStation(player)) {
-        return player.outputChatBox('!{#e74c3c}Turite būti prie degalinės!');
-    }
-
-    const requestedLiters = Math.max(0, parseInt(amountStr, 10) || 100);
-    const currentFuel = Math.max(0, vehicle.getVariable('vehicleFuel') || 0);
-    const canAddFuel = Math.min(requestedLiters, FUEL_TANK_CAPACITY - currentFuel);
-
-    if (canAddFuel <= 0) {
-        return player.outputChatBox('!{#e74c3c}Degalu bakas jau pilnas!');
-    }
-
-    const cost = canAddFuel * REFUEL_COST_PER_LITER;
-    if (player.money < cost) {
-        return player.outputChatBox(`!{#e74c3c}Nepakanka pinigu! Kaina: $${cost}, o jus turite: $${player.money}`);
-    }
-
-    // Deduct money
-    player.money -= cost;
-    const newFuel = currentFuel + canAddFuel;
-    vehicle.setVariable('vehicleFuel', newFuel);
-    player.vehicleCurrentFuel = newFuel;
-
-    // Save fuel and money
-    const vehicleDbId_int = parseInt(vehicleDbId, 10);
-    db.query('UPDATE player_vehicles SET fuel = ? WHERE id = ?', [newFuel, vehicleDbId_int]);
-    db.query('UPDATE characters SET money = ? WHERE id = ?', [player.money, player.charId]);
-
-    player.call('updateMoneyHUD', [player.money]);
-    player.outputChatBox(`!{#7aa164}Jus atpildete ${canAddFuel.toFixed(1)}L degalų. Kaina: $${cost}.`);
-});
-
-// Helper to check if player is near gas station
-function isNearAGasStation(player) {
-    if (!player || !player.position) return false;
-
-    const gasStations = [
-        { x: -525.5, y: -1078.4, z: 29.3 },
-        { x: 265.8, y: -1260.9, z: 29.4 },
-        { x: 820.3, y: -1028.0, z: 26.4 },
-        { x: 1207.3, y: -1402.5, z: 69.2 },
-        { x: 2679.7, y: 3262.5, z: 55.2 },
-        { x: 1009.0, y: -97.0, z: 69.2 },
-        { x: -94.0, y: -1897.2, z: 26.2 },
-        { x: 174.6, y: 6427.3, z: 31.5 },
-    ];
-
-    for (const station of gasStations) {
-        if (getDistanceBetweenPositions(player.position, new mp.Vector3(station.x, station.y, station.z)) < 10) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// ====================== BANK ACCOUNT SYSTEM ======================
-
-// /openbank command to open a bank account
-mp.events.addCommand('openbank', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-
-    if (!isNearATMOrBank(player)) {
-        return player.outputChatBox('!{#e74c3c}Turite būti prie banko ar bankomato.');
-    }
-
-    // Check if player already has a bank account number
-    db.query('SELECT bank_account_number FROM bank_accounts WHERE char_name = ?', [player.charName], (err, result) => {
-        if (err) {
-            return player.outputChatBox('!{#e74c3c}Klaida tikrinant banko sąskaitą.');
-        }
-
-        if (result && result.length > 0 && result[0].bank_account_number) {
-            return player.outputChatBox(`!{#e74c3c}Jūs jau turite banko sąskaitos numerį: ${result[0].bank_account_number}`);
-        }
-
-        // Generate new account number
-        const accountNumber = generateBankAccountNumber();
-
-        db.query('UPDATE bank_accounts SET bank_account_number = ? WHERE char_name = ?', [accountNumber, player.charName], (updateErr) => {
-            if (updateErr) {
-                return player.outputChatBox('!{#e74c3c}Nepavyko atidaryti banko sąskaitos.');
-            }
-
-            player.bankAccountNumber = accountNumber;
-            player.outputChatBox(`!{#7aa164}Banko sąskaita atidaryта! Jūsų sąskaitos numeris: ${accountNumber}`);
-        });
-    });
-});
-
-// /transferbank command - transfer money by bank account number
-mp.events.addCommand('transferbank', (player, fullText, targetAccountNumber, amountStr) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!targetAccountNumber || !amountStr) {
-        return player.outputChatBox('Naudojimas: /transferbank [sąskaitos numeris] [suma]');
-    }
-
-    const amount = parseInt(amountStr);
-    if (isNaN(amount) || amount <= 0) {
-        return player.outputChatBox('!{#e74c3c}Neteisinga suma!');
-    }
-
-    // Check if sender has account number
-    db.query('SELECT bank_account_number, balance FROM bank_accounts WHERE char_name = ?', [player.charName], (err, senderResult) => {
-        if (err || !senderResult || senderResult.length === 0) {
-            return player.outputChatBox('!{#e74c3c}Turite atidaryti banko sąskaitą! /openbank');
-        }
-
-        if (!senderResult[0].bank_account_number) {
-            return player.outputChatBox('!{#e74c3c}Turite atidaryti banko sąskaitą! /openbank');
-        }
-
-        if (senderResult[0].balance < amount) {
-            return player.outputChatBox('!{#e74c3c}Nepakanka lėšų sąskaitoje!');
-        }
-
-        // Find recipient by account number
-        db.query('SELECT char_name, balance FROM bank_accounts WHERE bank_account_number = ?', [targetAccountNumber], (err, recipientResult) => {
-            if (err || !recipientResult || recipientResult.length === 0) {
-                return player.outputChatBox('!{#e74c3c}Sąskaitos numeris nerastas!');
-            }
-
-            const recipientName = recipientResult[0].char_name;
-            const newSenderBalance = senderResult[0].balance - amount;
-            const newRecipientBalance = recipientResult[0].balance + amount;
-
-            // Update both accounts
-            db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [newSenderBalance, player.charName]);
-            db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [newRecipientBalance, recipientName]);
-
-            // Log transactions
-            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, "transfer_out", ?, NOW())', [player.charName, amount]);
-            db.query('INSERT INTO bank_transactions (char_name, transaction_type, amount, date) VALUES (?, "transfer_in", ?, NOW())', [recipientName, amount]);
-
-            // Update sender
-            player.bankBalance = newSenderBalance;
-            player.call('updateBankHUD', [newSenderBalance]);
-            player.outputChatBox(`!{#7aa164}Sėkmingai pervesta $${amount} į sąskaitą ${targetAccountNumber}.`);
-
-            // Notify recipient if online
-            const recipientPlayer = mp.players.toArray().find(p => p.charName === recipientName);
-            if (recipientPlayer) {
-                recipientPlayer.bankBalance = newRecipientBalance;
-                recipientPlayer.call('updateBankHUD', [newRecipientBalance]);
-                recipientPlayer.outputChatBox(`!{#7aa164}Jūs gavote $${amount} į sąskaitą iš ${player.charName}.`);
-            }
-        });
-    });
-});
-
-// ====================== CLOTHING SYSTEM ====================
+// ==================== CLOTHING SYSTEM ====================
 
 const CLOTHING_STORES = [
     { x: -710.2, y: -152.0, z: 37.4 },  // Suburban – Rockford Hills

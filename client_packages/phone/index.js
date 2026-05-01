@@ -72,13 +72,17 @@ mp.events.add('newMessageNotification', (senderNumber, senderName, messageText) 
 });
 
 mp.events.add('callFailed', (message) => {
-    console.log('[PHONE] callFailed event received:', message, 'isPhoneOpen=', isPhoneOpen);
+    const safeMessage = (typeof message === 'string' && message.trim())
+        ? message
+        : 'Skambučio klaida.';
+
+    console.log('[PHONE] callFailed event received:', safeMessage, 'isPhoneOpen=', isPhoneOpen);
     if (isPhoneOpen) {
         // Keep the user in the current app but show a toast for failure.
         // Ensure overlay is visible in case the current app has inline style override.
-        browser.execute(`showPhoneToast(${JSON.stringify(message)})`);
+        browser.execute(`showPhoneToast(${JSON.stringify(safeMessage)})`);
     } else {
-        mp.gui.chat.push(`!{#e74c3c}${message}`);
+        mp.gui.chat.push(`!{#e74c3c}${safeMessage}`);
     }
 });
 
@@ -181,17 +185,18 @@ mp.events.add('twitterFeedUpdated', (tweetsJson) => {
 
 
 // ==================== BANK APP ====================
-mp.events.add('loadBankData', (balance, charName, transactionsJson, accountNumber) => {
+mp.events.add('loadBankData', (balance, charName, accountNumber, transactionsJson) => {
     if (browser && browser.active) {
         browser.execute(`
             document.getElementById('balanceDisplay').innerText = '$${parseInt(balance).toLocaleString('lt-LT')}';
-            document.getElementById('charNameDisplay').innerText = '${accountNumber || charName}';
+            document.getElementById('charNameDisplay').innerText = '${charName}';
+            document.getElementById('bankAccountDisplay').innerText = '${accountNumber || 'Saskaita neaktyvi'}';
             renderTransactions(${JSON.stringify(transactionsJson)});
         `);
     }
 });
 
-mp.events.add('bankTransferResult', (success, message, recipientName, amount) => {
+mp.events.add('bankTransferResult', (success, message, recipientAccountNumber, amount) => {
     const normalizedMessage = !success && (
         message === 'Gavėjas nerastas!' ||
         message === 'Gavėjas turi būti prisijungęs žaidėjas!'
@@ -199,7 +204,7 @@ mp.events.add('bankTransferResult', (success, message, recipientName, amount) =>
         ? 'Banko sąskaita negalima'
         : message;
 
-    console.log('[BANK] bankTransferResult', success, normalizedMessage, recipientName, amount);
+    console.log('[BANK] bankTransferResult', success, normalizedMessage, recipientAccountNumber, amount);
 
     if (browser && browser.active) {
         browser.execute(`
@@ -216,5 +221,5 @@ mp.events.add('bankTransferResult', (success, message, recipientName, amount) =>
 });
 
 // Bank helper for CEF
-mp.events.add('bankTransfer', (recipientName, amount) => mp.events.callRemote('bankTransfer', recipientName, amount));
+mp.events.add('bankTransfer', (recipientAccountNumber, amount) => mp.events.callRemote('bankTransfer', recipientAccountNumber, amount));
 mp.events.add('openBankApp', () => mp.events.callRemote('openBankApp'));

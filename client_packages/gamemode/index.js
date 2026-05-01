@@ -427,7 +427,7 @@ mp.keys.bind(0x45, false, function () { // 'E' key
 // Client-Side (main client-side .js file)
 
 // When the bank UI is opened, the history and balance are updated
-mp.events.add('openBankUI', (balance, cash, history) => {
+mp.events.add('openBankUI', (balance, cash, accountNumber, history) => {
     if (bankUI) {
         bankUI.destroy();
         bankUI = null;
@@ -435,16 +435,16 @@ mp.events.add('openBankUI', (balance, cash, history) => {
 
     bankUI = mp.browsers.new('package://cef/bankUI.html');
 
-    bankUI.execute(`updateBankBalance(${balance}); updateCash(${cash}); updateTransactionHistory(${JSON.stringify(history)});`);
+    bankUI.execute(`updateBankBalance(${balance}); updateCash(${cash}); updateBankAccountNumber(${JSON.stringify(accountNumber || '')}); updateTransactionHistory(${JSON.stringify(history)});`);
 
     mp.gui.cursor.show(true, true);
 });
 
 // Event to update the bank balance and cash balance in the UI
-mp.events.add('updateBankUI', (balance, cash, history) => {
+mp.events.add('updateBankUI', (balance, cash, accountNumber, history) => {
     if (bankUI) {
         // Update balance and history in the UI
-        bankUI.execute(`updateBankBalance(${balance}); updateCash(${cash}); updateTransactionHistory(${JSON.stringify(history)});`);
+        bankUI.execute(`updateBankBalance(${balance}); updateCash(${cash}); updateBankAccountNumber(${JSON.stringify(accountNumber || '')}); updateTransactionHistory(${JSON.stringify(history)});`);
     }
 });
 
@@ -1028,13 +1028,13 @@ mp.events.add('bankAction', (type, amount) => {
 });
 
 // Event listener from the bank UI to handle transfer actions
-mp.events.add('bankTransfer', (recipientName, amount) => {
-    if (!recipientName || isNaN(amount) || amount <= 0) {
+mp.events.add('bankTransfer', (recipientAccountNumber, amount) => {
+    if (!recipientAccountNumber || isNaN(amount) || amount <= 0) {
         mp.events.call('bankError', 'Neteisingi pervedimo duomenys.');
         return;
     }
 
-    mp.events.callRemote('bankTransfer', recipientName, amount);
+    mp.events.callRemote('bankTransfer', recipientAccountNumber, amount);
 });
 
 // Forward transfer result messages back to bank UI
@@ -1562,6 +1562,9 @@ mp.events.add('render', () => {
 
     const speedKmh = Math.max(0, Math.round(speedMs * 3.6));
     const text = `${speedKmh} km/h`;
+    const rawFuelLevel = Number(vehicle.getVariable('fuelLevel'));
+    const fuelLevel = Number.isFinite(rawFuelLevel) ? Math.max(0, Math.min(100, rawFuelLevel)) : 100;
+    const fuelText = `Fuel: ${fuelLevel.toFixed(0)}%`;
 
     mp.game.graphics.drawText(text, [0.9, 0.87], {
         font: 4,
@@ -1571,74 +1574,14 @@ mp.events.add('render', () => {
         shadow: true,
         alignment: 2,
     });
-});
 
-// Fuel Gauge Display
-mp.events.add('render', () => {
-    const localPlayer = mp.players.local;
-    if (!localPlayer || !localPlayer.vehicle) return;
-
-    const vehicle = localPlayer.vehicle;
-    const fuel = vehicle.getVariable('vehicleFuel') || 0;
-    const maxFuel = 100;
-    const fuelPercent = Math.max(0, Math.min(100, (fuel / maxFuel) * 100));
-
-    // Position: below the speedometer on the right side
-    const gaugeX = 0.9;
-    const gaugeY = 0.93;
-
-    // Determine color based on fuel level
-    let fuelColor = [52, 199, 89, 255]; // Green (normal)
-    if (fuelPercent < 30) {
-        fuelColor = [240, 93, 101, 255]; // Red (critical)
-    } else if (fuelPercent < 50) {
-        fuelColor = [255, 159, 64, 255]; // Orange (warning)
-    }
-
-    // Draw fuel label
-    mp.game.graphics.drawText('Fuel', [gaugeX, gaugeY - 0.035], {
+    mp.game.graphics.drawText(fuelText, [0.9, 0.905], {
         font: 4,
-        color: [255, 255, 255, 200],
-        scale: [0.35, 0.35],
+        color: [255, 230, 140, 235],
+        scale: [0.45, 0.45],
         outline: true,
+        shadow: true,
         alignment: 2,
-    });
-
-    // Draw fuel bar background (dark rectangle)
-    mp.game.graphics.drawRect(gaugeX - 0.025, gaugeY, 0.055, 0.018, 0, 0, 0, 100);
-
-    // Draw fuel bar fill (colored rectangle based on fuel percentage)
-    const fillWidth = 0.055 * (fuelPercent / 100);
-    mp.game.graphics.drawRect(
-        gaugeX - 0.025 + (fillWidth / 2),
-        gaugeY,
-        fillWidth,
-        0.018,
-        fuelColor[0],
-        fuelColor[1],
-        fuelColor[2],
-        fuelColor[3]
-    );
-
-    // Draw fuel bar outline (white border)
-    mp.game.graphics.drawRect(gaugeX - 0.025, gaugeY, 0.055, 0.018, 255, 255, 255, 0);
-
-    // Draw fuel percentage text
-    mp.game.graphics.drawText(`${Math.round(fuelPercent)}%`, [gaugeX + 0.035, gaugeY - 0.005], {
-        font: 4,
-        color: fuelColor,
-        scale: [0.32, 0.32],
-        outline: true,
-        alignment: 0,
-    });
-
-    // Draw fuel liters text (small)
-    mp.game.graphics.drawText(`${Math.round(fuel)}L`, [gaugeX + 0.035, gaugeY + 0.008], {
-        font: 4,
-        color: [200, 200, 200, 200],
-        scale: [0.25, 0.25],
-        outline: true,
-        alignment: 0,
     });
 });
 

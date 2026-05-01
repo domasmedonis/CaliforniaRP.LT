@@ -363,13 +363,13 @@
                 <p class="bank-title">Jusu balansas</p>
                 <p class="total-amount" id="balance">$0</p>
                 <p class="cash-line">Grynieji: <span id="cash">$0</span></p>
+                <p class="cash-line">Saskaitos nr: <span id="bankAccountNumber">Neatidaryta</span></p>
             </article>
 
             <div class="card-block">
                 <p class="block-title">Grynuju operacijos</p>
                 <div class="form-grid">
-                    <input class="input" type="number" id="amount" placeholder="Suma, pvz. 500" min="1" step="1"
-                        onkeypress="return /[0-9]/.test(event.key)">
+                    <input class="input" type="number" id="amount" placeholder="Suma, pvz. 500" min="1" step="1">
                     <div class="quick-actions">
                         <button class="quick-btn deposit" onclick="bankAction('deposit')">Inesti</button>
                         <button class="quick-btn withdraw" onclick="bankAction('withdraw')">Issiimti</button>
@@ -380,8 +380,7 @@
             <div class="card-block">
                 <p class="block-title">Pervedimas</p>
                 <div class="form-grid">
-                    <input class="input" type="text" id="recipient" placeholder="Banko sąskaitos numeris"
-                        onkeypress="return /[0-9]/.test(event.key)">
+                    <input class="input" type="text" id="recipient" placeholder="Gavejo banko saskaitos numeris">
                     <input class="input" type="number" id="transferAmount" placeholder="Suma pervedimui" min="1"
                         step="1">
                     <button class="action-btn transfer" onclick="sendTransfer()">Siusti pinigus</button>
@@ -421,6 +420,14 @@
             const cashEl = document.getElementById('cash');
             if (cashEl) {
                 cashEl.innerText = formatMoney(cash);
+            }
+        }
+
+        function updateBankAccountNumber(accountNumber) {
+            const value = String(accountNumber || '').trim();
+            const accountEl = document.getElementById('bankAccountNumber');
+            if (accountEl) {
+                accountEl.innerText = value || 'Neatidaryta';
             }
         }
 
@@ -515,12 +522,12 @@
             const amount = Number(document.getElementById('transferAmount').value);
 
             if (!recipient) {
-                showBankError('Iveskite saskaitos numeri.');
+                showBankError('Iveskite gavejo banko saskaitos numeri.');
                 return;
             }
 
             if (!/^\d{10}$/.test(recipient)) {
-                showBankError('Saskaitos numeris turi buti 10 skaitmenu!');
+                showBankError('Banko saskaitos numeris turi buti 10 skaiciu.');
                 return;
             }
 
@@ -530,7 +537,7 @@
             }
 
             showBankError('Pervedimas vykdomas...');
-            mp.trigger('bankTransferByAccount', recipient, String(amount));
+            mp.trigger('bankTransfer', recipient, String(amount));
         }
 
         function onTransferResult(success, message) {
