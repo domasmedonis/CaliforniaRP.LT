@@ -179,6 +179,10 @@ const VEHICLE_FUEL_DISTANCE_MULTIPLIER = 0.16;
 const FUEL_PRICE_PER_UNIT = 7;
 const FLEECA_OPEN_BANK_RADIUS = 6.0;
 const BANK_ACCOUNT_NUMBER_LENGTH = 10;
+const DOWNED_ACCEPTDEATH_DELAY_MS = 120000;
+const DEATH_RESPAWN_PENALTY_CASH = 500;
+const HOSPITAL_RESPAWN_POS = new mp.Vector3(361.69, -583.99, 28.83);
+const HOSPITAL_RESPAWN_HEADING = 70.0;
 const STATIC_247_SHOP_REGISTERS = Object.freeze([
     { x: 24.47, y: -1347.35, z: 29.5 },
     { x: -46.62, y: -1757.93, z: 29.42 },
@@ -422,6 +426,130 @@ function getDistanceBetweenPositions(a, b) {
     const dy = ay - by;
     const dz = az - bz;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+function clearDeathState(player, unfreeze = true) {
+    if (!player) return;
+
+    if (player.deathStateReminderTimer) {
+        clearInterval(player.deathStateReminderTimer);
+        delete player.deathStateReminderTimer;
+    }
+
+    player.isDowned = false;
+    player.downedAt = null;
+    player.acceptDeathAvailableAt = null;
+
+    if (unfreeze && player.deathFreezeApplied) {
+        player.call('freezePlayer', [false]);
+        player.frozen = false;
+    }
+
+    player.deathFreezeApplied = false;
+}
+
+function enterDownedState(player) {
+    if (!player || !player.charId || player.isDowned) return;
+
+    const now = Date.now();
+    const downedPos = player.position
+        ? new mp.Vector3(Number(player.position.x) || 0, Number(player.position.y) || 0, Number(player.position.z) || 0)
+        : null;
+    const downedHeading = Number.isFinite(Number(player.heading)) ? Number(player.heading) : 0;
+
+    // Revive in-place to avoid GTA death black screen while keeping the player downed/frozen.
+    if (downedPos) {
+        player.spawn(downedPos);
+        player.position = downedPos;
+        player.heading = downedHeading;
+        player.health = 1;
+    }
+
+    player.isDowned = true;
+    player.downedAt = now;
+    player.acceptDeathAvailableAt = now + DOWNED_ACCEPTDEATH_DELAY_MS;
+    player.deathFreezeApplied = true;
+    player.call('freezePlayer', [true]);
+    player.frozen = true;
+
+    player.outputChatBox('!{#e74c3c}Esate be samones. Po 2 minuciu galesite naudoti /acceptdeath ir atgimti ligonineje.');
+
+    if (player.deathStateReminderTimer) {
+        clearInterval(player.deathStateReminderTimer);
+    }
+
+    player.deathStateReminderTimer = setInterval(() => {
+        if (!player || !player.charId || !player.isDowned) {
+            if (player && player.deathStateReminderTimer) {
+                clearInterval(player.deathStateReminderTimer);
+                delete player.deathStateReminderTimer;
+            }
+            return;
+        }
+
+        const remainingMs = Math.max(0, Number(player.acceptDeathAvailableAt || 0) - Date.now());
+        if (remainingMs <= 0) {
+            player.outputChatBox('!{#f7dc6f}Galite naudoti /acceptdeath ir atgimti ligonineje.');
+            clearInterval(player.deathStateReminderTimer);
+            delete player.deathStateReminderTimer;
+            return;
+        }
+
+        const seconds = Math.ceil(remainingMs / 1000);
+        player.outputChatBox(`!{#f7dc6f}Iki /acceptdeath liko ${seconds} sek.`);
+    }, 30000);
+}
+
+mp.events.add('playerDamage', (player, healthLoss) => {
+    if (!player || !player.charId || player.isDowned) return;
+
+    const currentHealth = Number(player.health);
+    const loss = Number(healthLoss);
+    if (!Number.isFinite(currentHealth) || !Number.isFinite(loss)) return;
+
+    if ((currentHealth - loss) <= 0) {
+        enterDownedState(player);
+    }
+});
+
+function applyAcceptDeathConsequences(player, options = {}) {
+    if (!player) return 0;
+
+    const spawnAtHospital = options.spawnAtHospital !== false;
+    const notifyPlayer = options.notifyPlayer !== false;
+    const persistNow = options.persistNow !== false;
+
+    const oldMoney = Math.max(0, parseInt(player.money, 10) || 0);
+    const newMoney = Math.max(0, oldMoney - DEATH_RESPAWN_PENALTY_CASH);
+    const removedMoney = oldMoney - newMoney;
+
+    player.inventory = [];
+    player.weaponPackageWeapons = [];
+    setSingleWeaponForPlayer(player, WEAPON_UNARMED_HASH, 0);
+    player.money = newMoney;
+    player.health = 100;
+
+    if (persistNow) {
+        persistInventory(player);
+        persistWeaponPackage(player);
+        persistEquippedWeapon(player);
+        persistPlayerMoney(player);
+    }
+
+    if (spawnAtHospital) {
+        player.spawn(HOSPITAL_RESPAWN_POS);
+        player.position = HOSPITAL_RESPAWN_POS;
+        player.heading = HOSPITAL_RESPAWN_HEADING;
+        player.dimension = 0;
+    }
+
+    clearDeathState(player, spawnAtHospital);
+
+    if (notifyPlayer) {
+        player.outputChatBox(`!{#f7dc6f}Atsigavote ligonineje. Praradote visus inventory daiktus, ginklu paketa ir $${removedMoney}.`);
+    }
+
+    return removedMoney;
 }
 
 function parseVehicleColorIndex(input) {
@@ -2804,6 +2932,7 @@ mp.events.add('selectCharacter', (player, charId) => {
         });
 
         player.spawn(player.position);
+        clearDeathState(player, true);
         const restoredAmmo = (player.savedEquippedWeaponHash) ? (player.savedEquippedWeaponAmmo ?? DEFAULT_WEAPON_AMMO) : 0;
         setSingleWeaponForPlayer(player, player.savedEquippedWeaponHash || WEAPON_UNARMED_HASH, restoredAmmo);
 
@@ -3035,6 +3164,22 @@ setInterval(() => {
         }
     });
 }, 1000); // Check every 1 second
+
+// Detect downed state when player reaches 0 HP.
+setInterval(() => {
+    mp.players.forEach((player) => {
+        if (!player || !player.charId) return;
+
+        if (player.isDowned && Number(player.health) > 0) {
+            clearDeathState(player, true);
+            return;
+        }
+
+        if (!player.isDowned && Number(player.health) <= 0) {
+            enterDownedState(player);
+        }
+    });
+}, 500);
 
 // Show property address once when player approaches an entry door.
 setInterval(() => {
@@ -3381,13 +3526,13 @@ mp.events.addCommand('time', (player) => {
 const knownCommands = new Set([
     'me', 'do', 's', 'low', 'b', 'help', 'id', 'pm', 'stats', 'try', 'time',
     'bank', 'withdraw', 'deposit', 'transfer', 'openbank', 'inventory', 'inv',
-    'kick', 'freeze', 'goto', 'bring', 'ban', 'giveitem', 'giveweapon', 'dropweapon', 'stashweapon', 'takeweapon', 'buildpackage', 'putpackage', 'viewpackage', 'admingiveweapon',
+    'kick', 'freeze', 'goto', 'bring', 'ban', 'heal', 'giveitem', 'giveweapon', 'dropweapon', 'stashweapon', 'takeweapon', 'buildpackage', 'putpackage', 'viewpackage', 'admingiveweapon',
     'helpme', 'accepthelp', 'declinehelp',
     'report', 'acceptreport', 'declinereport',
     'admins', 'setaname', 'changechar', 'coords', 'createtwittertables',
     'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'buy', 'bizbank', 'bizbankwithdraw', 'setbizname', 'sellbiz', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'aprop', 'abiz', 'tpinterior',
     'ph', 'phone', 'acceptdrive',
-    'call', 'answer', 'decline', 'hangup',
+    'call', 'answer', 'decline', 'hangup', 'acceptdeath',
     'sharenumber', 'sms',
     'pay', 'togglepm',
     'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock', 'refill', 'scrap', 'scrapconfirm', 'sellto'
@@ -5911,6 +6056,7 @@ function sendUsageInstructions(player, command) {
     const instructions = {
         'kick': "[KICK] Naudojimas: /kick [ID arba vardas] - Išmesti žaidėją.",
         'freeze': "[FREEZE] Naudojimas: /freeze [ID arba vardas] - Užšaldyti žaidėją.",
+        'heal': "[HEAL] Naudojimas: /heal [ID arba vardas] - Pagydyti žaidėją.",
         'goto': "[GOTO] Naudojimas: /goto [ID arba vardas] - Eiti pas žaidėją.",
         'bring': "[BRING] Naudojimas: /bring [ID arba vardas] - Atnešti žaidėją pas tave.",
         'ban': "[BAN] Naudojimas: /ban [ID arba vardas] [Priežastis] - Užblokuoti žaidėją.",
@@ -6266,6 +6412,31 @@ mp.events.addCommand('freeze', (player, targetIdentifier) => {
     });
 });
 
+mp.events.addCommand('heal', (admin, targetIdentifier) => {
+    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+
+    isAdmin(admin, 1, (error, hasPermission) => {
+        if (error || !hasPermission) return admin.outputChatBox('[KLAIDA] Neturi tam teisiu.');
+
+        const target = targetIdentifier ? getPlayerByIDOrName(targetIdentifier) : admin;
+        if (!target || !target.charName) {
+            return admin.outputChatBox('[KLAIDA] Zaidejas nerastas.');
+        }
+
+        target.health = 100;
+        clearDeathState(target, true);
+
+        if (target.charId) {
+            db.query('UPDATE characters SET health = ? WHERE id = ?', [100, target.charId]);
+        }
+
+        admin.outputChatBox(`!{#7aa164}Pagydete ${target.charName}.`);
+        if (target.id !== admin.id) {
+            target.outputChatBox(`!{#7aa164}Administratorius ${admin.charName} jus pagyde.`);
+        }
+    });
+});
+
 mp.events.addCommand('goto', (player, targetIdentifier) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
     if (!targetIdentifier) {
@@ -6540,6 +6711,15 @@ mp.events.addCommand('setaname', (player, fullText) => {
 mp.events.addCommand('changechar', (player) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
 
+    if (player.isDowned) {
+        const now = Date.now();
+        const availableAt = Number(player.acceptDeathAvailableAt || 0);
+        if (availableAt > now) {
+            const secondsLeft = Math.ceil((availableAt - now) / 1000);
+            return player.outputChatBox(`!{#e74c3c}Negalite naudoti /changechar mirties busenoje. Liko ${secondsLeft} sek iki /acceptdeath.`);
+        }
+    }
+
     // Save current character data
     saveCharacterData(player);
     cleanupPlayerOwnedVehicles(player, true);
@@ -6558,6 +6738,7 @@ mp.events.addCommand('changechar', (player) => {
         clearInterval(player.vehicleMarkerTimer);
         delete player.vehicleMarkerTimer;
     }
+    clearDeathState(player, true);
     if (playerTimeInfo[player.id] && playerTimeInfo[player.id].interval) {
         clearInterval(playerTimeInfo[player.id].interval);
         delete playerTimeInfo[player.id];
@@ -6609,6 +6790,26 @@ mp.events.addCommand('changechar', (player) => {
     loadCharacterSelection(player);
     player.outputChatBox('!{#f7dc6f}Jūs atsijungėte nuo veikėjo. Pasirinkite naują veikėją.');
     console.log('[DEBUG] Called loadCharacterSelection');
+});
+
+mp.events.addCommand('acceptdeath', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    if (!player.isDowned) {
+        return player.outputChatBox('!{#f7dc6f}Siuo metu nesate mirties busenoje.');
+    }
+
+    const now = Date.now();
+    const availableAt = Number(player.acceptDeathAvailableAt || 0);
+    if (availableAt > now) {
+        const secondsLeft = Math.ceil((availableAt - now) / 1000);
+        return player.outputChatBox(`!{#f7dc6f}Dar negalite priimti mirties. Liko ${secondsLeft} sek.`);
+    }
+
+    applyAcceptDeathConsequences(player, {
+        spawnAtHospital: true,
+        notifyPlayer: true,
+        persistNow: true,
+    });
 });
 
 
@@ -7063,6 +7264,24 @@ mp.events.add('playerQuit', (player) => {
     if (player.vehicleMarkerTimer) {
         clearInterval(player.vehicleMarkerTimer);
         delete player.vehicleMarkerTimer;
+    }
+
+    const isDownedOnQuit = Boolean(player.isDowned);
+    const downedAcceptAvailableAt = Number(player.acceptDeathAvailableAt || 0);
+    const shouldAutoAcceptDeathOnQuit = isDownedOnQuit && downedAcceptAvailableAt > Date.now();
+
+    if (shouldAutoAcceptDeathOnQuit) {
+        // If player disconnects while downed countdown is active, apply /acceptdeath penalties instantly.
+        applyAcceptDeathConsequences(player, {
+            spawnAtHospital: false,
+            notifyPlayer: false,
+            persistNow: false,
+        });
+        player.position = HOSPITAL_RESPAWN_POS;
+        player.heading = HOSPITAL_RESPAWN_HEADING;
+        player.dimension = 0;
+    } else {
+        clearDeathState(player, false);
     }
 
     if (playerTimeInfo[player.id] && playerTimeInfo[player.id].interval) {
