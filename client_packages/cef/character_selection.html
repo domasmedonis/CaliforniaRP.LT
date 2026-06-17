@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Character Selection</title>
+    <title>Veikėjų pasirinkimas</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -17,18 +17,23 @@
             height: 100%;
             margin: 0;
             padding: 0;
-            background: radial-gradient(circle at 15% 20%, rgba(138, 181, 157, 0.42), rgba(138, 181, 157, 0) 35%),
-                radial-gradient(circle at 85% 75%, rgba(237, 208, 146, 0.34), rgba(237, 208, 146, 0) 33%),
-                linear-gradient(145deg, rgba(35, 56, 45, 0.28), rgba(20, 35, 29, 0.26));
-            background-color: rgba(20, 35, 29, 0.26) !important;
+            background: transparent !important;
+            background-color: transparent !important;
         }
 
         :root {
-            --panel: rgba(245, 253, 249, 0.96);
-            --panel-strong: rgba(235, 248, 241, 0.97);
-            --line: rgba(114, 149, 132, 0.28);
-            --text: #192d23;
-            --muted: #5e746a;
+            --panel: rgba(20, 26, 23, 0.92);
+            --panel-strong: rgba(28, 35, 31, 0.96);
+            --panel-glass: rgba(16, 22, 19, 0.82);
+            --line: rgba(72, 92, 82, 0.35);
+            --text: #e8f0e9;
+            --text-strong: #f5f9f6;
+            --muted: #8a9a8f;
+            --accent: #c5a36e;
+            --accent-soft: #a98a57;
+            --success: #5aa37a;
+            --danger: #b35d5d;
+            --gold: #d4af6d;
         }
 
         * {
@@ -45,30 +50,48 @@
             position: relative;
         }
 
+        /* Very subtle vignette + grid to make glass panels pop over the live city camera view */
         body::before {
             content: '';
             position: fixed;
             inset: 0;
             pointer-events: none;
-            background-image: linear-gradient(transparent 96%, rgba(255, 255, 255, 0.05) 100%);
-            background-size: 100% 6px;
-            opacity: 0.45;
+            background:
+                radial-gradient(circle at 50% 30%, rgba(0, 0, 0, 0.35) 0%, transparent 55%),
+                radial-gradient(circle at 50% 85%, rgba(0, 0, 0, 0.45) 0%, transparent 50%);
+            z-index: 1;
         }
 
-        /* ── OUTER LAYOUT ── */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+            background-size: 52px 52px;
+            z-index: 1;
+            opacity: 0.5;
+            mix-blend-mode: screen;
+        }
+
+        /* -- OUTER LAYOUT -- */
 
         .wrap {
-            width: 1100px;
-            height: 680px;
-            max-width: calc(100vw - 48px);
-            max-height: calc(100vh - 48px);
+            width: 1200px;
+            height: 740px;
+            max-width: calc(100vw - 32px);
+            max-height: calc(100vh - 32px);
             display: grid;
-            grid-template-columns: 1fr 340px;
-            gap: 14px;
+            grid-template-columns: 1fr 380px;
+            gap: 20px;
             animation: panelIn 0.42s ease;
+            position: relative;
+            z-index: 2;
         }
 
-        /* ── LEFT COLUMN ── */
+        /* -- LEFT COLUMN -- */
         .left {
             min-width: 0;
             display: grid;
@@ -77,93 +100,192 @@
         }
 
         .topbar {
-            background: var(--panel);
+            background: rgba(16, 22, 19, 0.78);
             border: 1px solid var(--line);
-            border-radius: 14px;
-            padding: 12px 18px;
+            border-radius: 16px;
+            padding: 13px 20px;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            backdrop-filter: blur(14px);
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
         }
 
         .topbar-title {
             font-family: 'Syne', sans-serif;
-            font-size: 21px;
+            font-size: 22px;
             margin: 0;
-            line-height: 1.15;
+            line-height: 1.1;
+            color: var(--text-strong);
+            letter-spacing: -0.01em;
         }
 
         .topbar-sub {
             font-size: 12px;
             color: var(--muted);
-            margin-top: 3px;
+            margin-top: 4px;
+            opacity: 0.9;
         }
 
         .pills {
             display: flex;
             gap: 8px;
+            align-items: center;
         }
 
         .pill {
             border: 1px solid var(--line);
             background: var(--panel-strong);
             border-radius: 999px;
-            padding: 6px 12px;
-            font-size: 12px;
+            padding: 7px 14px;
+            font-size: 11px;
             font-weight: 600;
-            color: #2e5041;
+            color: var(--accent);
             white-space: nowrap;
+            transition: all 0.2s ease;
+            letter-spacing: 0.02em;
         }
 
-        /* ── CARD LIST ── */
+        .pill:hover {
+            border-color: var(--accent-soft);
+            color: var(--text-strong);
+        }
+
+        #createCharBtn {
+            background: linear-gradient(145deg, var(--gold), #b8945a) !important;
+            border-color: var(--gold) !important;
+            color: #1a1408 !important;
+            font-weight: 700;
+        }
+
+        #createCharBtn:hover {
+            filter: brightness(1.08);
+            transform: translateY(-1px);
+        }
+
+        #createCharBtn:disabled {
+            background: var(--panel-strong) !important;
+            border-color: var(--line) !important;
+            color: var(--muted) !important;
+            cursor: not-allowed;
+        }
+
+        /* -- CARD LIST -- */
         .char-list {
             min-height: 0;
             display: grid;
-            gap: 8px;
-            grid-auto-rows: 90px;
+            gap: 10px;
+            grid-auto-rows: 108px;
             align-content: start;
             overflow-y: auto;
-            padding-right: 2px;
+            padding: 4px 6px 4px 2px;
         }
 
         .char-list::-webkit-scrollbar {
-            width: 8px;
+            width: 6px;
         }
 
         .char-list::-webkit-scrollbar-track {
-            background: rgba(114, 149, 132, 0.12);
+            background: rgba(0, 0, 0, 0.2);
             border-radius: 999px;
         }
 
         .char-list::-webkit-scrollbar-thumb {
-            background: rgba(95, 133, 114, 0.56);
+            background: rgba(197, 163, 110, 0.35);
             border-radius: 999px;
         }
 
-        /* ── INDIVIDUAL CARD (horizontal) ── */
+        .char-list::-webkit-scrollbar-thumb:hover {
+            background: var(--accent);
+        }
+
+        /* -- INDIVIDUAL CARD (premium horizontal) -- */
         .char-card {
-            background: var(--panel);
+            background: rgba(20, 26, 23, 0.82);
             border: 1px solid var(--line);
-            border-radius: 12px;
+            border-radius: 15px;
             cursor: pointer;
             display: grid;
-            grid-template-columns: 64px 1fr auto;
+            grid-template-columns: 82px 1fr auto;
             overflow: hidden;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
-            height: 90px;
+            transition: all 0.2s cubic-bezier(0.23, 1.0, 0.32, 1);
+            height: 112px;
             opacity: 0;
-            transform: translateY(8px);
-            animation: cardIn 0.3s ease forwards;
+            transform: translateY(10px);
+            animation: cardIn 0.36s ease forwards;
+            position: relative;
+            backdrop-filter: blur(8px);
+        }
+
+        .char-card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(197, 163, 110, 0.04));
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        .char-card.pending {
+            opacity: 0.92;
+            border-style: dashed;
+            border-color: rgba(197, 163, 110, 0.35);
+            transform: none;
+        }
+
+        .char-card.pending::after {
+            background: linear-gradient(90deg, transparent, rgba(197, 163, 110, 0.06));
+        }
+
+        /* Modal input styling */
+        #createModal input,
+        #createModal textarea {
+            width: 100%;
+            padding: 11px 13px;
+            border-radius: 10px;
+            border: 1px solid var(--line);
+            font-family: inherit;
+            font-size: 14px;
+            box-sizing: border-box;
+            background: var(--panel-strong);
+            color: var(--text);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        #createModal input:focus,
+        #createModal textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(197, 163, 110, 0.12);
+        }
+
+        #createModal textarea {
+            resize: vertical;
+            min-height: 110px;
+            line-height: 1.45;
         }
 
         .char-card:hover {
-            border-color: rgba(160, 210, 185, 0.8);
-            transform: translateY(-1px);
+            border-color: var(--accent-soft);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+        }
+
+        .char-card:hover::after {
+            opacity: 1;
         }
 
         .char-card.selected {
-            border-color: rgba(243, 199, 108, 0.9);
-            box-shadow: 0 0 0 2px rgba(243, 199, 108, 0.22);
+            border-color: var(--gold);
+            box-shadow: 0 0 0 1px rgba(212, 175, 109, 0.35),
+                0 16px 38px rgba(0, 0, 0, 0.45);
+            background: linear-gradient(145deg, var(--panel), var(--panel-strong));
+        }
+
+        .char-card.selected::after {
+            opacity: 0.7;
+            background: linear-gradient(90deg, transparent, rgba(212, 175, 109, 0.08));
         }
 
         /* Colored identity stripe */
@@ -172,36 +294,60 @@
             align-items: center;
             justify-content: center;
             font-family: 'Syne', sans-serif;
-            font-size: 22px;
+            font-size: 26px;
             font-weight: 700;
-            color: rgba(255, 255, 255, 0.92);
+            color: rgba(255, 255, 255, 0.96);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-band::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), transparent 60%);
+            pointer-events: none;
         }
 
         .card-body {
-            padding: 10px 16px;
+            padding: 13px 18px 11px;
             display: flex;
             flex-direction: column;
             justify-content: center;
-            gap: 4px;
+            gap: 5px;
+            min-width: 0;
         }
 
         .card-name {
             margin: 0;
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 700;
-            line-height: 1.2;
+            line-height: 1.15;
+            color: var(--text-strong);
+            letter-spacing: -0.01em;
+        }
+
+        .card-subtitle {
+            font-size: 11px;
+            color: var(--muted);
+            font-weight: 500;
+            letter-spacing: 0.03em;
         }
 
         .card-stats {
             display: flex;
-            gap: 12px;
+            gap: 14px;
             flex-wrap: nowrap;
+            margin-top: 2px;
         }
 
         .card-stat {
             font-size: 12px;
             color: var(--muted);
             white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 4px;
         }
 
         .card-stat strong {
@@ -209,23 +355,136 @@
             font-weight: 700;
         }
 
-        .card-arrow {
-            padding: 0 14px;
-            display: flex;
-            align-items: center;
-            color: rgba(114, 149, 132, 0.45);
-            font-size: 16px;
-            font-weight: 300;
+        .card-stat-icon {
+            font-size: 11px;
+            opacity: 0.7;
         }
 
-        /* ── RIGHT PANEL ── */
-        .right-panel {
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 16px;
-            display: grid;
-            grid-template-rows: 220px 1fr auto;
+        .card-arrow {
+            padding: 0 18px;
+            display: flex;
+            align-items: center;
+            color: var(--accent);
+            font-size: 20px;
+            font-weight: 300;
+            transition: transform 0.2s ease, color 0.2s ease;
+        }
+
+        .char-card:hover .card-arrow {
+            transform: translateX(2px);
+            color: var(--gold);
+        }
+
+        .char-card.selected .card-arrow {
+            color: var(--gold);
+        }
+
+        .pending-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            color: var(--accent);
+            background: rgba(197, 163, 110, 0.1);
+            padding: 2px 9px;
+            border-radius: 999px;
+            border: 1px solid rgba(197, 163, 110, 0.25);
+            margin-top: 3px;
+            width: fit-content;
+        }
+
+        /* Mini PED preview in card (left band or inline) */
+        .card-ped {
+            position: relative;
+            width: 28px;
+            height: 42px;
+            flex-shrink: 0;
+            margin-right: 6px;
+        }
+
+        .card-ped-head {
+            position: absolute;
+            left: 50%;
+            top: 1px;
+            transform: translateX(-50%);
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.45);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+            z-index: 4;
             overflow: hidden;
+        }
+
+        .card-ped-hair {
+            position: absolute;
+            left: 50%;
+            top: -1px;
+            transform: translateX(-50%);
+            width: 13px;
+            height: 7px;
+            border-radius: 50% 50% 20% 20%;
+            z-index: 5;
+            opacity: 0.9;
+        }
+
+        .card-ped-torso {
+            position: absolute;
+            left: 50%;
+            top: 13px;
+            transform: translateX(-50%);
+            width: 16px;
+            height: 14px;
+            border-radius: 3px 3px 2px 2px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35) inset;
+            z-index: 2;
+        }
+
+        .card-ped-legs {
+            position: absolute;
+            left: 50%;
+            top: 26px;
+            transform: translateX(-50%);
+            width: 14px;
+            height: 14px;
+            border-radius: 2px 2px 1px 1px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            z-index: 1;
+        }
+
+        .card-ped-arm {
+            position: absolute;
+            top: 15px;
+            width: 3.5px;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.10);
+            border-radius: 2px;
+            z-index: 1;
+        }
+
+        .card-ped-arm.left {
+            left: 2px;
+            transform: rotate(-15deg);
+        }
+
+        .card-ped-arm.right {
+            right: 2px;
+            transform: rotate(15deg);
+        }
+
+        /* -- RIGHT PANEL (premium) -- */
+        .right-panel {
+            background: rgba(18, 23, 20, 0.86);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            display: grid;
+            grid-template-rows: 238px 1fr auto;
+            overflow: hidden;
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(16px);
         }
 
         /* Hero / gradient header */
@@ -235,48 +494,66 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 20px;
-            background: linear-gradient(155deg, #6bb88e 0%, #4a926d 100%);
-            transition: background 0.5s ease;
+            padding: 24px 20px 16px;
+            background: linear-gradient(165deg, rgba(26, 33, 29, 0.95) 0%, rgba(16, 21, 18, 0.92) 100%);
+            transition: background 0.55s cubic-bezier(0.23, 1.0, 0.32, 1);
             overflow: hidden;
         }
 
-        /* Large decorative letter behind avatar */
         .panel-hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at 50% 20%, rgba(197, 163, 110, 0.08) 0%, transparent 55%);
+            pointer-events: none;
+        }
+
+        /* Large decorative letter behind avatar */
+        .panel-hero::after {
             content: attr(data-initial);
             position: absolute;
             font-family: 'Syne', sans-serif;
-            font-size: 200px;
+            font-size: 220px;
             font-weight: 700;
-            color: rgba(255, 255, 255, 0.07);
-            line-height: 1;
-            top: 50%;
+            color: rgba(212, 175, 109, 0.035);
+            line-height: 0.85;
+            top: 52%;
             left: 50%;
             transform: translate(-50%, -50%);
             pointer-events: none;
             user-select: none;
+            letter-spacing: -0.04em;
         }
 
         .panel-avatar {
-            width: 88px;
-            height: 88px;
-            border-radius: 50%;
+            width: 108px;
+            height: 108px;
+            border-radius: 999px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-family: 'Syne', sans-serif;
-            font-size: 38px;
+            font-size: 40px;
             font-weight: 700;
-            color: rgba(255, 255, 255, 0.95);
-            background: rgba(255, 255, 255, 0.18);
-            border: 2px solid rgba(255, 255, 255, 0.38);
+            color: var(--text-strong);
+            background: linear-gradient(145deg, #2a332e 0%, #1c2521 100%);
+            border: 3px solid rgba(212, 175, 109, 0.5);
             flex-shrink: 0;
             position: relative;
             z-index: 1;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55),
+                inset 0 2px 0 rgba(255, 255, 255, 0.08);
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .char-card.selected~.right-panel .panel-avatar,
+        .panel-hero:hover .panel-avatar {
+            transform: scale(1.015);
+            border-color: rgba(212, 175, 109, 0.75);
         }
 
         .panel-hero-meta {
-            margin-top: 12px;
+            margin-top: 14px;
             text-align: center;
             position: relative;
             z-index: 1;
@@ -285,26 +562,172 @@
         .panel-label {
             font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: rgba(255, 255, 255, 0.62);
+            letter-spacing: 0.14em;
+            color: rgba(212, 175, 109, 0.55);
+            font-weight: 600;
         }
 
         .panel-name {
             font-family: 'Syne', sans-serif;
-            font-size: 22px;
+            font-size: 23px;
             font-weight: 700;
-            color: #fff;
-            margin: 5px 0 0;
-            line-height: 1.1;
+            color: var(--text-strong);
+            margin: 6px 0 0;
+            line-height: 1.05;
+            letter-spacing: -0.015em;
         }
 
         /* Body */
         .panel-body {
-            padding: 16px 18px;
+            padding: 18px 22px 16px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 14px;
             overflow-y: auto;
+            background: linear-gradient(to bottom, transparent, rgba(0, 0, 0, 0.12));
+        }
+
+        /* Rich visual profile summary */
+        .profile-summary {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .wealth-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .wealth-card {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 11px 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .wealth-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .wealth-icon.cash {
+            background: linear-gradient(145deg, #3a4a3f, #2a362e);
+            color: #9cd6a8;
+        }
+
+        .wealth-icon.bank {
+            background: linear-gradient(145deg, #3a3f4a, #2a2e36);
+            color: #9fb3d6;
+        }
+
+        .wealth-label {
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+            margin-bottom: 1px;
+        }
+
+        .wealth-value {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text-strong);
+            line-height: 1;
+            letter-spacing: -0.01em;
+        }
+
+        .health-visual {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 12px 14px;
+        }
+
+        .health-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 7px;
+        }
+
+        .health-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .health-value {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-strong);
+        }
+
+        .health-bar-wrap {
+            height: 9px;
+            background: rgba(0, 0, 0, 0.55);
+            border-radius: 999px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            position: relative;
+        }
+
+        .health-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #5aa37a, #7bc99a);
+            transition: width 0.5s cubic-bezier(0.23, 1.0, 0.32, 1);
+            position: relative;
+        }
+
+        .health-bar::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25));
+            pointer-events: none;
+        }
+
+        .meta-pills {
+            display: flex;
+            gap: 8px;
+        }
+
+        .meta-pill {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            padding: 8px 11px;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+        }
+
+        .meta-pill-label {
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .meta-pill-value {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-strong);
+            line-height: 1.1;
         }
 
         /* Stat bar row */
@@ -313,62 +736,93 @@
         .stat-header {
             display: flex;
             justify-content: space-between;
-            font-size: 11px;
+            font-size: 10px;
             text-transform: uppercase;
-            letter-spacing: 0.07em;
+            letter-spacing: 0.1em;
             color: var(--muted);
-            margin-bottom: 5px;
+            margin-bottom: 6px;
+            font-weight: 600;
         }
 
         .stat-header span {
             color: var(--text);
             font-weight: 700;
+            letter-spacing: 0.02em;
         }
 
         .stat-bar {
-            height: 6px;
-            border-radius: 99px;
-            background: rgba(114, 149, 132, 0.18);
+            height: 7px;
+            border-radius: 999px;
+            background: rgba(0, 0, 0, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.04);
             overflow: hidden;
+            position: relative;
+        }
+
+        .stat-bar::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06));
+            pointer-events: none;
         }
 
         .stat-fill {
             height: 100%;
-            border-radius: 99px;
-            transition: width 0.45s ease;
+            border-radius: 999px;
+            transition: width 0.5s cubic-bezier(0.23, 1.0, 0.32, 1);
+            position: relative;
+            box-shadow: 0 0 8px rgba(212, 175, 109, 0.4);
+        }
+
+        .stat-fill.health {
+            background: linear-gradient(90deg, #5aa37a, #7bc99a);
         }
 
         .divider {
             height: 1px;
-            background: var(--line);
+            background: linear-gradient(to right, transparent, var(--line), transparent);
+            margin: 4px 0;
         }
 
         /* Info chips 2x2 */
         .info-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px;
+            gap: 10px;
         }
 
         .info-chip {
             background: var(--panel-strong);
             border: 1px solid var(--line);
-            border-radius: 11px;
-            padding: 9px 10px;
+            border-radius: 12px;
+            padding: 11px 13px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .info-chip:hover {
+            border-color: rgba(197, 163, 110, 0.35);
+            transform: translateY(-1px);
         }
 
         .info-chip-label {
-            font-size: 10px;
+            font-size: 9px;
             text-transform: uppercase;
-            letter-spacing: 0.07em;
+            letter-spacing: 0.1em;
             color: var(--muted);
+            font-weight: 600;
         }
 
         .info-chip-value {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 700;
-            color: var(--text);
-            margin-top: 3px;
+            color: var(--text-strong);
+            margin-top: 4px;
+            letter-spacing: -0.01em;
+        }
+
+        .info-chip-value.accent {
+            color: var(--gold);
         }
 
         /* Placeholder in body */
@@ -379,46 +833,61 @@
             align-items: center;
             justify-content: center;
             text-align: center;
-            gap: 10px;
+            gap: 12px;
             color: var(--muted);
             padding: 20px;
         }
 
         .placeholder-icon {
-            font-size: 34px;
-            opacity: 0.35;
+            font-size: 38px;
+            opacity: 0.25;
+            font-family: 'Syne', sans-serif;
         }
 
         .placeholder-text {
-            font-size: 12px;
-            line-height: 1.6;
+            font-size: 13px;
+            line-height: 1.55;
+            max-width: 210px;
         }
 
         /* Footer */
         .panel-footer {
-            padding: 14px 18px;
+            padding: 15px 20px 18px;
             border-top: 1px solid var(--line);
             display: flex;
             flex-direction: column;
             gap: 7px;
+            background: rgba(0, 0, 0, 0.2);
         }
 
         .select-btn {
             width: 100%;
-            padding: 13px;
-            border-radius: 12px;
+            padding: 15px 22px;
+            border-radius: 14px;
             border: none;
-            background: linear-gradient(145deg, #f3c76c, #e8b957);
-            color: #24311f;
-            font-size: 14px;
+            background: linear-gradient(145deg, var(--gold), #b8945a);
+            color: #1a1408;
+            font-size: 13.5px;
             font-weight: 700;
             cursor: pointer;
             font-family: 'Manrope', sans-serif;
-            letter-spacing: 0.02em;
+            letter-spacing: 0.04em;
+            box-shadow: 0 10px 26px rgba(197, 163, 110, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
+            transition: all 0.2s cubic-bezier(0.23, 1.0, 0.32, 1);
+            text-transform: uppercase;
         }
 
         .select-btn:hover {
-            filter: brightness(1.04);
+            transform: translateY(-1px);
+            box-shadow: 0 14px 32px rgba(197, 163, 110, 0.45),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
+            filter: brightness(1.05);
+        }
+
+        .select-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 4px 14px rgba(197, 163, 110, 0.3);
         }
 
         .status-hint {
@@ -426,30 +895,38 @@
             color: var(--muted);
             text-align: center;
             margin: 0;
+            letter-spacing: 0.03em;
         }
 
         /* CaliforniaRP watermark */
         .watermark {
             position: fixed;
-            bottom: 14px;
+            bottom: 16px;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
-            letter-spacing: 0.06em;
-            color: rgba(255, 255, 255, 0.72);
+            letter-spacing: 0.08em;
+            color: rgba(212, 175, 109, 0.35);
             pointer-events: none;
+            text-transform: uppercase;
         }
 
         .list-empty {
-            background: var(--panel);
-            border: 1px dashed var(--line);
-            border-radius: 12px;
-            padding: 22px;
+            background: linear-gradient(145deg, var(--panel), var(--panel-strong));
+            border: 1px dashed rgba(197, 163, 110, 0.25);
+            border-radius: 14px;
+            padding: 42px 28px;
             text-align: center;
             color: var(--muted);
-            font-size: 13px;
-            line-height: 1.6;
+            font-size: 14px;
+            line-height: 1.55;
+        }
+
+        .list-empty-icon {
+            font-size: 42px;
+            margin-bottom: 12px;
+            opacity: 0.35;
         }
 
         @keyframes panelIn {
@@ -487,6 +964,340 @@
                 min-height: 430px;
             }
         }
+
+        /* 2026 polished selection shell */
+        :root {
+            --panel: rgba(250, 253, 255, 0.84);
+            --panel-strong: rgba(255, 255, 255, 0.95);
+            --panel-glass: rgba(246, 251, 255, 0.76);
+            --line: rgba(25, 72, 110, 0.16);
+            --text: #284050;
+            --text-strong: #102536;
+            --muted: #61778a;
+            --accent: #13c8d2;
+            --accent-soft: #3b8cff;
+            --success: #21b86b;
+            --danger: #e84f63;
+            --gold: #ffbf3d;
+            --shadow-heavy: 0 28px 80px rgba(34, 78, 120, 0.24);
+            --shadow-soft: 0 16px 44px rgba(34, 78, 120, 0.18);
+        }
+
+        body {
+            align-items: stretch;
+            justify-content: stretch;
+            padding: clamp(18px, 3vw, 42px);
+            isolation: isolate;
+        }
+
+        body::before {
+            background:
+                linear-gradient(90deg, rgba(235, 248, 255, 0.88) 0%, rgba(232, 251, 247, 0.56) 46%, rgba(255, 255, 255, 0.18) 100%),
+                radial-gradient(circle at 14% 12%, rgba(19, 200, 210, 0.24) 0%, transparent 30%),
+                radial-gradient(circle at 82% 80%, rgba(255, 191, 61, 0.2) 0%, transparent 30%),
+                radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.32) 0%, rgba(226, 240, 250, 0.56) 100%);
+            z-index: 0;
+        }
+
+        body::after {
+            background-image:
+                linear-gradient(rgba(20, 92, 140, 0.08) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(20, 92, 140, 0.06) 1px, transparent 1px);
+            background-size: 72px 72px;
+            opacity: 0.42;
+            z-index: 0;
+        }
+
+        .wrap {
+            width: min(1260px, calc(100vw - 48px));
+            height: min(760px, calc(100vh - 48px));
+            max-width: none;
+            max-height: none;
+            grid-template-columns: minmax(560px, 1fr) 410px;
+            gap: 18px;
+            margin: auto;
+        }
+
+        .left { gap: 14px; }
+
+        .topbar,
+        .right-panel,
+        .char-card,
+        .list-empty,
+        #createModal>div {
+            backdrop-filter: blur(24px) saturate(1.12);
+            -webkit-backdrop-filter: blur(24px) saturate(1.12);
+        }
+
+        .topbar {
+            min-height: 88px;
+            padding: 18px 20px 18px 22px;
+            border-radius: 8px;
+            background:
+                linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(234, 248, 255, 0.8)),
+                linear-gradient(90deg, rgba(19, 200, 210, 0.16), transparent);
+            box-shadow: var(--shadow-soft);
+        }
+
+        .topbar-title {
+            font-size: 27px;
+            letter-spacing: 0;
+        }
+
+        .topbar-sub {
+            margin-top: 6px;
+            color: #5e7385;
+        }
+
+        .pills {
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            max-width: 520px;
+        }
+
+        .pill {
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.72);
+            color: #365466;
+            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        }
+
+        #pillSelected {
+            color: var(--accent);
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #createCharBtn {
+            background: linear-gradient(135deg, var(--accent), var(--accent-soft)) !important;
+            border-color: rgba(255, 255, 255, 0.75) !important;
+            color: #061014 !important;
+            box-shadow: 0 12px 26px rgba(59, 140, 255, 0.26);
+        }
+
+        .char-list {
+            gap: 12px;
+            grid-auto-rows: 116px;
+            padding: 2px 6px 2px 0;
+        }
+
+        .char-card {
+            height: 116px;
+            grid-template-columns: 92px minmax(0, 1fr) auto;
+            border-radius: 8px;
+            background:
+                linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(237, 249, 255, 0.78)),
+                rgba(255, 255, 255, 0.5);
+            box-shadow: 0 12px 36px rgba(34, 78, 120, 0.14);
+        }
+
+        .char-card::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), transparent 42%, rgba(19, 200, 210, 0.28));
+            -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            -webkit-mask-composite: xor;
+            pointer-events: none;
+        }
+
+        .char-card::after { background: linear-gradient(90deg, transparent, rgba(19, 200, 210, 0.12)); }
+
+        .char-card:hover {
+            border-color: rgba(19, 200, 210, 0.58);
+            transform: translateY(-3px);
+            box-shadow: 0 18px 48px rgba(34, 78, 120, 0.22);
+        }
+
+        .char-card.selected {
+            border-color: rgba(19, 200, 210, 0.82);
+            background:
+                linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(225, 250, 251, 0.92)),
+                rgba(19, 200, 210, 0.1);
+            box-shadow: 0 0 0 1px rgba(19, 200, 210, 0.35), 0 22px 54px rgba(34, 78, 120, 0.24);
+        }
+
+        .card-band { font-size: 30px; }
+        .card-body { padding: 15px 18px; gap: 7px; }
+        .card-name { font-size: 17px; letter-spacing: 0; }
+        .card-subtitle, .card-stat, .pending-badge { letter-spacing: 0; }
+        .card-stats { gap: 10px; }
+
+        .card-stat {
+            padding: 4px 7px;
+            border-radius: 7px;
+            background: rgba(19, 92, 140, 0.07);
+        }
+
+        .card-arrow {
+            color: var(--accent);
+            font-size: 26px;
+        }
+
+        .right-panel {
+            grid-template-rows: 270px minmax(0, 1fr) auto;
+            border-radius: 8px;
+            background: linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(232, 248, 255, 0.82));
+            box-shadow: var(--shadow-heavy);
+        }
+
+        .panel-hero {
+            background:
+                linear-gradient(155deg, rgba(19, 200, 210, 0.88), rgba(59, 140, 255, 0.82)),
+                radial-gradient(circle at 50% 22%, rgba(255, 255, 255, 0.28), transparent 50%);
+        }
+
+        .panel-hero::before {
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.32), transparent 48%),
+                radial-gradient(circle at 50% 24%, rgba(255, 255, 255, 0.36) 0%, transparent 48%);
+        }
+
+        .panel-hero::after {
+            color: rgba(255, 255, 255, 0.16);
+            font-size: 245px;
+        }
+
+        .panel-avatar {
+            width: 118px;
+            height: 118px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.72);
+            background:
+                linear-gradient(135deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.22)),
+                rgba(255, 255, 255, 0.28);
+            box-shadow: 0 18px 46px rgba(34, 78, 120, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+        }
+
+        .panel-label {
+            color: rgba(255, 255, 255, 0.86);
+            letter-spacing: 0.12em;
+        }
+
+        .panel-name {
+            font-size: 27px;
+            letter-spacing: 0;
+        }
+
+        .panel-body { padding: 18px; gap: 12px; }
+
+        .wealth-card,
+        .health-visual,
+        .meta-pill {
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.72);
+            border-color: rgba(25, 72, 110, 0.12);
+        }
+
+        .wealth-icon { border-radius: 7px; }
+        .wealth-icon.cash { background: rgba(33, 184, 107, 0.14); color: var(--success); }
+        .wealth-icon.bank { background: rgba(59, 140, 255, 0.14); color: #2b7fed; }
+        .health-bar { background: linear-gradient(90deg, var(--success), var(--accent)); }
+
+        .panel-footer {
+            padding: 16px 18px 18px;
+            background: rgba(255, 255, 255, 0.62);
+        }
+
+        .select-btn {
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+            color: #061014;
+            box-shadow: 0 14px 32px rgba(59, 140, 255, 0.28);
+        }
+
+        .list-empty {
+            border-radius: 8px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(232, 248, 255, 0.72));
+        }
+
+        .panel-placeholder {
+            min-height: 100%;
+            border: 1px dashed rgba(25, 72, 110, 0.18);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.54);
+        }
+
+        .placeholder-icon,
+        .list-empty-icon {
+            color: var(--accent);
+            opacity: 0.55;
+        }
+
+        .watermark {
+            bottom: 18px;
+            color: rgba(16, 37, 54, 0.32);
+        }
+
+        #createModal {
+            background: rgba(230, 244, 252, 0.72) !important;
+            backdrop-filter: blur(18px) saturate(1.1) !important;
+            -webkit-backdrop-filter: blur(18px) saturate(1.1) !important;
+        }
+
+        #createModal>div {
+            width: min(560px, calc(100vw - 36px)) !important;
+            border-radius: 8px !important;
+            background: linear-gradient(155deg, rgba(255, 255, 255, 0.98), rgba(237, 249, 255, 0.96)) !important;
+            box-shadow: var(--shadow-heavy) !important;
+            padding: 28px !important;
+        }
+
+        #createModal input,
+        #createModal textarea {
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.82);
+            border-color: rgba(25, 72, 110, 0.16);
+        }
+
+        #createModal input:focus,
+        #createModal textarea:focus {
+            border-color: rgba(19, 200, 210, 0.76);
+            box-shadow: 0 0 0 3px rgba(19, 200, 210, 0.14);
+        }
+
+        #cc_cancel,
+        #cc_cancel2 { border-radius: 8px !important; }
+
+        #cc_submit {
+            border-radius: 8px !important;
+            background: linear-gradient(135deg, var(--accent), var(--accent-soft)) !important;
+            color: #061014 !important;
+            box-shadow: 0 14px 32px rgba(59, 140, 255, 0.26) !important;
+        }
+
+        @media (max-width: 980px) {
+            body { padding: 16px; }
+            .wrap {
+                width: calc(100vw - 32px);
+                height: calc(100vh - 32px);
+                grid-template-columns: 1fr;
+                grid-template-rows: minmax(330px, 1fr) minmax(360px, 0.82fr);
+                overflow: hidden;
+            }
+            .topbar { align-items: flex-start; flex-direction: column; gap: 14px; }
+            .pills { justify-content: flex-start; max-width: none; }
+            .right-panel { min-height: 0; grid-template-rows: 210px minmax(0, 1fr) auto; }
+        }
+
+        @media (max-width: 620px) {
+            body { padding: 10px; }
+            .wrap { width: calc(100vw - 20px); height: calc(100vh - 20px); gap: 10px; }
+            .topbar { min-height: auto; padding: 16px; }
+            .topbar-title { font-size: 23px; }
+            .pill { flex: 1 1 auto; min-width: 0; }
+            #pillSelected { max-width: 100%; }
+            .char-card { grid-template-columns: 72px minmax(0, 1fr) 36px; }
+            .card-stats { overflow: hidden; }
+            .card-stat { font-size: 11px; }
+        }
     </style>
 </head>
 
@@ -497,12 +1308,13 @@
         <section class="left">
             <div class="topbar">
                 <div>
-                    <h1 class="topbar-title">Veikeju Pasirinkimas</h1>
-                    <div class="topbar-sub">Pasirinkite veikeju prisijungti prie California RP.</div>
+                    <h1 class="topbar-title">Veik&#279;j&#371; pasirinkimas</h1>
+                    <div class="topbar-sub">Pasirinkite veik&#279;j&#261;, kad t&#281;stum&#279;te</div>
                 </div>
                 <div class="pills">
-                    <div class="pill" id="pillCount">Veikejai: 0</div>
+                    <div class="pill" id="pillCount">Veik&#279;jai: 0</div>
                     <div class="pill" id="pillSelected">Pasirinktas: –</div>
+                    <button id="createCharBtn" class="pill">Sukurti nauj&#261; veik&#279;j&#261;</button>
                 </div>
             </div>
 
@@ -513,26 +1325,101 @@
         <aside class="right-panel">
             <div class="panel-hero" id="panelHero">
                 <div class="panel-avatar" id="panelAvatar">?</div>
+                <div
+                    style="position:absolute;right:12px;top:12px;color:rgba(212,175,109,0.45);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;">
+                    Tiesioginė peržiūra</div>
                 <div class="panel-hero-meta">
-                    <div class="panel-label">Veikejo informacija</div>
-                    <div class="panel-name" id="panelName">Pasirinkite…</div>
+                    <div class="panel-label">Veik&#279;jo informacija</div>
+                    <div class="panel-name" id="panelName">Pasirinkite veik&#279;j&#261;</div>
                 </div>
             </div>
 
             <div class="panel-body" id="panelBody">
                 <div class="panel-placeholder">
-                    <div class="placeholder-icon">◈</div>
-                    <div class="placeholder-text">Paspauskite ant korteles kaireje kad matytumete detales ir
-                        prisijungtumete.</div>
+                    <div class="placeholder-icon">&#9670;</div>
+                    <div class="placeholder-text">Spustelėkite bet kurį veikėją kairėje, kad peržiūrėtumėte detales ir
+                        prisijungtum&#279;te.</div>
                 </div>
             </div>
 
             <div class="panel-footer" id="panelFooter" style="display:none;">
-                <button class="select-btn" id="selectBtn">Pasirinkti ir prisijungti</button>
-                <p class="status-hint" id="statusHint">Paruosta jungtis.</p>
+                <button class="select-btn" id="selectBtn">Prisijungti su šiuo veikėju</button>
+                <p class="status-hint" id="statusHint">Paruošta prisijungti.</p>
             </div>
         </aside>
 
+    </div>
+
+    <!-- Premium Create character modal -->
+    <div id="createModal"
+        style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(4,6,5,0.82);z-index:9999;backdrop-filter:blur(8px);">
+        <div
+            style="width:540px;background:var(--panel);border-radius:18px;border:1px solid var(--line);box-shadow:0 30px 70px rgba(0,0,0,0.6);padding:26px 28px;position:relative;overflow:hidden;">
+            <div
+                style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(to right,var(--gold),#b8945a);">
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+                <div>
+                    <div
+                        style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:var(--text-strong);letter-spacing:-0.01em;">
+                        Sukurti nauj&#261; veik&#279;j&#261;</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:2px;">Pateikite išsamią paraišką personalo
+                        peržiūrai</div>
+                </div>
+                <button id="cc_cancel"
+                    style="width:34px;height:34px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:18px;cursor:pointer;transition:all 0.2s ease;display:flex;align-items:center;justify-content:center;">&times;</button>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                <div>
+                    <div
+                        style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:5px;font-weight:600;">
+                        Vardas</div>
+                    <input id="cc_first" placeholder="Jonas" style="font-size:15px;" />
+                </div>
+                <div>
+                    <div
+                        style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:5px;font-weight:600;">
+                        Pavard&#279;</div>
+                    <input id="cc_last" placeholder="Petraitis" style="font-size:15px;" />
+                </div>
+                <div>
+                    <div
+                        style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:5px;font-weight:600;">
+                        Amžius</div>
+                    <input id="cc_age" placeholder="28" type="number" min="18" max="65" style="font-size:15px;" />
+                </div>
+                <div>
+                    <div
+                        style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:5px;font-weight:600;">
+                        Lytis</div>
+                    <input id="cc_gender" placeholder="Vyras / Moteris" style="font-size:15px;" />
+                </div>
+            </div>
+
+            <div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+                    <div
+                        style="font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);font-weight:600;">
+                        Veik&#279;jo biografija</div>
+                    <div id="bioCounter" style="font-size:11px;color:var(--muted);">0 / 50 žodžių</div>
+                </div>
+                <textarea id="cc_bio"
+                    placeholder="Parašykite išsamią savo veikėjo istoriją. Įtraukite jo praeitį, asmenybę ir motyvacijas. Patvirtinimui reikia mažiausiai 50 žodžių..."
+                    style="width:100%;height:132px;font-size:14px;line-height:1.5;"></textarea>
+            </div>
+
+            <div style="margin-top:18px;display:flex;gap:10px;align-items:center;">
+                <button id="cc_cancel2"
+                    style="flex:1;padding:13px 18px;border-radius:11px;border:1px solid var(--line);background:transparent;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer;transition:all 0.2s ease;">Atšaukti</button>
+                <button id="cc_submit"
+                    style="flex:2;padding:13px 18px;border-radius:11px;border:none;background:linear-gradient(145deg,var(--gold),#b8945a);color:#1a1408;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.2s ease;text-transform:uppercase;letter-spacing:0.04em;box-shadow:0 6px 18px rgba(197,163,110,0.3);">Pateikti
+                    paraišką</button>
+            </div>
+            <div style="text-align:center;margin-top:10px;font-size:10px;color:var(--muted);opacity:0.7;">Paraiškos
+                peržiūrimos personalo per 24 valandas</div>
+        </div>
     </div>
 
     <div class="watermark" id="watermark"></div>
@@ -567,64 +1454,220 @@
             setInterval(tick, 10000);
         })();
 
-        function displayCharacters(characters) {
+        // Approximate GTA hair color index -> hex (good enough for card indicators)
+        function hairColorToHex(idx) {
+            const palette = [
+                '#1a1a1a', '#2c2c2c', '#3f2a1f', '#5c4033', '#3c2f2f', '#4a3f35',
+                '#6b5c4a', '#8a6f47', '#a17a4f', '#c49a6c', '#d2b48c', '#e8d4b8',
+                '#2f2f2f', '#3a3a3a', '#4a4a4a', '#5a5a5a', '#6a6a6a', '#7a7a7a',
+                '#8a8a8a', '#9a9a9a', '#aaaaaa', '#bababa', '#cacaca', '#dadada',
+                '#1f3a2f', '#2a4a3a', '#3a5a4a', '#4a6a5a', '#5a7a6a', '#6a8a7a',
+                '#2a2a3a', '#3a3a4a', '#4a4a5a', '#5a5a6a', '#6a6a7a', '#7a7a8a',
+                '#8a3a3a', '#9a4a4a', '#aa5a5a', '#ba6a6a', '#ca7a7a', '#da8a8a',
+                '#3a2a1a', '#4a3a2a', '#5a4a3a', '#6a5a4a', '#7a6a5a', '#8a7a6a',
+                '#1a2a3a', '#2a3a4a', '#3a4a5a', '#4a5a6a', '#5a6a7a', '#6a7a8a',
+                '#2a1a3a', '#3a2a4a', '#4a3a5a', '#5a4a6a', '#6a5a7a', '#7a6a8a'
+            ];
+            return palette[idx % palette.length] || '#3f2a1f';
+        }
+
+        function displayCharacters(payload) {
+            // payload may be an object { approved: [], pending: [] } or a raw array for backward-compat
+            let approved = [];
+            let pending = [];
+            if (!payload) payload = {};
+            if (typeof payload === 'string') {
+                try { payload = JSON.parse(payload); } catch (e) { payload = {}; }
+            }
+            if (Array.isArray(payload)) approved = payload;
+            else {
+                approved = Array.isArray(payload.approved) ? payload.approved : [];
+                pending = Array.isArray(payload.pending) ? payload.pending : [];
+            }
+
             const list = document.getElementById('charList');
             list.innerHTML = '';
             lastCard = null;
             currentChar = null;
 
-            document.getElementById('pillCount').innerText = `Veikejai: ${characters.length}`;
+            const totalCount = approved.length + pending.length;
+            document.getElementById('pillCount').innerText = `Veikėjai: ${totalCount}`;
+            // Disable create button if there is already a pending request
+            const createBtnEl = document.getElementById('createCharBtn');
+            if (createBtnEl) {
+                if (pending.length > 0) {
+                    createBtnEl.disabled = true;
+                    createBtnEl.style.opacity = '0.6';
+                    createBtnEl.innerText = 'Paraiška laukiama';
+                } else {
+                    createBtnEl.disabled = false;
+                    createBtnEl.style.opacity = '1';
+                    createBtnEl.innerText = 'Susikurti veikėją';
+                }
+            }
             document.getElementById('pillSelected').innerText = 'Pasirinktas: –';
 
-            if (!Array.isArray(characters) || characters.length === 0) {
-                list.innerHTML = `<div class="list-empty">Neturite patvirtintu veikeju.<br>Susisiekite su administracija del patvirtinimo.</div>`;
+            // If there are no characters at all, show message encouraging creation
+            if (totalCount === 0) {
+                list.innerHTML = `
+                    <div class="list-empty">
+                        <div class="list-empty-icon">◇</div>
+                        <div style="font-weight:600;color:var(--text);margin-bottom:6px;">Dar nėra veikėjų</div>
+                        <div>Spustelėkite <strong>"Sukurti naują veikėją"</strong>, kad pateiktumėte paraišką<br>arba palaukite, kol esama bus peržiūrėta.</div>
+                    </div>`;
                 resetPanel();
                 return;
             }
 
-            characters.forEach((char, i) => {
+            // First render pending cards so player can see their status
+            pending.forEach((req, i) => {
                 const pal = PALETTES[i % PALETTES.length];
+                const initial = ((req.firstName || '?')[0] || '?').toUpperCase();
+                const div = document.createElement('div');
+                div.className = 'char-card pending';
+                div.style.animationDelay = `${Math.min(i, 10) * 45}ms`;
+                const fullname = `${req.firstName || ''} ${req.lastName || ''}`.trim();
+                const shortBio = (req.bio || '').length > 140 ? (req.bio || '').slice(0, 137) + '...' : (req.bio || '');
+                div.innerHTML = `
+                    <div class="card-band" style="background:linear-gradient(160deg,${pal[0]},${pal[1]});">${initial}</div>
+                    <div class="card-body">
+                        <p class="card-name">${fullname}</p>
+                        <div class="pending-badge"><span>...</span> LAUKIA PATVIRTINIMO</div>
+                        <div class="card-stats">
+                            <div class="card-stat"><span class="card-stat-icon">ID</span> <strong>${req.age || '-'}</strong> metai</div>
+                        </div>
+                        <div style="margin-top:4px;color:var(--muted);font-size:11px;line-height:1.3;">${shortBio}</div>
+                    </div>
+                    <div class="card-arrow">...</div>
+                `;
+                // pending cards are not selectable for login
+                list.appendChild(div);
+            });
+
+            // Then render approved characters
+            approved.forEach((char, i) => {
+                const pal = PALETTES[(i + pending.length) % PALETTES.length];
                 const initial = (char.name || '?')[0].toUpperCase();
                 const div = document.createElement('div');
                 div.className = 'char-card';
                 div.style.animationDelay = `${Math.min(i, 10) * 45}ms`;
+                const moneyFormatted = (char.money ?? 0).toLocaleString();
+                const bankFormatted = (char.bankBalance ?? 0).toLocaleString();
+                const healthVal = char.health ?? 100;
+
+                // Derive visual appearance for the card from saved clothes/barber when available
+                let bandStyle = `background:linear-gradient(160deg,${pal[0]},${pal[1]});`;
+                let headStyle = '';
+                let hairColor = null;
+                let clothingTint = null;
+
+                if (char.barber) {
+                    try {
+                        const b = (typeof char.barber === 'string') ? JSON.parse(char.barber) : char.barber;
+                        if (b && typeof b.hairColor === 'number') {
+                            hairColor = Math.max(0, Math.min(63, b.hairColor));
+                            const hairHex = hairColorToHex(hairColor);
+                            bandStyle = `background:linear-gradient(160deg, ${hairHex}, #1f2522);`;
+                            headStyle = `background:${hairHex}; border: 2px solid rgba(255,255,255,0.35);`;
+                        }
+                    } catch (e) { }
+                }
+
+                if (char.clothes) {
+                    try {
+                        const c = (typeof char.clothes === 'string') ? JSON.parse(char.clothes) : char.clothes;
+                        // Prefer jacket/torso (component 11) or undershirt (8) for a representative clothing color
+                        let clothEntry = c['11'] || c['8'] || c['3'] || null;
+                        if (clothEntry && typeof clothEntry.d === 'number') {
+                            // Use drawable variation as a simple hash seed for a pleasing tint
+                            const seed = Math.max(0, clothEntry.d) % 12;
+                            const baseTints = ['#3a4a3f', '#4a3a2a', '#2a3a4a', '#3a2a3a', '#2a4a3a', '#4a4a2a', '#3a3a4a', '#2a2a3a', '#3a4a2a', '#4a2a3a', '#2a3a3a', '#3a2a4a'];
+                            clothingTint = baseTints[seed] || '#3a4a3f';
+                        }
+                    } catch (e) { }
+                }
+
+                // Build a richer mini-PED preview for the card
+                let miniPedHTML = '';
+                const headHex = hairColor ? hairColorToHex(hairColor) : null;
+                const torsoHex = clothingTint || (hairColor ? hairColorToHex(Math.max(0, (hairColor + 3) % 60)) : null);
+
+                if (headHex || torsoHex) {
+                    const headBg = headHex || '#3f2a1f';
+                    const torsoBg = torsoHex || '#3a4a3f';
+                    miniPedHTML = `
+                        <div class="card-ped" title="Išvaizda">
+                            <div class="card-ped-hair" style="background:${headBg};"></div>
+                            <div class="card-ped-head" style="background:${headBg}; border-color: rgba(255,255,255,0.35);"></div>
+                            <div class="card-ped-torso" style="background:${torsoBg};"></div>
+                            <div class="card-ped-legs"></div>
+                            <div class="card-ped-arm left"></div>
+                            <div class="card-ped-arm right"></div>
+                        </div>`;
+                }
+
                 div.innerHTML = `
-                    <div class="card-band" style="background:linear-gradient(160deg,${pal[0]},${pal[1]});">${initial}</div>
+                    <div class="card-band" style="${bandStyle}">${initial}</div>
                     <div class="card-body">
                         <p class="card-name">${char.name}</p>
+                        <div class="card-subtitle">Registruotas veikėjas</div>
                         <div class="card-stats">
-                            <div class="card-stat">Grynieji <strong>$${(char.money ?? 0).toLocaleString()}</strong></div>
-                            <div class="card-stat">Bankas <strong>$${(char.bankBalance ?? 0).toLocaleString()}</strong></div>
-                            <div class="card-stat">Gyvybes <strong>${char.health ?? 100}</strong></div>
+                            <div class="card-stat"><span class="card-stat-icon">$</span> <strong>$${moneyFormatted}</strong></div>
+                            <div class="card-stat"><span class="card-stat-icon">B</span> <strong>$${bankFormatted}</strong></div>
+                            <div class="card-stat"><span class="card-stat-icon">H</span> <strong>${healthVal}</strong></div>
                         </div>
                     </div>
+                    ${miniPedHTML}
                     <div class="card-arrow">›</div>
                 `;
-                div.onclick = () => selectCard(char, div, pal, initial);
+
+                // Apply clothing tint to the card (subtle left accent)
+                if (clothingTint) {
+                    div.style.boxShadow = `0 0 0 1px ${clothingTint} inset, 0 8px 24px rgba(0,0,0,0.35)`;
+                }
+                div.onclick = () => selectCard(char, div, pal, initial, hairColor);
                 list.appendChild(div);
             });
 
             resetPanel();
-            const first = list.querySelector('.char-card');
-            if (first) {
-                first.click();
-            }
+            const first = list.querySelector('.char-card:not(.pending)');
+            if (first) first.click();
         }
 
         function resetPanel() {
             const hero = document.getElementById('panelHero');
-            hero.style.background = 'linear-gradient(155deg,#6bb88e 0%,#4a926d 100%)';
+            hero.style.background = 'linear-gradient(165deg, #1a211d 0%, #121815 100%)';
             hero.setAttribute('data-initial', '');
             document.getElementById('panelAvatar').innerText = '?';
-            document.getElementById('panelName').innerText = 'Pasirinkite…';
+            document.getElementById('panelName').innerText = 'Pasirinkite veikėją';
             document.getElementById('panelBody').innerHTML = `
                 <div class="panel-placeholder">
-                    <div class="placeholder-icon">◈</div>
-                    <div class="placeholder-text">Paspauskite ant korteles kaireje kad matytumete detales ir prisijungtumete.</div>
+                    <div class="placeholder-icon">&#9670;</div>
+                                        <div class="placeholder-text">Spustelėkite bet kurį veikėją kairėje, kad peržiūrėtumėte detales ir prisijungtum&#279;te.</div>
                 </div>`;
             document.getElementById('panelFooter').style.display = 'none';
         }
 
+        // Rejection / acceptance banner
+        function showBanner(text, type) {
+            // remove existing
+            const existing = document.getElementById('charBanner');
+            if (existing) existing.remove();
+            const b = document.createElement('div'); b.id = 'charBanner';
+            b.style.position = 'fixed'; b.style.top = '18px'; b.style.left = '50%'; b.style.transform = 'translateX(-50%)';
+            b.style.background = type === 'error' ? '#f8d7da' : '#d4edda';
+            b.style.color = '#111'; b.style.padding = '10px 14px'; b.style.borderRadius = '8px'; b.style.boxShadow = '0 6px 18px rgba(0,0,0,0.12)';
+            b.style.zIndex = '9999'; b.style.maxWidth = '760px'; b.style.display = 'flex'; b.style.justifyContent = 'space-between'; b.style.alignItems = 'center';
+            const msg = document.createElement('div'); msg.style.marginRight = '12px'; msg.innerText = text;
+            const close = document.createElement('button'); close.innerText = 'Uždaryti'; close.style.background = 'transparent'; close.style.border = '1px solid rgba(0,0,0,0.05)'; close.style.padding = '6px 10px'; close.style.borderRadius = '6px'; close.onclick = () => b.remove();
+            b.appendChild(msg); b.appendChild(close);
+            document.body.appendChild(b);
+        }
+
+        // alias for legacy alert usage: non-blocking toast
+        function showToast(text, type) {
+            showBanner(text, type === 'error' ? 'error' : 'ok');
+        }
         function selectCard(char, card, pal, initial) {
             if (lastCard) lastCard.classList.remove('selected');
             card.classList.add('selected');
@@ -642,40 +1685,248 @@
             const hpPct = Math.min(100, Math.round(((char.health ?? 100) / 200) * 100));
             const moneyNum = char.money ?? 0;
             const bankNum = char.bankBalance ?? 0;
-            const playtime = char.playtimeFormatted ?? '0 val.';
+            const playtime = char.playtimeFormatted ?? '0h';
 
             document.getElementById('panelBody').innerHTML = `
-                <div class="stat-section">
-                    <div class="stat-header">Gyvybes <span>${char.health ?? 100} / 200</span></div>
-                    <div class="stat-bar">
-                        <div class="stat-fill" style="width:${hpPct}%;background:linear-gradient(90deg,#74c99a,#55b280);"></div>
+                <div class="profile-summary">
+                    <div class="wealth-row">
+                        <div class="wealth-card">
+                            <div class="wealth-icon cash">$</div>
+                            <div style="min-width:0;flex:1">
+                                <div class="wealth-label">Grynieji</div>
+                                <div class="wealth-value">$${moneyNum.toLocaleString()}</div>
+                            </div>
+                        </div>
+                        <div class="wealth-card">
+                            <div class="wealth-icon bank">B</div>
+                            <div style="min-width:0;flex:1">
+                                <div class="wealth-label">Bankas</div>
+                                <div class="wealth-value">$${bankNum.toLocaleString()}</div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="divider"></div>
-                <div class="info-grid">
-                    <div class="info-chip">
-                        <div class="info-chip-label">Grynieji</div>
-                        <div class="info-chip-value">$${moneyNum.toLocaleString()}</div>
+
+                    <div class="health-visual">
+                        <div class="health-header">
+                            <div class="health-title">Sveikata</div>
+                            <div class="health-value">${char.health ?? 100}<span style="opacity:0.5;font-weight:500">/200</span></div>
+                        </div>
+                        <div class="health-bar-wrap">
+                            <div class="health-bar" style="width:${hpPct}%;"></div>
+                        </div>
                     </div>
-                    <div class="info-chip">
-                        <div class="info-chip-label">Bankas</div>
-                        <div class="info-chip-value">$${bankNum.toLocaleString()}</div>
-                    </div>
-                    <div class="info-chip">
-                        <div class="info-chip-label">Zaidimo laikas</div>
-                        <div class="info-chip-value">${playtime}</div>
-                    </div>
-                    <div class="info-chip">
-                        <div class="info-chip-label">Busena</div>
-                        <div class="info-chip-value" style="color:#3a8a5c;">Aktyvi ✓</div>
+
+                    <div class="meta-pills">
+                        <div class="meta-pill">
+                            <div class="meta-pill-label">Žaidimo laikas</div>
+                            <div class="meta-pill-value">${playtime}</div>
+                        </div>
+                        <div class="meta-pill">
+                            <div class="meta-pill-label">Statusas</div>
+                            <div class="meta-pill-value" style="color:#7bc99a">Aktyvus ?</div>
+                        </div>
                     </div>
                 </div>`;
 
             const footer = document.getElementById('panelFooter');
             footer.style.display = 'flex';
-            document.getElementById('statusHint').innerText = `Paruosta jungtis su ${char.name}`;
+            document.getElementById('statusHint').innerText = `Paruošta jungtis su ${char.name}`;
             document.getElementById('selectBtn').onclick = () => mp.trigger('selectCharacter', char.id);
+
+            // Ask client to preview this character (teleport local player and focus camera)
+            try { mp.trigger('previewCharacter', char.id); } catch (e) { }
         }
+
+        function showPendingInPanel(req, pal, initial) {
+            try {
+                document.getElementById('pillSelected').innerText = `Pasirinktas: ${req.firstName} ${req.lastName}`;
+                const hero = document.getElementById('panelHero');
+                hero.style.background = `linear-gradient(155deg,${pal[0]} 0%,${pal[1]} 100%)`;
+                hero.setAttribute('data-initial', initial);
+                document.getElementById('panelAvatar').innerText = initial;
+                document.getElementById('panelName').innerText = `${req.firstName || ''} ${req.lastName || ''}`.trim();
+
+                const shortBio = (req.bio || '').length > 800 ? (req.bio || '').slice(0, 797) + '...' : (req.bio || '');
+                document.getElementById('panelBody').innerHTML = `
+                    <div style="padding:4px 2px;">
+                        <div style="font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin-bottom:6px;font-weight:600;">LAUKIANTI PARAIŠKA</div>
+                        <div style="font-size:13px;color:var(--muted);margin-bottom:6px;">Biografija</div>
+                        <div style="font-size:13.5px;color:var(--text);line-height:1.45;white-space:pre-wrap;">${shortBio}</div>
+                        <div style="height:14px"></div>
+                        <div style="display:flex;gap:10px;align-items:stretch;margin-top:6px;">
+                            <div style="flex:1;background:var(--panel-strong);padding:10px 12px;border-radius:10px;border:1px solid var(--line);font-size:12px;color:var(--muted);">
+                                <div style="font-size:9px;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">Amžius</div>
+                                <div style="font-size:16px;font-weight:700;color:var(--text-strong);">${req.age || '-'}</div>
+                            </div>
+                            <div style="flex:1;background:var(--panel-strong);padding:10px 12px;border-radius:10px;border:1px solid var(--line);font-size:12px;color:var(--muted);">
+                                <div style="font-size:9px;letter-spacing:0.08em;text-transform:uppercase;margin-bottom:2px;">Lytis</div>
+                                <div style="font-size:16px;font-weight:700;color:var(--text-strong);">${req.gender || '-'}</div>
+                            </div>
+                        </div>
+                    </div>`;
+
+                // hide footer select button for pending entries
+                document.getElementById('panelFooter').style.display = 'none';
+            } catch (e) { console.error('showPendingInPanel error', e); }
+        }
+
+        // Create character modal handlers with word-count validation
+        const createBtn = document.getElementById('createCharBtn');
+        const modal = document.getElementById('createModal');
+        const cancel = document.getElementById('cc_cancel');
+        const cancel2 = document.getElementById('cc_cancel2');
+        const submit = document.getElementById('cc_submit');
+        const bioField = document.getElementById('cc_bio');
+        const firstField = document.getElementById('cc_first');
+        const lastField = document.getElementById('cc_last');
+        const ageField = document.getElementById('cc_age');
+        const genderField = document.getElementById('cc_gender');
+        const bioCounter = document.getElementById('bioCounter');
+
+        function countWords(text) { return (String(text || '').trim().split(/\s+/).filter(Boolean)).length; }
+
+        function canSubmit() {
+            const wc = bioField ? countWords(bioField.value) : 0;
+            const hasNames = (firstField && firstField.value && String(firstField.value).trim().length > 0) && (lastField && lastField.value && String(lastField.value).trim().length > 0);
+            return hasNames && wc >= 50;
+        }
+
+        function updateWordHint() {
+            const wc = bioField ? countWords(bioField.value) : 0;
+            if (bioCounter) {
+                const need = Math.max(0, 50 - wc);
+                if (wc >= 50) {
+                    bioCounter.innerHTML = `<span style="color:#7bc99a">${wc} / 50 žodžių ✓</span>`;
+                } else {
+                    bioCounter.innerHTML = `${wc} / 50 žodžių <span style="opacity:0.6">(truksta ${need})</span>`;
+                }
+            }
+            if (submit) {
+                const ok = canSubmit();
+                submit.disabled = !ok;
+                submit.style.opacity = ok ? '1' : '0.55';
+                submit.style.filter = ok ? 'none' : 'grayscale(0.3)';
+            }
+        }
+
+        function openCreateModal() {
+            if (!modal) return;
+            modal.style.display = 'flex';
+            if (firstField) firstField.focus();
+            updateWordHint();
+        }
+
+        function closeCreateModal() {
+            if (modal) modal.style.display = 'none';
+        }
+
+        if (createBtn) createBtn.onclick = openCreateModal;
+        if (cancel) cancel.onclick = closeCreateModal;
+        if (cancel2) cancel2.onclick = closeCreateModal;
+        if (bioField) bioField.addEventListener('input', updateWordHint);
+        if (firstField) firstField.addEventListener('input', updateWordHint);
+        if (lastField) lastField.addEventListener('input', updateWordHint);
+        updateWordHint();
+
+        if (submit) submit.onclick = () => {
+            // Prevent submission when disabled
+            if (submit.disabled) { return; }
+            // disable immediately to avoid double-clicks
+            submit.disabled = true;
+            const prevText = submit.innerText;
+            submit.innerText = 'Siunciama...';
+            const f = firstField ? String(firstField.value || '').trim() : '';
+            const l = lastField ? String(lastField.value || '').trim() : '';
+            const a = ageField ? String(ageField.value || '').trim() : '';
+            const g = genderField ? String(genderField.value || '').trim() : '';
+            const b = bioField ? String(bioField.value || '').trim() : '';
+            if (!f || !l) { showToast('Iveskite varda ir pavarde.', 'error'); submit.disabled = false; submit.innerText = prevText; return; }
+            const wc = countWords(b);
+            if (wc < 50) { showToast('Biografija turi būti mažiausiai 50 žodžių.', 'error'); submit.disabled = false; submit.innerText = prevText; return; }
+            try {
+                mp.trigger('createCharacterRequest', f, l, a, g, b);
+            } catch (e) {
+                console.error('mp.trigger failed', e);
+                showToast('Nepavyko siųsti paraiškos. Bandykite dar kartą.', 'error');
+                submit.disabled = false; submit.innerText = prevText;
+                return;
+            }
+            if (modal) modal.style.display = 'none';
+        };
+
+        // Callbacks from server
+        window.characterCreateError = function (msg) {
+            try {
+                const obj = typeof msg === 'string' ? JSON.parse(msg) : msg;
+                showToast(obj && obj.message ? obj.message : 'Klaida', 'error');
+                try { if (submit) { submit.disabled = false; submit.style.opacity = '1'; submit.innerText = 'Siųsti paraišką'; } } catch (e) { }
+            } catch (e) { showToast(String(msg || 'Klaida'), 'error'); }
+        };
+
+        window.characterCreateOk = function (obj) {
+            // obj is an object with id, names, bio, createdAt
+            try {
+                const data = (typeof obj === 'string') ? JSON.parse(obj) : obj;
+                showToast(data.message || 'Paraiška išsiųsta', 'ok');
+                // Add a pending card to the top of the list and show it in the panel
+                try {
+                    const list = document.getElementById('charList');
+                    const pal = PALETTES[0];
+                    const div = document.createElement('div');
+                    div.className = 'char-card pending';
+                    div.style.animationDelay = '0ms';
+                    const initial = ((data.firstName || '?')[0] || '?').toUpperCase();
+                    const fullname = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+                    const shortBio = (data.bio || '').length > 140 ? (data.bio || '').slice(0, 137) + '...' : (data.bio || '');
+                    div.innerHTML = `
+                        <div class="card-band" style="background:linear-gradient(160deg,${pal[0]},${pal[1]});">${initial}</div>
+                        <div class="card-body">
+                            <p class="card-name">${fullname}</p>
+                            <div class="card-stats">
+                                <div class="card-stat">Statusas <strong>Laukiama</strong></div>
+                                <div class="card-stat">Amžius <strong>${data.age || '-'}</strong></div>
+                            </div>
+                            <div style="margin-top:6px;color:var(--muted);font-size:12px;">${shortBio}</div>
+                        </div>
+                        <div class="card-arrow">...</div>
+                    `;
+                    list.insertBefore(div, list.firstChild);
+                    const pill = document.getElementById('pillCount');
+                    const current = Number(pill.innerText.replace(/[^0-9]/g, '')) || 0;
+                    pill.innerText = `Veikėjai: ${current + 1}`;
+                    // disable create button to enforce single pending request
+                    const createBtnEl = document.getElementById('createCharBtn');
+                    if (createBtnEl) { createBtnEl.disabled = true; createBtnEl.style.opacity = '0.6'; createBtnEl.innerText = 'Paraiška laukiama'; }
+
+                    // Show pending details immediately in the right panel (non-selectable but visible)
+                    try { showPendingInPanel(data, pal, initial); } catch (e) { console.error('showPendingInPanel failed', e); }
+                } catch (e) { console.error('Failed to insert pending card', e); }
+            } catch (e) {
+                console.error(e);
+                showToast('Paraiška išsiųsta', 'ok');
+            }
+        };
+
+        // Exposed handlers for server notifications
+        window.showRejected = function (payload) {
+            try {
+                const obj = (typeof payload === 'string') ? JSON.parse(payload) : payload;
+                const text = obj && obj.message ? obj.message : 'Jūsų paraiška atmesta.';
+                showBanner(text, 'error');
+                // re-enable create button so player can re-submit later after rejection
+                const createBtnEl = document.getElementById('createCharBtn');
+                if (createBtnEl) { createBtnEl.disabled = false; createBtnEl.style.opacity = '1'; createBtnEl.innerText = 'Susikurti veikėją'; }
+            } catch (e) { console.error(e); }
+        };
+
+        window.showAccepted = function (payload) {
+            try {
+                const obj = (typeof payload === 'string') ? JSON.parse(payload) : payload;
+                const text = obj && obj.message ? obj.message : 'Jūsų veikėjas patvirtintas.';
+                showBanner(text, 'ok');
+                // refresh will happen via server loadCharacterSelection call
+            } catch (e) { console.error(e); }
+        };
     </script>
 </body>
 

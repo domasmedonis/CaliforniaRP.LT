@@ -305,7 +305,12 @@
             bandage: 'BND',
             medkit: 'MED',
             cigarettes: 'CIG',
-            beer: 'ALU'
+            beer: 'ALU',
+            watch: 'WCH',
+            laptop: 'LPT',
+            necklace: 'NCK',
+            ring: 'RNG',
+            camera: 'CAM'
         };
 
         function parseInventory(itemsJson) {
@@ -390,7 +395,7 @@
                     card.innerHTML = `
                         <div class="meta">
                             <span>${Number(item.quantity || 0)} vnt.</span>
-                            <span>${item.usable ? 'naudojamas' : 'daiktas'}</span>
+                            <span>${String(item.id || '').slice(-6)}</span>
                         </div>
                         <div class="${iconClass}">${iconContent}</div>
                         <div class="name">${item.name || 'Daiktas'}</div>

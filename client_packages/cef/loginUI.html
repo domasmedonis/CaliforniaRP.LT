@@ -326,6 +326,10 @@
                 <div class="button-wrap"><button id="login-btn" onclick="submitLogin()">Prisijungti</button></div>
                 <div id="error-message"></div>
                 <p class="hint">Spauskite Enter greitam prisijungimui.</p>
+                <p style="text-align:center;margin-top:8px;color:#51605a">Neturite paskyros? <a href="#"
+                        onclick="mp.trigger('openRegisterFromUI')">Sukurti paskyra</a></p>
+                <p style="text-align:center;margin-top:6px;color:#51605a">Pamiršote slaptažodį? <a href="#"
+                        onclick="showForgot()">Pamiršau slaptažodį</a></p>
             </div>
         </div>
 
@@ -343,6 +347,50 @@
                 <div class="chip-value">Neatskleiskite slaptažodzio</div>
             </div>
         </aside>
+    </div>
+
+    <div id="forgot-container" style="display:none;">
+        <div class="login-container" style="max-width:520px;margin:40px auto">
+            <h2 class="hero-title">Pamiršote slaptažodį</h2>
+            <p class="hero-sub">Įveskite el. paštą ir mes atsiųsime jums patvirtinimo kodą.</p>
+            <div id="forgot-step-email">
+                <div class="input-group">
+                    <label class="input-label" for="forgot-email">El. paštas</label>
+                    <input type="email" id="forgot-email" placeholder="you@example.com">
+                </div>
+                <div class="button-wrap"><button id="forgot-send-btn" onclick="sendForgotEmail()">Siųsti kodą</button>
+                </div>
+                <div id="forgot-error" style="display:none;margin-top:8px;color:#7b2424"></div>
+            </div>
+            <div id="forgot-step-code" style="display:none">
+                <div class="input-group">
+                    <label class="input-label" for="forgot-code">Patvirtinimo kodas</label>
+                    <input type="text" id="forgot-code" placeholder="Įveskite kodą">
+                </div>
+                <div class="button-wrap"><button id="forgot-verify-btn" onclick="submitResetCode()">Patvirtinti
+                        kodą</button></div>
+                <div id="forgot-code-error" style="display:none;margin-top:8px;color:#7b2424"></div>
+            </div>
+            <div id="forgot-step-reset" style="display:none">
+                <div class="input-group">
+                    <label class="input-label">Vartotojo vardas</label>
+                    <div id="reset-username" style="font-weight:600;margin-bottom:8px"></div>
+                </div>
+                <div class="input-group">
+                    <label class="input-label" for="new-pass">Naujas slaptažodis</label>
+                    <input type="password" id="new-pass" placeholder="••••••••">
+                </div>
+                <div class="input-group">
+                    <label class="input-label" for="new-pass-confirm">Pakartokite naują slaptažodį</label>
+                    <input type="password" id="new-pass-confirm" placeholder="••••••••">
+                </div>
+                <div class="button-wrap"><button id="reset-submit-btn" onclick="submitNewPassword()">Pakeisti
+                        slaptažodį</button></div>
+                <div id="forgot-reset-error" style="display:none;margin-top:8px;color:#7b2424"></div>
+            </div>
+            <p style="margin-top:12px;text-align:center"><a href="#" onclick="hideForgot()">Grįžti į prisijungimą</a>
+            </p>
+        </div>
     </div>
 
     <script>
@@ -396,6 +444,94 @@
 
             mp.trigger('login:hideCursor');
         }
+
+        // Forgot password flow
+        function showForgot() {
+            document.querySelector('.ui-shell').style.display = 'none';
+            document.getElementById('forgot-container').style.display = 'block';
+            hideAllForgotSteps();
+            document.getElementById('forgot-step-email').style.display = 'block';
+            hideErrorMessage();
+        }
+        function hideForgot() {
+            document.querySelector('.ui-shell').style.display = '';
+            document.getElementById('forgot-container').style.display = 'none';
+        }
+        function hideAllForgotSteps() {
+            document.getElementById('forgot-step-email').style.display = 'none';
+            document.getElementById('forgot-step-code').style.display = 'none';
+            document.getElementById('forgot-step-reset').style.display = 'none';
+            document.getElementById('forgot-error').style.display = 'none';
+            document.getElementById('forgot-code-error').style.display = 'none';
+            document.getElementById('forgot-reset-error').style.display = 'none';
+        }
+
+        function sendForgotEmail() {
+            const email = document.getElementById('forgot-email').value.trim();
+            if (!email) { document.getElementById('forgot-error').innerText = 'Įveskite el. paštą.'; document.getElementById('forgot-error').style.display = 'block'; return; }
+            document.getElementById('forgot-error').style.display = 'none';
+            const btn = document.getElementById('forgot-send-btn'); btn.classList.add('loading'); btn.innerText = 'Siunčiama...';
+            try { mp.trigger('forgotPassword', email); } catch (e) { console.error(e); }
+            setTimeout(() => { btn.classList.remove('loading'); btn.innerText = 'Siųsti kodą'; }, 3000);
+        }
+
+        function submitResetCode() {
+            const code = document.getElementById('forgot-code').value.trim();
+            if (!code) { document.getElementById('forgot-code-error').innerText = 'Įveskite kodą.'; document.getElementById('forgot-code-error').style.display = 'block'; return; }
+            document.getElementById('forgot-code-error').style.display = 'none';
+            const btn = document.getElementById('forgot-verify-btn'); btn.classList.add('loading'); btn.innerText = 'Tikrinama...';
+            try { mp.trigger('verifyResetCode', code); } catch (e) { console.error(e); }
+            // keep enabled in case of delays
+            setTimeout(() => { btn.classList.remove('loading'); btn.innerText = 'Patvirtinti kodą'; }, 3000);
+        }
+
+        function submitNewPassword() {
+            const pass = document.getElementById('new-pass').value;
+            const pass2 = document.getElementById('new-pass-confirm').value;
+            if (!pass || pass.length < 6) { document.getElementById('forgot-reset-error').innerText = 'Slaptažodis turi būti bent 6 simbolių.'; document.getElementById('forgot-reset-error').style.display = 'block'; return; }
+            if (pass !== pass2) { document.getElementById('forgot-reset-error').innerText = 'Slaptažodžiai nesutampa.'; document.getElementById('forgot-reset-error').style.display = 'block'; return; }
+            document.getElementById('forgot-reset-error').style.display = 'none';
+            const btn = document.getElementById('reset-submit-btn'); btn.classList.add('loading'); btn.innerText = 'Pakeičiama...';
+            try { mp.trigger('resetPassword', window.__reset_code || '', pass); } catch (e) { console.error(e); }
+            setTimeout(() => { btn.classList.remove('loading'); btn.innerText = 'Pakeisti slaptažodį'; }, 3000);
+        }
+
+        // Callbacks from server forwarded through gamemode bridge
+        window.forgotSent = function (message) {
+            hideAllForgotSteps();
+            document.getElementById('forgot-step-code').style.display = 'block';
+            document.getElementById('forgot-code-error').style.display = 'none';
+            // optionally show a confirmation
+            document.getElementById('forgot-error').innerText = String(message || 'Patvirtinimo kodas išsiųstas.');
+            document.getElementById('forgot-error').style.display = 'block';
+        }
+        window.forgotError = function (message) {
+            document.getElementById('forgot-error').innerText = String(message || 'Klaida');
+            document.getElementById('forgot-error').style.display = 'block';
+        }
+        window.resetCodeOk = function (username) {
+            hideAllForgotSteps();
+            document.getElementById('forgot-step-reset').style.display = 'block';
+            document.getElementById('reset-username').innerText = String(username || '');
+            // store code for subsequent reset
+            window.__reset_code = document.getElementById('forgot-code').value.trim();
+        }
+        window.resetCodeError = function (message) {
+            document.getElementById('forgot-code-error').innerText = String(message || 'Klaida patvirtinant kodą.');
+            document.getElementById('forgot-code-error').style.display = 'block';
+        }
+        window.resetSuccess = function (message) {
+            document.getElementById('forgot-reset-error').style.display = 'none';
+            document.getElementById('forgot-error').innerText = String(message || 'Slaptažodis pakeistas.');
+            document.getElementById('forgot-error').style.display = 'block';
+            setTimeout(() => { hideForgot(); }, 1200);
+        }
+        window.resetError = function (message) {
+            document.getElementById('forgot-reset-error').innerText = String(message || 'Klaida keičiant slaptažodį.');
+            document.getElementById('forgot-reset-error').style.display = 'block';
+        }
+
+        function hideErrorMessage() { const el = document.getElementById('error-message'); if (el) el.style.display = 'none'; }
 
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {

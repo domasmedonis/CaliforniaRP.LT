@@ -1,0 +1,203 @@
+﻿<!DOCTYPE html>
+<html lang="lt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DMV testas</title>
+    <style>
+        :root {
+            --panel: #ffffff;
+            --soft: #eef8ff;
+            --line: rgba(31, 91, 128, 0.16);
+            --text: #183244;
+            --muted: #657b8d;
+            --accent: #18c7d2;
+            --accent-2: #3b8cff;
+            --bad: #d94b61;
+            --shadow: 0 22px 70px rgba(34, 78, 120, 0.24);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            background: transparent !important;
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+
+        .panel {
+            width: min(620px, calc(100vw - 48px));
+            max-height: calc(100vh - 48px);
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(236, 249, 255, 0.96));
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .head,
+        .actions {
+            padding: 18px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .actions {
+            border-bottom: 0;
+            border-top: 1px solid var(--line);
+            display: flex;
+            gap: 10px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 23px;
+            line-height: 1.1;
+        }
+
+        .sub {
+            margin-top: 5px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .questions {
+            padding: 14px 18px;
+            overflow-y: auto;
+            display: grid;
+            gap: 12px;
+        }
+
+        .q {
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.72);
+        }
+
+        .q-title {
+            font-weight: 800;
+            margin-bottom: 9px;
+        }
+
+        label {
+            display: block;
+            padding: 8px 9px;
+            border-radius: 7px;
+            color: var(--muted);
+            cursor: pointer;
+        }
+
+        label:hover {
+            background: rgba(24, 199, 210, 0.08);
+            color: var(--text);
+        }
+
+        input {
+            margin-right: 8px;
+        }
+
+        button {
+            height: 40px;
+            border: 0;
+            border-radius: 8px;
+            padding: 0 16px;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .primary {
+            flex: 1;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #061014;
+        }
+
+        .ghost {
+            background: #fff;
+            color: var(--text);
+            border: 1px solid var(--line);
+        }
+
+        .status {
+            color: var(--bad);
+            font-size: 13px;
+            min-height: 18px;
+            padding: 0 18px 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="panel">
+        <div class="head">
+            <h1>DMV vairavimo teorija</h1>
+            <div class="sub">Atsakykite teisingai, kad galetumete pradeti praktini vaziavima.</div>
+        </div>
+        <section class="questions">
+            <div class="q">
+                <div class="q-title">1. Ka darote prie STOP zenklo?</div>
+                <label><input type="radio" name="q1" value="a"> Sustojate pilnai ir isitikinate, kad saugu vaziuoti.</label>
+                <label><input type="radio" name="q1" value="b"> Suletinate, bet nestojate, jei kelias tuscias.</label>
+            </div>
+            <div class="q">
+                <div class="q-title">2. Mieste vaziuojant salia pesciuju perejos reikia:</div>
+                <label><input type="radio" name="q2" value="a"> Didinti greiti.</label>
+                <label><input type="radio" name="q2" value="b"> Suletinti ir praleisti pesciuosius.</label>
+            </div>
+            <div class="q">
+                <div class="q-title">3. Raudonas sviesoforo signalas reiskia:</div>
+                <label><input type="radio" name="q3" value="a"> Vaziuoti galima, jei skubate.</label>
+                <label><input type="radio" name="q3" value="b"> Sustoti ir laukti leidziamo signalo.</label>
+            </div>
+            <div class="q">
+                <div class="q-title">4. Saugus vairavimas reiskia:</div>
+                <label><input type="radio" name="q4" value="a"> Laikytis atstumo, greicio ir kelio taisykliu.</label>
+                <label><input type="radio" name="q4" value="b"> Vaziuoti kuo greiciau iki tikslo.</label>
+            </div>
+        </section>
+        <div class="status" id="status"></div>
+        <div class="actions">
+            <button class="ghost" onclick="closeDMV()">Uzdaryti</button>
+            <button class="primary" onclick="submitDMV()">Pradeti vaziavima</button>
+        </div>
+    </main>
+
+    <script>
+        function getAnswer(name) {
+            const selected = document.querySelector(`input[name="${name}"]:checked`);
+            return selected ? selected.value : '';
+        }
+
+        function submitDMV() {
+            const answers = [getAnswer('q1'), getAnswer('q2'), getAnswer('q3'), getAnswer('q4')];
+            if (answers.some(answer => !answer)) {
+                document.getElementById('status').textContent = 'Atsakykite i visus klausimus.';
+                return;
+            }
+
+            mp.trigger('submitDMVTheory', JSON.stringify(answers));
+        }
+
+        function closeDMV() {
+            mp.trigger('closeDMVQuiz');
+        }
+    </script>
+</body>
+
+</html>

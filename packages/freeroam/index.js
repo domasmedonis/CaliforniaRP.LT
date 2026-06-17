@@ -1,4 +1,4 @@
-const bcrypt = require('bcrypt');
+﻿const bcrypt = require('bcrypt');
 const mysql = require('mysql');
 const moment = require('moment-timezone');
 
@@ -9,12 +9,31 @@ const activeRides = new Map();
 const activeCalls = new Map();
 const pendingRentOffers = new Map();
 const vehicleFuelRuntimeState = new Map();
+const activeDMVTests = new Map();
 
 const INVENTORY_GIVE_RADIUS = 5.0;
 const WEAPON_GIVE_RADIUS = 5.0;
 const DEFAULT_WEAPON_AMMO = 120;
 const VEHICLE_WEAPON_STASH_LIMIT = 10;
 const WEAPON_PACKAGE_LIMIT = 5;
+const DMV_PICKUP_POS = new mp.Vector3(-270.86, -693.14, 34.28);
+const DMV_INTERACT_RADIUS = 3.2;
+const DMV_TEST_FEE = 500;
+const DMV_TEST_VEHICLE_MODEL = 'blista';
+const DMV_TEST_SPAWN_POS = new mp.Vector3(-315.09, -697.30, 33.03);
+const DMV_TEST_SPAWN_HEADING = 160.0;
+const DMV_ROUTE_POINTS = Object.freeze([
+    { x: -322.50, y: -674.34, z: 32.41 },
+    { x: -289.91, y: -660.94, z: 33.25 },
+    { x: -193.08, y: -513.48, z: 34.51 },
+    { x: -110.51, y: -251.09, z: 44.31 },
+    { x: -44.91, y: -125.63, z: 57.51 },
+    { x: 35.77, y: -253.21, z: 47.74 },
+    { x: -66.57, y: -525.56, z: 40.15 },
+    { x: -230.79, y: -669.11, z: 33.26 },
+    { x: -322.50, y: -674.34, z: 32.41 },
+]);
+const DMV_THEORY_ANSWERS = Object.freeze(['a', 'b', 'b', 'a']);
 const WEAPON_UNARMED_HASH = typeof mp.joaat === 'function' ? mp.joaat('weapon_unarmed') : 2725352035;
 const WEAPON_NAME_TO_MODEL = Object.freeze({
     unarmed: 'weapon_unarmed',
@@ -135,6 +154,61 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
         giveable: false,
         consumeOnUse: true,
     },
+    watch: {
+        name: 'Watch',
+        description: 'Pawnable valuable item.',
+        icon: 'watch',
+        usable: false,
+        droppable: true,
+        giveable: true,
+        stackable: false,
+        pawnItem: true,
+        originalPrice: 1200,
+    },
+    laptop: {
+        name: 'Laptop',
+        description: 'Pawnable electronic item.',
+        icon: 'laptop',
+        usable: false,
+        droppable: true,
+        giveable: true,
+        stackable: false,
+        pawnItem: true,
+        originalPrice: 2500,
+    },
+    necklace: {
+        name: 'Necklace',
+        description: 'Pawnable jewelry item.',
+        icon: 'necklace',
+        usable: false,
+        droppable: true,
+        giveable: true,
+        stackable: false,
+        pawnItem: true,
+        originalPrice: 1800,
+    },
+    ring: {
+        name: 'Ring',
+        description: 'Pawnable jewelry item.',
+        icon: 'ring',
+        usable: false,
+        droppable: true,
+        giveable: true,
+        stackable: false,
+        pawnItem: true,
+        originalPrice: 950,
+    },
+    camera: {
+        name: 'Camera',
+        description: 'Pawnable electronic item.',
+        icon: 'camera',
+        usable: false,
+        droppable: true,
+        giveable: true,
+        stackable: false,
+        pawnItem: true,
+        originalPrice: 1500,
+    },
 });
 
 const INVENTORY_ITEM_ALIASES = Object.freeze({
@@ -156,6 +230,16 @@ const INVENTORY_ITEM_ALIASES = Object.freeze({
     simcard: 'simcard',
     simkortele: 'simcard',
     sim_kortele: 'simcard',
+    watch: 'watch',
+    laikrodis: 'watch',
+    laptop: 'laptop',
+    kompiuteris: 'laptop',
+    necklace: 'necklace',
+    grandinele: 'necklace',
+    ring: 'ring',
+    ziedas: 'ring',
+    camera: 'camera',
+    kamera: 'camera',
 });
 
 const TWITTER_COOLDOWN = 3600000; // 1 hour between posts
@@ -179,6 +263,7 @@ const VEHICLE_FUEL_DISTANCE_MULTIPLIER = 0.16;
 const FUEL_PRICE_PER_UNIT = 7;
 const FLEECA_OPEN_BANK_RADIUS = 6.0;
 const BANK_ACCOUNT_NUMBER_LENGTH = 10;
+const PAWN_AUTO_SELL_RATE = 0.30;
 const DOWNED_ACCEPTDEATH_DELAY_MS = 120000;
 const DEATH_RESPAWN_PENALTY_CASH = 500;
 const HOSPITAL_RESPAWN_POS = new mp.Vector3(361.69, -583.99, 28.83);
@@ -262,6 +347,13 @@ const BUSINESS_TYPE_DEFS = Object.freeze({
         buyEnabled: false,
         products: [],
     },
+    pawn_shop: {
+        label: 'Lombardas',
+        blipColor: 46,
+        markerColor: [241, 196, 15, 150],
+        buyEnabled: false,
+        products: [],
+    },
 });
 
 const BUSINESS_TYPE_ALIASES = Object.freeze({
@@ -274,6 +366,10 @@ const BUSINESS_TYPE_ALIASES = Object.freeze({
     degaline: 'gas_station',
     restaurant: 'restaurant',
     restoranas: 'restaurant',
+    pawn: 'pawn_shop',
+    pawnshop: 'pawn_shop',
+    pawn_shop: 'pawn_shop',
+    lombardas: 'pawn_shop',
 });
 
 const PROPERTY_CATALOG = Object.freeze([
@@ -392,16 +488,20 @@ mp.markers.new(1, new mp.Vector3(DEALERSHIP_POS.x, DEALERSHIP_POS.y, DEALERSHIP_
     dimension: 0,
 });
 
-PROPERTY_CATALOG.forEach((propertyDef) => {
-    const entry = propertyDef.entry;
-
-    mp.blips.new(40, new mp.Vector3(entry.x, entry.y, entry.z), {
-        name: 'Property',
-        color: 2,
-        shortRange: true,
-        scale: 0.7,
-    });
+mp.blips.new(498, DMV_PICKUP_POS, {
+    name: 'DMV',
+    color: 3,
+    shortRange: true,
+    scale: 0.85,
 });
+
+mp.markers.new(1, new mp.Vector3(DMV_PICKUP_POS.x, DMV_PICKUP_POS.y, DMV_PICKUP_POS.z - 1.0), 1.15, {
+    color: [24, 199, 210, 170],
+    visible: true,
+    dimension: 0,
+});
+
+// Property blips are created per-player for owners only (see showOwnedPropertyBlipForPlayer).
 
 function isNearPoint(player, point, radius) {
     if (!player || !player.position || !point) return false;
@@ -450,6 +550,8 @@ function clearDeathState(player, unfreeze = true) {
 
 function enterDownedState(player) {
     if (!player || !player.charId || player.isDowned) return;
+
+    cleanupDMVTest(player, true);
 
     const now = Date.now();
     const downedPos = player.position
@@ -586,7 +688,7 @@ function getDefaultPropertySettings() {
 
 function getLocalizedPropertyName(propertyIdRaw) {
     const propertyId = Math.max(1, parseInt(propertyIdRaw, 10) || 1);
-    return `Nuosavybė #${propertyId}`;
+    return `Nuosavybe #${propertyId}`;
 }
 
 function shouldLocalizeLegacyPropertyName(nameRaw) {
@@ -598,7 +700,7 @@ function shouldLocalizeLegacyPropertyName(nameRaw) {
 function isGenericPropertyLabel(nameRaw) {
     const name = String(nameRaw || '').trim();
     if (!name) return true;
-    return /^property\s*#\s*\d+$/i.test(name) || /^nuosavyb(?:ė|e)\s*#\s*\d+$/i.test(name);
+    return /^property\s*#\s*\d+$/i.test(name) || /^nuosavyb(?:e|e)\s*#\s*\d+$/i.test(name);
 }
 
 const GTA_ADDRESS_STREETS = Object.freeze([
@@ -1205,7 +1307,7 @@ function persistBusinessState(business) {
     if (!business || !business.id) return;
 
     db.query(
-        'UPDATE server_businesses SET name = ?, business_type = ?, address = ?, owner_char_id = ?, owner_char_name = ?, bank_balance = ?, entry_x = ?, entry_y = ?, entry_z = ?, entry_h = ?, interior_x = ?, interior_y = ?, interior_z = ?, interior_h = ?, exit_x = ?, exit_y = ?, exit_z = ?, exit_h = ?, dimension = ? WHERE id = ?',
+        'UPDATE server_businesses SET name = ?, business_type = ?, address = ?, owner_char_id = ?, owner_char_name = ?, bank_balance = ?, entry_x = ?, entry_y = ?, entry_z = ?, entry_h = ?, interior_x = ?, interior_y = ?, interior_z = ?, interior_h = ?, exit_x = ?, exit_y = ?, exit_z = ?, exit_h = ?, dimension = ?, pawn_inventory = ? WHERE id = ?',
         [
             business.name,
             business.type,
@@ -1226,6 +1328,7 @@ function persistBusinessState(business) {
             business.exitPos.z,
             Number.isFinite(business.exitHeading) ? business.exitHeading : 0,
             business.dimension,
+            getBusinessPawnInventoryJson(business),
             business.id,
         ],
         (err) => {
@@ -1271,6 +1374,7 @@ function loadBusinessesFromDatabase() {
                 exitPos: new mp.Vector3(Number(row.exit_x), Number(row.exit_y), Number(row.exit_z)),
                 exitHeading: Number.isFinite(Number(row.exit_h)) ? Number(row.exit_h) : 0,
                 dimension: Math.max(1, parseInt(row.dimension, 10) || getUniqueBusinessDimension(businessId)),
+                pawnInventory: parseBusinessPawnInventory(row.pawn_inventory),
             };
 
             businessesById.set(business.id, business);
@@ -1512,6 +1616,121 @@ function persistPlayerMoney(player) {
     });
 }
 
+function cleanupDMVTest(player, notifyClient = true) {
+    if (!player) return;
+
+    const state = activeDMVTests.get(player.id);
+    if (state && state.checkTimer) {
+        clearInterval(state.checkTimer);
+    }
+
+    if (state && state.vehicle) {
+        try {
+            if (player.vehicle === state.vehicle) {
+                player.removeFromVehicle();
+            }
+        } catch (e) { }
+
+        try {
+            state.vehicle.destroy();
+        } catch (e) {
+            console.error('[DMV] Failed to destroy test vehicle:', e.message);
+        }
+    }
+
+    activeDMVTests.delete(player.id);
+    if (notifyClient) {
+        try { player.call('stopDMVRoute'); } catch (e) { }
+    }
+}
+
+function isPlayerNearDMV(player) {
+    return Boolean(player && player.position && Number(player.dimension) === 0
+        && getDistanceBetweenPositions(player.position, DMV_PICKUP_POS) <= DMV_INTERACT_RADIUS);
+}
+
+function startDMVPracticalTest(player) {
+    cleanupDMVTest(player, true);
+
+    const modelHash = typeof mp.joaat === 'function' ? mp.joaat(DMV_TEST_VEHICLE_MODEL) : DMV_TEST_VEHICLE_MODEL;
+    const vehicle = mp.vehicles.new(modelHash, DMV_TEST_SPAWN_POS, {
+        heading: DMV_TEST_SPAWN_HEADING,
+        dimension: player.dimension || 0,
+    });
+
+    vehicle.isDMVTestVehicle = true;
+    vehicle.numberPlate = `DMV${String(player.id).padStart(3, '0')}`.slice(0, 8);
+    vehicle.engine = true;
+    vehicle.locked = false;
+    try { vehicle.setVariable('isDMVTestVehicle', true); } catch (e) { }
+    try { vehicle.setVariable('manualEngineOn', 1); } catch (e) { }
+    try { vehicle.setVariable('fuelLevel', 100); } catch (e) { }
+
+    activeDMVTests.set(player.id, {
+        phase: 'practical',
+        vehicle,
+        checkpointIndex: 0,
+        startedAt: Date.now(),
+    });
+
+    try {
+        player.putIntoVehicle(vehicle, 0);
+    } catch (e) {
+        console.error('[DMV] Failed to put player into test vehicle:', e.message);
+    }
+
+    [150, 500, 1100].forEach((delay) => setTimeout(() => {
+        try {
+            if (vehicle && vehicle.handle) {
+                vehicle.engine = true;
+                vehicle.setVariable('manualEngineOn', 1);
+            }
+            if (vehicle && vehicle.handle && (!player.vehicle || player.vehicle !== vehicle || !(player.seat === -1 || player.seat === 0))) {
+                player.putIntoVehicle(vehicle, 0);
+            }
+        } catch (e) { }
+    }, delay));
+
+    player.call('startDMVRoute', [JSON.stringify(DMV_ROUTE_POINTS)]);
+    player.outputChatBox('!{#85c1e9}DMV praktinis testas pradetas. Vaziuokite per pazymetus checkpointus.');
+
+    const state = activeDMVTests.get(player.id);
+    if (state) {
+        state.checkTimer = setInterval(() => {
+            const currentState = activeDMVTests.get(player.id);
+            if (!currentState || currentState.phase !== 'practical') {
+                clearInterval(state.checkTimer);
+                return;
+            }
+
+            if (Date.now() - currentState.startedAt < 8000) return;
+
+            if (player.vehicle !== currentState.vehicle) {
+                failDMVPracticalTest(player, 'DMV praktinis testas neislaikytas, nes palikote testo automobili. Norint bandyti vel, reikes moketi is naujo.');
+            }
+        }, 1500);
+    }
+}
+
+function failDMVPracticalTest(player, message) {
+    cleanupDMVTest(player, true);
+    if (player && message) {
+        player.outputChatBox(`!{#e74c3c}${message}`);
+    }
+}
+
+function completeDMVTest(player) {
+    player.hasDriversLicense = true;
+    db.query('UPDATE characters SET drivers_license = 1 WHERE id = ?', [player.charId], (err) => {
+        if (err) {
+            console.error('[DMV] Failed to save drivers_license:', err.message);
+        }
+    });
+
+    cleanupDMVTest(player, true);
+    player.outputChatBox('!{#7aa164}Sveikiname! Islaikete DMV testa ir gavote vairuotojo pazymejima.');
+}
+
 function getBusinessProductList(business) {
     const definition = business ? getBusinessTypeDefinition(business.type) : null;
     return Array.isArray(definition?.products) ? definition.products : [];
@@ -1520,6 +1739,105 @@ function getBusinessProductList(business) {
 function getBusinessProduct(business, productRaw) {
     const normalizedType = normalizeInventoryItemType(productRaw) || String(productRaw || '').trim().toLowerCase();
     return getBusinessProductList(business).find(product => product.key === normalizedType || product.itemType === normalizedType) || null;
+}
+
+function isPawnShopBusiness(business) {
+    return Boolean(business && normalizeBusinessType(business.type) === 'pawn_shop');
+}
+
+function isPawnableInventoryItem(item) {
+    if (!item || !item.type) return false;
+    const definition = INVENTORY_ITEM_DEFS[item.type];
+    return Boolean(definition && definition.pawnItem);
+}
+
+function getPawnOriginalPrice(item) {
+    if (!item || !item.type) return 0;
+    const definition = INVENTORY_ITEM_DEFS[item.type] || {};
+    return Math.max(0, parseInt(item.originalPrice ?? definition.originalPrice ?? 0, 10) || 0);
+}
+
+function parseBusinessPawnInventory(rawInventory) {
+    if (!rawInventory) return [];
+
+    try {
+        const parsed = typeof rawInventory === 'string' ? JSON.parse(rawInventory) : rawInventory;
+        if (!Array.isArray(parsed)) return [];
+
+        return parsed
+            .map((rawItem) => {
+                if (!rawItem) return null;
+                const type = normalizeInventoryItemType(rawItem.type) || String(rawItem.type || '').trim().toLowerCase();
+                const definition = INVENTORY_ITEM_DEFS[type];
+                if (!definition || !definition.pawnItem) return null;
+
+                const originalPrice = Math.max(1, parseInt(rawItem.originalPrice ?? definition.originalPrice ?? 1, 10) || 1);
+                const defaultSalePrice = Math.max(1, Math.floor(originalPrice));
+                return {
+                    stockId: String(rawItem.stockId || generateInventoryItemId()),
+                    type,
+                    name: sanitizeInventoryItemName(rawItem.name, definition.name),
+                    description: rawItem.description || definition.description,
+                    icon: definition.icon || 'BOX',
+                    originalPrice,
+                    buyPrice: Math.max(1, parseInt(rawItem.buyPrice, 10) || Math.floor(originalPrice * PAWN_AUTO_SELL_RATE)),
+                    price: Math.max(1, parseInt(rawItem.price, 10) || defaultSalePrice),
+                    sellerCharName: rawItem.sellerCharName || '',
+                    soldAt: rawItem.soldAt || new Date().toISOString(),
+                };
+            })
+            .filter(Boolean);
+    } catch (error) {
+        console.error('[PAWN] Failed to parse pawn inventory:', error.message);
+        return [];
+    }
+}
+
+function getBusinessPawnInventoryJson(business) {
+    return JSON.stringify(Array.isArray(business?.pawnInventory) ? business.pawnInventory : []);
+}
+
+function persistBusinessPawnInventory(business) {
+    if (!business || !business.id) return;
+
+    db.query('UPDATE server_businesses SET pawn_inventory = ? WHERE id = ?', [getBusinessPawnInventoryJson(business), business.id], (err) => {
+        if (err) {
+            console.error('[PAWN] Failed to persist pawn inventory:', err.message);
+        }
+    });
+}
+
+function findPawnStockItem(business, stockIdRaw) {
+    if (!business || !Array.isArray(business.pawnInventory)) return null;
+    const stockId = String(stockIdRaw || '').trim();
+    if (!stockId) return null;
+    const index = business.pawnInventory.findIndex(item => item && item.stockId === stockId);
+    if (index === -1) return null;
+    return { index, item: business.pawnInventory[index] };
+}
+
+function buildPawnShopPayload(player, business) {
+    const stock = (Array.isArray(business?.pawnInventory) ? business.pawnInventory : [])
+        .map((item) => ({
+            stockId: item.stockId,
+            type: item.type,
+            name: item.name,
+            icon: item.icon || item.type || 'BOX',
+            price: Math.max(1, parseInt(item.price, 10) || 1),
+            originalPrice: Math.max(1, parseInt(item.originalPrice, 10) || 1),
+        }));
+
+    return JSON.stringify({
+        businessName: business?.name || 'Lombardas',
+        money: Math.max(0, parseInt(player?.money, 10) || 0),
+        stock,
+    });
+}
+
+function openPawnShopForPlayer(player, business, statusText = '', success = true, updateOnly = false) {
+    if (!player || !business) return;
+    const eventName = updateOnly ? 'updatePawnShopUI' : 'openPawnShopUI';
+    player.call(eventName, [buildPawnShopPayload(player, business), statusText, Boolean(success)]);
 }
 
 function getPropertyRoleForPlayer(player, property) {
@@ -1568,7 +1886,7 @@ function getPlayerOwnedVehicleFromEntity(player, vehicleEntity) {
     const ownedVehicleId = vehicleEntity.getVariable('ownedVehicleId');
     const ownedByCharId = vehicleEntity.getVariable('ownedByCharId');
 
-    // Use loose numeric comparison — getVariable may return string or number.
+    // Use loose numeric comparison - getVariable may return string or number.
     if (!ownedVehicleId || !ownedByCharId || Number(ownedByCharId) !== Number(player.charId)) {
         return null;
     }
@@ -1616,7 +1934,7 @@ function getActiveOwnedVehicleRecord(player) {
 function isPlayerDrivingVehicle(player, vehicle) {
     if (!player || !vehicle || !vehicle.handle) return false;
     // RAGE MP server-side: driver seat is -1. Accept 0 as well for safety.
-    // Do NOT use getPedInSeat — it returns a raw ped handle, not the player object.
+    // Do NOT use getPedInSeat - it returns a raw ped handle, not the player object.
     return player.vehicle === vehicle && (player.seat === -1 || player.seat === 0);
 }
 
@@ -1769,6 +2087,25 @@ function persistOwnedVehicleState(record) {
 function clearOwnedVehicleBlipForPlayer(player) {
     if (!player || !player.call) return;
     player.call('clearOwnedVehicleBlip');
+}
+
+function clearOwnedPropertyBlipForPlayer(player) {
+    if (!player || !player.call) return;
+    player.call('clearOwnedPropertyBlip');
+}
+
+function showOwnedPropertyBlipForPlayer(player, property) {
+    if (!player || !player.call || !property || !property.entryPos) return;
+    player.call('showOwnedPropertyBlip', [Number(property.id), property.entryPos.x, property.entryPos.y, property.entryPos.z, getLocalizedPropertyName(property.id)]);
+}
+
+function ensureOwnedPropertyBlipsForPlayer(player) {
+    if (!player || !player.call || !player.charId) return;
+    for (const property of propertiesById.values()) {
+        if (Number(property.ownerCharId) === Number(player.charId)) {
+            showOwnedPropertyBlipForPlayer(player, property);
+        }
+    }
 }
 
 function showOwnedVehicleBlipForPlayer(player, record, position) {
@@ -1935,23 +2272,33 @@ function generateInventoryItemId() {
     return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function createInventoryItem(type, quantity = 1, existingId = null) {
+function sanitizeInventoryItemName(nameRaw, fallback = 'Daiktas') {
+    const name = String(nameRaw || '').replace(/\s+/g, ' ').trim();
+    return (name || fallback).slice(0, 64);
+}
+
+function createInventoryItem(type, quantity = 1, existingId = null, overrides = {}) {
     const definition = INVENTORY_ITEM_DEFS[type];
     if (!definition) return null;
+
+    const itemName = sanitizeInventoryItemName(overrides.name, definition.name);
+    const originalPrice = Math.max(0, parseInt(overrides.originalPrice ?? definition.originalPrice ?? 0, 10) || 0);
 
     return {
         id: existingId || generateInventoryItemId(),
         type,
-        name: definition.name,
-        description: definition.description,
-        icon: definition.icon || '📦',
+        name: itemName,
+        description: overrides.description || definition.description,
+        icon: definition.icon || 'BOX',
         quantity: Math.max(1, parseInt(quantity, 10) || 1),
         usable: definition.usable !== false,
         droppable: definition.droppable !== false,
         giveable: definition.giveable !== false,
+        stackable: definition.stackable !== false,
+        pawnItem: Boolean(definition.pawnItem),
+        originalPrice,
     };
 }
-
 function normalizeInventoryItemType(inputType) {
     if (!inputType || typeof inputType !== 'string') return null;
     const key = inputType.trim().toLowerCase();
@@ -1962,13 +2309,24 @@ function normalizeInventoryItems(items) {
     if (!Array.isArray(items)) return [];
 
     const merged = new Map();
+    const uniqueItems = [];
 
     items.forEach((rawItem) => {
         if (!rawItem) return;
 
         const type = typeof rawItem.type === 'string' ? rawItem.type.toLowerCase() : '';
-        const normalized = createInventoryItem(type, rawItem.quantity, rawItem.id);
+        const normalized = createInventoryItem(type, rawItem.quantity, rawItem.id, {
+            name: rawItem.name,
+            description: rawItem.description,
+            originalPrice: rawItem.originalPrice,
+        });
         if (!normalized) return;
+
+        if (!normalized.stackable || normalized.name !== INVENTORY_ITEM_DEFS[normalized.type].name) {
+            normalized.quantity = 1;
+            uniqueItems.push(normalized);
+            return;
+        }
 
         if (merged.has(normalized.type)) {
             merged.get(normalized.type).quantity += normalized.quantity;
@@ -1978,9 +2336,8 @@ function normalizeInventoryItems(items) {
         merged.set(normalized.type, normalized);
     });
 
-    return Array.from(merged.values());
+    return [...Array.from(merged.values()), ...uniqueItems];
 }
-
 function loadInventory(rawInventory) {
     if (rawInventory === null || rawInventory === undefined || rawInventory === '') {
         return [];
@@ -2043,23 +2400,73 @@ function getInventoryItemById(player, itemId) {
     };
 }
 
-function addInventoryItem(player, type, amount) {
+function findInventoryItemByToken(player, tokenRaw) {
+    if (!player || !Array.isArray(player.inventory)) return null;
+    const token = String(tokenRaw || '').trim();
+    if (!token) return null;
+
+    const exact = getInventoryItemById(player, token);
+    if (exact) return exact;
+
+    const lowered = token.toLowerCase();
+    const normalizedType = normalizeInventoryItemType(lowered) || lowered;
+    const index = player.inventory.findIndex(item => {
+        if (!item) return false;
+        return String(item.id || '').endsWith(token)
+            || String(item.type || '').toLowerCase() === normalizedType;
+    });
+
+    if (index === -1) return null;
+    return {
+        index,
+        item: player.inventory[index],
+    };
+}
+
+function addInventoryItem(player, type, amount, overrides = {}) {
     if (!player || !Array.isArray(player.inventory)) return null;
 
     const quantity = Math.max(1, parseInt(amount, 10) || 1);
-    const existingItem = player.inventory.find(item => item.type === type);
-    if (existingItem) {
+    const definition = INVENTORY_ITEM_DEFS[type];
+    if (!definition) return null;
+
+    const shouldStack = definition.stackable !== false && !overrides.name;
+    if (shouldStack) {
+        const existingItem = player.inventory.find(item => item.type === type && item.stackable !== false && item.name === definition.name);
+        if (!existingItem) {
+            const item = createInventoryItem(type, quantity);
+            if (item) player.inventory.push(item);
+            return item;
+        }
+
         existingItem.quantity += quantity;
         return existingItem;
     }
 
-    const item = createInventoryItem(type, quantity);
-    if (item) {
-        player.inventory.push(item);
+    let firstItem = null;
+    for (let i = 0; i < quantity; i++) {
+        const item = createInventoryItem(type, 1, null, overrides);
+        if (item) {
+            player.inventory.push(item);
+            if (!firstItem) firstItem = item;
+        }
     }
-    return item;
+
+    return firstItem;
 }
 
+function addExistingInventoryItem(player, sourceItem, amount = 1) {
+    if (!player || !Array.isArray(player.inventory) || !sourceItem) return null;
+
+    const type = normalizeInventoryItemType(sourceItem.type) || String(sourceItem.type || '').trim().toLowerCase();
+    if (!INVENTORY_ITEM_DEFS[type]) return null;
+
+    return addInventoryItem(player, type, amount, {
+        name: sourceItem.name,
+        description: sourceItem.description,
+        originalPrice: sourceItem.originalPrice,
+    });
+}
 function removeInventoryItemAmount(player, itemId, amount) {
     const itemEntry = getInventoryItemById(player, itemId);
     if (!itemEntry) return null;
@@ -2349,7 +2756,7 @@ function checkAndRemoveEmptyWeapons(player) {
                 const weaponLabel = getWeaponLabel(currentWeapon);
                 setSingleWeaponForPlayer(player, WEAPON_UNARMED_HASH, 0);
                 persistEquippedWeapon(player);
-                player.outputChatBox(`!{#e74c3c}${weaponLabel} baigėsi kulkos ir buvo panaikintas.`);
+                player.outputChatBox(`!{#e74c3c}${weaponLabel} baigesi kulkos ir buvo panaikintas.`);
             }
         }
     } catch (err) {
@@ -2398,10 +2805,10 @@ const db = mysql.createPool({
     connectionLimit: 10,
     waitForConnections: true,
     queueLimit: 0,
-    host: 'californiarp.lt',
-    user: 'u845910951_californiarole',
-    password: 'TuK3K1zw;r4&',
-    database: 'u845910951_allingamedataM'
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'gtav'
 });
 
 function bootstrapDatabase() {
@@ -2473,6 +2880,14 @@ function bootstrapDatabase() {
             console.error('[WEAPONS] Failed to add equipped_weapon_ammo column:', err.message);
         } else {
             console.log('[WEAPONS] equipped_weapon_ammo column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN drivers_license TINYINT(1) NOT NULL DEFAULT 0', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[DMV] Failed to add drivers_license column:', err.message);
+        } else {
+            console.log('[DMV] drivers_license column ready.');
         }
     });
 
@@ -2566,6 +2981,14 @@ function bootstrapDatabase() {
         }
     });
 
+    db.query(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        player_id INT NOT NULL,
+        token VARCHAR(128) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT fk_password_reset_player FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+    )`, (err) => { if (err) console.error('[DB] create password_reset_tokens failed', err); });
+
     db.query(`CREATE TABLE IF NOT EXISTS server_properties (
         id INT AUTO_INCREMENT PRIMARY KEY,
         property_key VARCHAR(64) NOT NULL UNIQUE,
@@ -2647,6 +3070,7 @@ function bootstrapDatabase() {
         exit_z FLOAT NOT NULL,
         exit_h FLOAT NOT NULL DEFAULT 0,
         dimension INT NOT NULL,
+        pawn_inventory TEXT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`, (createErr) => {
         if (createErr) {
@@ -2680,7 +3104,118 @@ function bootstrapDatabase() {
             }
         });
 
+        db.query('ALTER TABLE server_businesses ADD COLUMN pawn_inventory TEXT NULL', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[BUSINESS] Failed to add pawn_inventory column:', alterErr.message);
+            }
+        });
+
         loadBusinessesFromDatabase();
+    });
+
+    // Ensure players table has email, email_confirmed, reg_answers columns and tokens table
+    db.query('ALTER TABLE players ADD COLUMN email VARCHAR(160) NULL', (err) => { if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[DB] add email failed', err); });
+    db.query('ALTER TABLE players ADD COLUMN email_confirmed TINYINT(1) NOT NULL DEFAULT 0', (err) => { if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[DB] add email_confirmed failed', err); });
+    db.query('ALTER TABLE players ADD COLUMN reg_answers TEXT NULL', (err) => { if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[DB] add reg_answers failed', err); });
+    db.query(`CREATE TABLE IF NOT EXISTS email_confirm_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        player_id INT NOT NULL,
+        token VARCHAR(128) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_email_token (token),
+        CONSTRAINT fk_email_token_player FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+    )`, (err) => { if (err) console.error('[DB] create email_confirm_tokens failed', err); });
+
+    // Table for storing pending character creation requests
+    db.query(`CREATE TABLE IF NOT EXISTS pending_characters (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        ucp_username VARCHAR(64) NOT NULL,
+        first_name VARCHAR(64) NOT NULL,
+        last_name VARCHAR(64) NOT NULL,
+        age INT NULL,
+        gender VARCHAR(16) NULL,
+        bio TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => { if (err) console.error('[DB] create pending_characters failed', err); });
+
+    // Ensure email is unique across accounts (best-effort). Check information_schema
+    // for an existing index first to avoid noisy duplicate-key errors.
+    db.query("SELECT COUNT(1) AS cnt FROM information_schema.STATISTICS WHERE table_schema = DATABASE() AND table_name = 'players' AND index_name = 'idx_unique_email'", (idxErr, idxRows) => {
+        if (idxErr) {
+            console.error('[DB] Failed to check existing indexes for players:', idxErr);
+            return;
+        }
+        const exists = Array.isArray(idxRows) && idxRows[0] && Number(idxRows[0].cnt) > 0;
+        if (exists) {
+            console.log('[DB] Unique index idx_unique_email already exists');
+            return;
+        }
+
+        db.query('ALTER TABLE players ADD UNIQUE INDEX idx_unique_email (email)', (alterErr) => {
+            if (alterErr) {
+                // Common reasons: duplicate entries or index name conflicts
+                if (alterErr.code === 'ER_DUP_ENTRY' || alterErr.code === 'ER_DUP_KEYNAME' || alterErr.code === 'ER_DUP_FIELDNAME') {
+                    console.warn('[DB] Could not add unique index for email - possible existing duplicates or name conflict:', alterErr.message);
+                } else {
+                    console.error('[DB] add unique index email failed', alterErr);
+                }
+            } else {
+                console.log('[DB] Added unique index idx_unique_email on players(email)');
+            }
+        });
+    });
+    // Robust players.id cleanup and AUTO_INCREMENT enforcement
+    db.query('SHOW CREATE TABLE players', (showErr, showRows) => {
+        if (showErr) {
+            if (showErr.code !== 'ER_NO_SUCH_TABLE') console.error('[DB] SHOW CREATE TABLE players failed', showErr);
+            return;
+        }
+
+        // Delete any invalid rows with id = 0 first (if table exists)
+        db.query('DELETE FROM players WHERE id = 0', (delErr) => {
+            if (delErr) {
+                if (delErr.code !== 'ER_NO_SUCH_TABLE') console.error('[DB] Failed to delete players with id=0', delErr);
+            } else {
+                console.log('[DB] Removed any players with id=0');
+            }
+
+            // Inspect current primary key
+            db.query('SHOW INDEX FROM players WHERE Key_name = "PRIMARY"', (idxErr, idxRows) => {
+                if (idxErr) {
+                    if (idxErr.code !== 'ER_NO_SUCH_TABLE') console.error('[DB] Failed to inspect players primary key', idxErr);
+                    return;
+                }
+
+                const pkCols = Array.isArray(idxRows) ? idxRows.map(r => r.Column_name) : [];
+                const pkIsIdOnly = pkCols.length === 1 && pkCols[0] === 'id';
+
+                if (pkIsIdOnly) {
+                    // If PK is already id, just ensure AUTO_INCREMENT attribute
+                    db.query('ALTER TABLE players MODIFY COLUMN id INT NOT NULL AUTO_INCREMENT', (modErr) => {
+                        if (modErr) {
+                            console.error('[DB] Failed to ensure players.id is AUTO_INCREMENT', modErr);
+                        } else {
+                            console.log('[DB] Ensured players.id is AUTO_INCREMENT');
+                        }
+                    });
+                } else {
+                    // Drop existing PK (if any) and recreate on id
+                    db.query('ALTER TABLE players DROP PRIMARY KEY', (dropErr) => {
+                        if (dropErr) {
+                            console.error('[DB] Failed to drop existing primary key on players', dropErr);
+                            return;
+                        }
+                        db.query('ALTER TABLE players MODIFY COLUMN id INT NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (id)', (addErr) => {
+                            if (addErr) {
+                                console.error('[DB] Failed to set players.id as AUTO_INCREMENT PRIMARY KEY', addErr);
+                            } else {
+                                console.log('[DB] Recreated PRIMARY KEY on players.id and set AUTO_INCREMENT');
+                            }
+                        });
+                    });
+                }
+            });
+        });
     });
 }
 
@@ -2690,8 +3225,121 @@ db.getConnection((err, connection) => {
         return;
     }
 
+    // Endpoint handlers: confirm email and forgot/reset flow via server events
+    mp.events.add('confirmEmailToken', (player, token) => {
+        if (!token) return player.call('login:error', ['Invalid token']);
+        db.query('SELECT player_id FROM email_confirm_tokens WHERE token = ? LIMIT 1', [token], (err, rows) => {
+            if (err || !rows || rows.length === 0) return player.call('login:error', ['Nevalidus ar pasibaiges tokenas.']);
+            const pid = rows[0].player_id;
+            db.query('UPDATE players SET email_confirmed = 1 WHERE id = ?', [pid], (uErr) => {
+                if (uErr) return player.call('login:error', ['Nepavyko patvirtinti el. pasto.']);
+                db.query('DELETE FROM email_confirm_tokens WHERE player_id = ?', [pid]);
+                player.call('login:success');
+            });
+        });
+    });
+
+    mp.events.add('forgotPassword', (player, email) => {
+        if (!email) return player.call('forgot:error', ['Prasome ivesti el. pasta.']);
+        const normalizedEmail = String(email).trim().toLowerCase();
+        db.query('SELECT id FROM players WHERE email = ? LIMIT 1', [normalizedEmail], (err, rows) => {
+            if (err || !rows || rows.length === 0) return player.call('forgot:error', ['El. pastas nerastas.']);
+            const pid = rows[0].id;
+            const code = String(Math.floor(100000 + Math.random() * 900000));
+            // remove old tokens for this player
+            db.query('DELETE FROM password_reset_tokens WHERE player_id = ?', [pid], (dErr) => { if (dErr) console.error('[RESET] Failed to delete old tokens:', dErr); });
+            db.query('INSERT INTO password_reset_tokens (player_id, token, created_at) VALUES (?, ?, NOW())', [pid, code], (tErr) => {
+                if (tErr) { console.error('[RESET] token store failed', tErr); return player.call('forgot:error', ['Klaida siunciant el. laiska.']); }
+                if (mailTransport) {
+                    const mailText = `Jusu slaptazodzio atstatymo kodas: ${code}`;
+                    mailTransport.sendMail({
+                        from: process.env.SMTP_FROM || 'CaliforniaRP <info@californiarp.lt>',
+                        to: normalizedEmail,
+                        subject: 'Slaptazodzio atstatymas - kodas',
+                        text: mailText,
+                        html: `<p>Jusu slaptazodzio atstatymo kodas: <strong>${code}</strong></p>`
+                    }, (mailErr) => {
+                        if (mailErr) { console.error('[EMAIL] reset send error', mailErr); player.call('forgot:error', ['Klaida siunciant el. laiska.']); return; } else {
+                            try { player.call('forgot:sent', ['Patvirtinimo kodas issiustas. Patikrinkite el. pasta.']); } catch (e) { }
+                        }
+                    });
+                } else {
+                    try { player.call('forgot:sent', ['Patvirtinimo kodas sugeneruotas (SMTP nepriskirtas).']); } catch (e) { }
+                }
+            });
+        });
+    });
+
+    mp.events.add('resetPassword', (player, token, newPassword) => {
+        if (!token || !newPassword) return player.call('reset:error', ['Invalid request']);
+        db.query('SELECT player_id FROM password_reset_tokens WHERE token = ? LIMIT 1', [String(token).trim()], (err, rows) => {
+            if (err || !rows || rows.length === 0) return player.call('reset:error', ['Nevalidus arba pasibaiges kodas.']);
+            const pid = rows[0].player_id;
+            bcrypt.hash(String(newPassword), 10, (hErr, hash) => {
+                if (hErr) return player.call('reset:error', ['Klaida keiciant slaptazodi.']);
+                db.query('UPDATE players SET password = ? WHERE id = ?', [hash, pid], (uErr) => {
+                    if (uErr) return player.call('reset:error', ['Klaida saugant slaptazodi.']);
+                    db.query('DELETE FROM password_reset_tokens WHERE player_id = ?', [pid]);
+                    try { player.call('reset:success', ['Slaptazodis pakeistas.']); } catch (e) { }
+                });
+            });
+        });
+    });
+
+    // Verify reset code and return associated username for UI display
+    mp.events.add('verifyResetCode', (player, code) => {
+        if (!code) return player.call('reset:code:error', ['Iveskite koda.']);
+        db.query('SELECT player_id FROM password_reset_tokens WHERE token = ? LIMIT 1', [String(code).trim()], (err, rows) => {
+            if (err || !rows || rows.length === 0) return player.call('reset:code:error', ['Nevalidus arba pasibaiges kodas.']);
+            const pid = rows[0].player_id;
+            db.query('SELECT name FROM players WHERE id = ? LIMIT 1', [pid], (nErr, nRows) => {
+                if (nErr || !nRows || nRows.length === 0) return player.call('reset:code:error', ['Vartotojas nerastas.']);
+                try { player.call('reset:code:ok', [nRows[0].name]); } catch (e) { }
+            });
+        });
+    });
+
     connection.release();
     bootstrapDatabase();
+});
+
+// Verify email by code (sent via email during registration)
+mp.events.add('verifyEmailCode', (player, code) => {
+    if (!code) return player.call('register:verify:error', ['Iveskite patvirtinimo koda.']);
+    const norm = String(code).trim();
+    db.query('SELECT player_id FROM email_confirm_tokens WHERE token = ? LIMIT 1', [norm], (err, rows) => {
+        if (err || !rows || rows.length === 0) return player.call('register:verify:error', ['Nevalidus arba pasibaiges kodas.']);
+        const pid = rows[0].player_id;
+        db.query('UPDATE players SET email_confirmed = 1 WHERE id = ?', [pid], (uErr) => {
+            if (uErr) { console.error('[EMAIL] Failed to mark email_confirmed:', uErr); return player.call('register:verify:error', ['Klaida. Bandykite veliau.']); }
+            db.query('DELETE FROM email_confirm_tokens WHERE player_id = ?', [pid], (dErr) => { if (dErr) console.error('[EMAIL] Failed to delete confirm token:', dErr); });
+            try { player.call('register:verify:success', ['El. pastas patvirtintas.']); } catch (e) { }
+        });
+    });
+});
+
+// Resend a verification code to given email if a matching player exists
+mp.events.add('resendVerifyCode', (player, email) => {
+    if (!email) return player.call('register:verify:error', ['Iveskite el. pasta.']);
+    const normalizedEmail = String(email).trim().toLowerCase();
+    db.query('SELECT id FROM players WHERE email = ? LIMIT 1', [normalizedEmail], (err, rows) => {
+        if (err || !rows || rows.length === 0) return player.call('register:verify:error', ['El. pastas nerastas.']);
+        const pid = rows[0].id;
+        const code = String(Math.floor(100000 + Math.random() * 900000));
+        db.query('DELETE FROM email_confirm_tokens WHERE player_id = ?', [pid], (dErr) => { if (dErr) console.error('[EMAIL] Failed to delete old tokens:', dErr); });
+        db.query('INSERT INTO email_confirm_tokens (player_id, token, created_at) VALUES (?, ?, NOW())', [pid, code], (tErr) => {
+            if (tErr) { console.error('[EMAIL] Failed to store confirmation token:', tErr); return player.call('register:verify:error', ['Klaida siunciant koda.']); }
+            if (mailTransport) {
+                const mailText = `Jusu patvirtinimo kodas: ${code}`;
+                mailTransport.sendMail({ from: process.env.SMTP_FROM || 'CaliforniaRP <info@californiarp.lt>', to: normalizedEmail, subject: 'Jusu patvirtinimo kodas', text: mailText, html: `<p>Jusu patvirtinimo kodas: <strong>${code}</strong></p>` }, (mailErr) => {
+                    if (mailErr) { console.error('[EMAIL] resend send error:', mailErr); return player.call('register:verify:error', ['Klaida siunciant el. laiska.']); }
+                    try { player.call('register:verify:success', ['Patvirtinimo kodas issiustas. Patikrinkite el. pasta.']); } catch (e) { }
+                });
+            } else {
+                try { player.call('register:verify:error', ['El. pastas neprieinamas (SMTP nepriskirtas).']); } catch (e) { }
+            }
+        });
+    });
 });
 
 module.exports = db;
@@ -2704,16 +3352,16 @@ mp.events.add('playerConnect', (player) => {
 
     db.query('SELECT * FROM bans WHERE ip = ?', [ip], (error, results) => {
         if (error) {
-            console.log('[KLAIDA] Įvyko klaida tikrinant žaidėjo IP');
+            console.log('[KLAIDA] Ivyko klaida tikrinant zaidejo IP');
             return;
         }
 
         if (results.length > 0) {
-            const reason = results[0].reason || "Nenurodyta priežastis";
-            player.outputChatBox(`[INFO] Jūs esate užblokuotas. Priežastis: ${reason}`);
-            player.kick(`[KICK] Jūs buvote užblokuotas. Priežastis: ${reason}`);
+            const reason = results[0].reason || "Nenurodyta priezastis";
+            player.outputChatBox(`[INFO] Jus esate uzblokuotas. Priezastis: ${reason}`);
+            player.kick(`[KICK] Jus buvote uzblokuotas. Priezastis: ${reason}`);
         } else {
-            console.log(`Žaidėjas (UCP: ${player.name}) prisijungė prie serverio.`);
+            console.log(`Zaidejas (UCP: ${player.name}) prisijunge prie serverio.`);
         }
     });
 });
@@ -2731,7 +3379,7 @@ mp.events.add('playerJoin', (player) => {
         player.call('updateServerTime', [serverTime]);
     }, 1000);
 
-    console.log(`Žaidėjas (UCP: ${player.name}) prisijungė prie serverio.`);
+    console.log(`Zaidejas (UCP: ${player.name}) prisijunge prie serverio.`);
 });
 
 // Handle client-side weapon ammo updates
@@ -2788,13 +3436,13 @@ mp.events.add('validateLogin', (player, username, password) => {
     db.query('SELECT * FROM players WHERE name = ?', [username], (err, results) => {
         if (err) {
             console.error('[DATABASE ERROR]', err);
-            player.call('login:error', ['⚠️ Duomenų bazės klaida! Bandykite vėliau.']);
+            player.call('login:error', [' Duomenu bazes klaida! Bandykite veliau.']);
             return;
         }
 
         if (results.length === 0) {
             console.log(`[LOGIN FAILED] Username "${username}" not found.`);
-            player.call('login:error', ['❌ Vartotojo vardas nerastas!']);
+            player.call('login:error', [' Vartotojo vardas nerastas!']);
             return;
         }
 
@@ -2803,32 +3451,39 @@ mp.events.add('validateLogin', (player, username, password) => {
         db.query('SELECT * FROM bans WHERE ucp_name = ? LIMIT 1', [username], (banError, banResults) => {
             if (banError) {
                 console.error('[DATABASE ERROR] Failed to check UCP ban status:', banError);
-                player.call('login:error', ['⚠️ Duomenų bazės klaida! Bandykite vėliau.']);
+                player.call('login:error', [' Duomenu bazes klaida! Bandykite veliau.']);
                 return;
             }
 
             if (banResults.length > 0) {
-                const reason = banResults[0].reason || 'Nenurodyta priežastis';
+                const reason = banResults[0].reason || 'Nenurodyta priezastis';
                 console.log(`[LOGIN BLOCKED] Banned UCP "${username}" attempted to log in.`);
-                player.call('login:error', [`❌ Šis UCP yra užblokuotas. Priežastis: ${reason}`]);
+                player.call('login:error', [` Sis UCP yra uzblokuotas. Priezastis: ${reason}`]);
                 return;
             }
 
             bcrypt.compare(password, storedPassword, (err, isMatch) => {
                 if (err) {
                     console.error('[BCRYPT ERROR]', err);
-                    player.call('login:error', ['⚠️ Klaida tikrinant slaptažodį. Bandykite dar kartą.']);
+                    player.call('login:error', [' Klaida tikrinant slaptazodi. Bandykite dar karta.']);
                     return;
                 }
 
                 if (isMatch) {
+                    // enforce email confirmation
+                    const emailConfirmed = Number(results[0].email_confirmed) === 1;
+                    if (!emailConfirmed) {
+                        player.call('login:error', [' Paskyra nepatvirtinta. Patikrinkite el. pasta.']);
+                        return;
+                    }
+
                     console.log(`[LOGIN SUCCESS] User "${username}" logged in.`);
                     player.name = username; // UCP username
                     player.call('login:success');
                     loadCharacterSelection(player);
                 } else {
                     console.log(`[LOGIN FAILED] Incorrect password for "${username}".`);
-                    player.call('login:error', ['❌ Neteisingas slaptažodis!']);
+                    player.call('login:error', [' Neteisingas slaptazodis!']);
                 }
             });
         });
@@ -2836,48 +3491,58 @@ mp.events.add('validateLogin', (player, username, password) => {
 });
 
 function loadCharacterSelection(player) {
-    db.query('SELECT id, char_name, money, bank_balance, playtime, health, is_approved FROM characters WHERE ucp_username = ?',
-        [player.name], (err, results) => {
-            if (err) {
-                console.error('[KLAIDA] Veikėjų sąrašas nepakrautas:', err);
-                player.outputChatBox('⚠️ Klaida kraunant veikėjus. Susisiekite su administratoriumi.');
-                return;
+    db.query('SELECT id, char_name, money, bank_balance, playtime, health, is_approved FROM characters WHERE ucp_username = ?', [player.name], (err, results) => {
+        if (err) {
+            console.error('[KLAIDA] Veikeju sarasas nepakrautas:', err);
+            player.outputChatBox(' Klaida kraunant veikejus. Susisiekite su administratoriumi.');
+            return;
+        }
+
+        const characterCount = results.length;
+        const approvedCharacters = results.filter(row => Number(row.is_approved) === 1).map(row => ({
+            id: row.id,
+            name: row.char_name,
+            money: row.money,
+            bankBalance: row.bank_balance,
+            playtime: row.playtime,
+            playtimeFormatted: Math.floor(row.playtime / 60) + ' val. ' + (row.playtime % 60) + ' min.',
+            health: row.health,
+            clothes: row.clothes || null,
+            barber: row.barber || null
+        }));
+
+        if (approvedCharacters.length === 0) {
+            player.outputChatBox('!{#e67e22}Neturite patvirtintu veikeju. Prisijungti negalima kol administracija nepatvirtins.');
+        }
+
+        // Also include any pending character creation requests for this UCP account
+        db.query('SELECT id, first_name, last_name, age, gender, bio, created_at FROM pending_characters WHERE ucp_username = ? ORDER BY created_at DESC', [player.name], (pErr, pRows) => {
+            if (pErr) {
+                console.error('[KLAIDA] Nepavyko uzkrauti laukianciu veikeju:', pErr);
+                pRows = [];
             }
 
-            const characterCount = results.length;
-            if (characterCount === 0) {
-                player.outputChatBox('!{#f7dc6f}Jūs neturite veikėjų. Sukurkite juos UCP (californiarp.lt/ucp)!');
-                return;
-            }
-
-            const approvedCharacters = results.filter(row => Number(row.is_approved) === 1);
-            if (approvedCharacters.length === 0) {
-                player.outputChatBox('!{#e67e22}Neturite patvirtintu veikeju. Prisijungti negalima kol administracija nepatvirtins.');
-            }
-
-            const characters = approvedCharacters.map(row => ({
+            const pending = (pRows || []).map(row => ({
                 id: row.id,
-                name: row.char_name,
-                money: row.money,
-                bankBalance: row.bank_balance,
-                playtime: row.playtime,
-                playtimeFormatted: Math.floor(row.playtime / 60) + ' val. ' + (row.playtime % 60) + ' min.',
-                health: row.health
+                firstName: row.first_name,
+                lastName: row.last_name,
+                age: row.age,
+                gender: row.gender,
+                bio: row.bio,
+                createdAt: row.created_at
             }));
 
-            if (approvedCharacters.length < characterCount) {
-                player.outputChatBox('!{#f7dc6f}Nepatvirtinti veikejai buvo paslepti is pasirinkimo saraso.');
-            }
-
-            player.call('showCharacterSelectionUI', [JSON.stringify(characters)]);
+            const payload = { approved: approvedCharacters, pending };
+            player.call('showCharacterSelectionUI', [JSON.stringify(payload)]);
         });
+    });
 }
 
 mp.events.add('selectCharacter', (player, charId) => {
     db.query('SELECT * FROM characters WHERE id = ? AND ucp_username = ?', [charId, player.name], (err, results) => {
         if (err || results.length === 0) {
-            console.error('[KLAIDA] Veikėjas nerastas:', err);
-            player.outputChatBox('⚠️ Klaida pasirenkant veikėją.');
+            console.error('[KLAIDA] Veikejas nerastas:', err);
+            player.outputChatBox('!{#e74c3c}Klaida pasirenkant veikeja.');
             return;
         }
 
@@ -2902,6 +3567,7 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.position = hasSavedPosition ? new mp.Vector3(posX, posY, posZ) : player.position;
         player.isPMEnabled = charData.is_pm_enabled;
         player.adminLevel = charData.admin_level;
+        player.hasDriversLicense = Number(charData.drivers_license || 0) === 1;
         const normalizedPhoneNumber = String(charData.phone_number || '').trim();
         player.phoneNumber = /^\d{6,15}$/.test(normalizedPhoneNumber) ? normalizedPhoneNumber : null;
         player.inventory = loadInventory(charData.inventory);
@@ -2915,8 +3581,8 @@ mp.events.add('selectCharacter', (player, charId) => {
         // Load bank account (now tied to char_name)
         db.query('SELECT * FROM bank_accounts WHERE char_name = ?', [player.charName], (err, bankResults) => {
             if (err) {
-                console.error('[KLAIDA] Banko sąskaita nepakrauta:', err);
-                player.outputChatBox('⚠️ Klaida kraunant banko duomenis.');
+                console.error('[KLAIDA] Banko saskaita nepakrauta:', err);
+                player.outputChatBox(' Klaida kraunant banko duomenis.');
                 return;
             }
 
@@ -2986,7 +3652,7 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.currentPropertyId = null;
         player.currentBusinessId = null;
         player.dimension = 0;
-        player.outputChatBox(`!{#7aa164}Pasirinkote veikėją: ${charData.char_name}. Sveiki atvykę į CaliforniaRP.LT!`);
+        player.outputChatBox(`!{#7aa164}Pasirinkote veikeja: ${charData.char_name}. Sveiki atvyke i CaliforniaRP.LT!`);
 
         loadCharacterContacts(player);
         loadOwnedVehiclesForPlayer(player);
@@ -3025,7 +3691,7 @@ mp.events.add('selectCharacter', (player, charId) => {
                     player.call('showPaycheckPopup', [paycheckAmount]);
                     db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
                     db.query('UPDATE characters SET playtime = ? WHERE id = ?', [player.playtime, player.charId]);
-                    player.outputChatBox(`!{#229954}Jūsų atlyginimas ($${paycheckAmount}) pervestas į banko sąskaitą.`);
+                    player.outputChatBox(`!{#229954}Jusu atlyginimas ($${paycheckAmount}) pervestas i banko saskaita.`);
 
                     if (tenantRentLines.length > 0) {
                         const totalExpectedRent = tenantRentLines.reduce((sum, line) => sum + (Math.max(0, parseInt(line.rent, 10) || 0)), 0);
@@ -3048,8 +3714,9 @@ mp.events.add('selectCharacter', (player, charId) => {
         }
 
         ensureVehicleMarkerCleanupTimer(player);
+        ensureOwnedPropertyBlipsForPlayer(player);
 
-        console.log(`[VEIKĖJAS] ${player.name} pasirinko veikėją ${charData.char_name}`);
+        console.log(`[VEIKEJAS] ${player.name} pasirinko veikeja ${charData.char_name}`);
     });
 });
 
@@ -3060,7 +3727,7 @@ function loadCharacterContacts(player) {
 
     db.query('SELECT contact_name, contact_number FROM contacts WHERE char_id = ?', [player.charId], (err, results) => {
         if (err) {
-            console.error('[KLAIDA] Nepavyko įkelti kontaktų:', err);
+            console.error('[KLAIDA] Nepavyko ikelti kontaktu:', err);
             return;
         }
         const contacts = results.map(row => ({ name: row.contact_name, number: row.contact_number }));
@@ -3098,9 +3765,9 @@ function saveCharacterData(player) {
                 [player.playtime || 0, player.money || 0, player.bankBalance || 0, player.health || 100, player.isPMEnabled ? 1 : 0, player.phoneNumber, inventoryJson, weaponPackageJson, equippedWeaponHash, equippedWeaponAmmo, player.charId],
                 (err) => {
                     if (err) {
-                        console.error('[KLAIDA] Nepavyko išsaugoti veikėjo duomenų:', err);
+                        console.error('[KLAIDA] Nepavyko issaugoti veikejo duomenu:', err);
                     } else {
-                        console.log(`[VEIKĖJAS] ${player.charName} duomenys išsaugoti sėkmingai.`);
+                        console.log(`[VEIKEJAS] ${player.charName} duomenys issaugoti sekmingai.`);
                     }
                 });
         } else {
@@ -3108,16 +3775,16 @@ function saveCharacterData(player) {
                 [player.playtime || 0, player.money || 0, player.bankBalance || 0, currentPos.x, currentPos.y, currentPos.z, player.health || 100, player.isPMEnabled ? 1 : 0, player.phoneNumber, inventoryJson, weaponPackageJson, equippedWeaponHash, equippedWeaponAmmo, player.charId],
                 (err) => {
                     if (err) {
-                        console.error('[KLAIDA] Nepavyko išsaugoti veikėjo duomenų:', err);
+                        console.error('[KLAIDA] Nepavyko issaugoti veikejo duomenu:', err);
                     } else {
-                        console.log(`[VEIKĖJAS] ${player.charName} duomenys išsaugoti sėkmingai.`);
+                        console.log(`[VEIKEJAS] ${player.charName} duomenys issaugoti sekmingai.`);
                     }
                 });
         }
 
         db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance || 0, player.charName], (err) => {
             if (err) {
-                console.error('[KLAIDA] Nepavyko išsaugoti banko sąskaitos:', err);
+                console.error('[KLAIDA] Nepavyko issaugoti banko saskaitos:', err);
             }
         });
     }
@@ -3299,7 +3966,7 @@ setInterval(() => {
 const messageColor = "#c2749d";
 
 mp.events.addCommand('me', (player, _, ...action) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (action.length === 0) {
         player.outputChatBox('Naudojimas: /me <veiksmas>');
         return;
@@ -3314,7 +3981,7 @@ mp.events.addCommand('me', (player, _, ...action) => {
 });
 
 mp.events.addCommand('do', (player, _, ...description) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (description.length === 0) {
         player.outputChatBox('Naudojimas: /do <apibudinimas>');
         return;
@@ -3329,14 +3996,14 @@ mp.events.addCommand('do', (player, _, ...description) => {
 });
 
 mp.events.addCommand('s', (player, _, ...shoutMessage) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (shoutMessage.length === 0) {
-        player.outputChatBox('Naudojimas: /s <žodis>');
+        player.outputChatBox('Naudojimas: /s <zodis>');
         return;
     }
 
     const shoutText = shoutMessage.join(' ');
-    const message = `* ${player.charName} šaukia: ${shoutText}`;
+    const message = `* ${player.charName} saukia: ${shoutText}`;
 
     mp.players.forEachInRange(player.position, 50, (nearbyPlayer) => {
         nearbyPlayer.outputChatBox(message);
@@ -3344,15 +4011,15 @@ mp.events.addCommand('s', (player, _, ...shoutMessage) => {
 });
 
 mp.events.addCommand('low', (player, _, ...whisperMessage) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (whisperMessage.length === 0) {
-        player.outputChatBox('Naudojimas: /low <žodis>');
+        player.outputChatBox('Naudojimas: /low <zodis>');
         return;
     }
 
     const whisperText = whisperMessage.join(' ');
     const whisperColor = "#A0A0A0";
-    const message = `!{${whisperColor}}* ${player.charName} šnabžda: ${whisperText}`;
+    const message = `!{${whisperColor}}* ${player.charName} snabzda: ${whisperText}`;
 
     mp.players.forEachInRange(player.position, 5, (nearbyPlayer) => {
         nearbyPlayer.outputChatBox(message);
@@ -3378,7 +4045,7 @@ mp.events.add('playerChat', (player, text) => {
     if (isOnCall) {
         const callData = activeCalls.get(player.id);
         const partner = (callData.caller === player) ? callData.target : callData.caller;
-        if (partner && partner !== player) { // Ensure partner exists and isn’t the same player
+        if (partner && partner !== player) { // Ensure partner exists and isn't the same player
             partner.outputChatBox(callMessage);
             console.log(`[DEBUG] Call chat to partner: ${player.charName} -> ${partner.charName}: ${text}`);
         }
@@ -3388,9 +4055,9 @@ mp.events.add('playerChat', (player, text) => {
 });
 
 mp.events.addCommand('b', (player, _, ...messageArray) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (messageArray.length === 0) {
-        player.outputChatBox(`!{#B0C4DE}Naudojimas: /b [žinutė] - Nusiusti OOC žinutę šalia esantiems žaidėjams.`);
+        player.outputChatBox(`!{#B0C4DE}Naudojimas: /b [zinute] - Nusiusti OOC zinute salia esantiems zaidejams.`);
         return;
     }
 
@@ -3409,8 +4076,8 @@ mp.events.addCommand('help', (player) => {
     player.outputChatBox(`KITOS KOMANDOS - /togglepm, /time, /barber, /changeclothes, /inv`);
     player.outputChatBox(`TURTAS - /helphouse, /helpvehicle`);
     player.outputChatBox(`!{#ADD8E6}----------------------------`);
-    player.outputChatBox(`Įvedus komandą gausite komandos paaiškinimą.`);
-    player.outputChatBox(`Daugiau informacijos galite rasti mūsų forume arba /helpme <klausimas>.`);
+    player.outputChatBox(`Ivedus komanda gausite komandos paaiskinima.`);
+    player.outputChatBox(`Daugiau informacijos galite rasti musu forume arba /helpme <klausimas>.`);
 });
 
 mp.events.addCommand('helphouse', (player) => {
@@ -3427,13 +4094,13 @@ mp.events.addCommand('helpvehicle', (player) => {
 });
 
 mp.events.addCommand('id', (player, fullText, partialName) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!partialName) {
-        player.outputChatBox(`Jūsų žaidėjo ID: ${player.id}`);
+        player.outputChatBox(`Jusu zaidejo ID: ${player.id}`);
     } else {
         const matchingPlayers = mp.players.toArray().filter(p => p.charName && p.charName.toLowerCase().includes(partialName.toLowerCase()));
         if (matchingPlayers.length === 0) {
-            player.outputChatBox(`Nerastas žaidėjas "${partialName}".`);
+            player.outputChatBox(`Nerastas zaidejas "${partialName}".`);
         } else {
             matchingPlayers.forEach(target => {
                 player.outputChatBox(`ID: ${target.id} | Vardas: ${target.charName}`);
@@ -3443,9 +4110,9 @@ mp.events.addCommand('id', (player, fullText, partialName) => {
 });
 
 mp.events.addCommand('pm', (player, fullText, targetIdentifier, ...messageArray) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!targetIdentifier || messageArray.length === 0) {
-        player.outputChatBox(`Naudojimas: /pm [ID ar dalis vardo] [žinutė]`);
+        player.outputChatBox(`Naudojimas: /pm [ID ar dalis vardo] [zinute]`);
         return;
     }
 
@@ -3455,46 +4122,46 @@ mp.events.addCommand('pm', (player, fullText, targetIdentifier, ...messageArray)
     target = getPlayerByIDOrName(targetIdentifier);
 
     if (!target) {
-        player.outputChatBox(`Nerastas žaidėjas vardu "${targetIdentifier}".`);
+        player.outputChatBox(`Nerastas zaidejas vardu "${targetIdentifier}".`);
         return;
     }
 
     if (!target.charName) {
-        player.outputChatBox('!{#e74c3c}Žaidėjas dar nepasirinko veikėjo.');
+        player.outputChatBox('!{#e74c3c}Zaidejas dar nepasirinko veikejo.');
         return;
     }
 
     if (!target.isPMEnabled) {
-        player.outputChatBox('!{#E74C3C}Žaidėjas šiuo metu yra išjungęs privačias žinutes.');
+        player.outputChatBox('!{#E74C3C}Zaidejas siuo metu yra isjunges privacias zinutes.');
         return;
     }
 
     if (!player.isPMEnabled) {
-        player.outputChatBox('!{#E74C3C}Jūs išjungėte privačias žinutes ir negalite jų siųsti.');
+        player.outputChatBox('!{#E74C3C}Jus isjungete privacias zinutes ir negalite ju siusti.');
         return;
     }
 
     if (target) {
-        target.outputChatBox(`!{#FFFF00}((PM iš ${player.charName}: ${message}))`);
-        player.outputChatBox(`!{#FFFF00}((PM nusiųsta ${target.charName}: ${message}))`);
+        target.outputChatBox(`!{#FFFF00}((PM is ${player.charName}: ${message}))`);
+        player.outputChatBox(`!{#FFFF00}((PM nusiusta ${target.charName}: ${message}))`);
     } else {
-        player.outputChatBox(`Žaidėjas "${targetIdentifier}" nerastas.`);
+        player.outputChatBox(`Zaidejas "${targetIdentifier}" nerastas.`);
     }
 });
 
 mp.events.addCommand('stats', player => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    player.outputChatBox(`!{#f7dc6f}===== Jūsų informacija =====`);
-    player.outputChatBox(`UCP vartotojo vardas: ${player.name}, Veikėjo vardas: ${player.charName}`); // Show UCP username
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    player.outputChatBox(`!{#f7dc6f}===== Jusu informacija =====`);
+    player.outputChatBox(`UCP vartotojo vardas: ${player.name}, Veikejo vardas: ${player.charName}`); // Show UCP username
     player.outputChatBox(`------------------------------------------------------`);
-    player.outputChatBox(`Telefono numeris: ${player.phoneNumber || 'Nėra'}`);
-    player.outputChatBox(`Banko saskaitos numeris: ${player.bankAccountNumber || 'Neatidaryta'} (atidaryti: /openbank Fleeca banke)`);
-    player.outputChatBox(`Gyvybės: ${player.health}, Žaidimo laikas: ${Math.floor(player.playtime / 60)} val. ${player.playtime % 60} min.`);
-    player.outputChatBox(`Grynieji pinigai: $${player.money}, Banko sąskaitos balansas: $${player.bankBalance}`);
+    player.outputChatBox(`Telefono numeris: ${player.phoneNumber || 'Nera'}`);
+    player.outputChatBox(`Banko saskaitos numeris: ${player.bankAccountNumber || 'Neatidaryta'}`);
+    player.outputChatBox(`Gyvybes: ${player.health}, Zaidimo laikas: ${Math.floor(player.playtime / 60)} val. ${player.playtime % 60} min.`);
+    player.outputChatBox(`Grynieji pinigai: $${player.money}, Banko saskaitos balansas: $${player.bankBalance}`);
 });
 
 mp.events.addCommand('try', (player, fullText) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!fullText) {
         player.outputChatBox('Naudojimas: /try [veiksmas]');
         return;
@@ -3529,8 +4196,8 @@ const knownCommands = new Set([
     'kick', 'freeze', 'goto', 'bring', 'ban', 'heal', 'giveitem', 'giveweapon', 'dropweapon', 'stashweapon', 'takeweapon', 'buildpackage', 'putpackage', 'viewpackage', 'admingiveweapon',
     'helpme', 'accepthelp', 'declinehelp',
     'report', 'acceptreport', 'declinereport',
-    'admins', 'setaname', 'changechar', 'coords', 'createtwittertables',
-    'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'buy', 'bizbank', 'bizbankwithdraw', 'setbizname', 'sellbiz', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'aprop', 'abiz', 'tpinterior',
+    'admins', 'setaname', 'changechar', 'coords', 'createtwittertables', 'dmv',
+    'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'buy', 'pawnstock', 'pawnsell', 'pawnbuy', 'pawnprice', 'pawnrename', 'pawnstockrename', 'bizbank', 'bizbankdeposit', 'bizbankwithdraw', 'setbizname', 'sellbiz', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'aprop', 'abiz', 'tpinterior',
     'ph', 'phone', 'acceptdrive',
     'call', 'answer', 'decline', 'hangup', 'acceptdeath',
     'sharenumber', 'sms',
@@ -3541,41 +4208,41 @@ const knownCommands = new Set([
 mp.events.add('playerCommand', (player, command) => {
     const cmd = command.trim().split(' ')[0].toLowerCase();
     if (!knownCommands.has(cmd)) {
-        player.outputChatBox('!{#e74c3c}Ši komanda neegzistuoja. Naudokite /help arba /helpme');
+        player.outputChatBox('!{#e74c3c}Si komanda neegzistuoja. Naudokite /help arba /helpme');
     }
 });
 
 mp.events.addCommand('pay', (player, fullText, targetNameOrID, amountStr) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!targetNameOrID || !amountStr) {
         return player.outputChatBox('!{#f7dc6f}Naudojimas: /pay [ID arba vardas] [suma]');
     }
 
     const amount = parseInt(amountStr);
     if (isNaN(amount) || amount <= 0) {
-        return player.outputChatBox('!{#f7dc6f}Prašome nurodyti galiojančią sumą.');
+        return player.outputChatBox('!{#f7dc6f}Prasome nurodyti galiojancia suma.');
     }
 
     const targetPlayer = getPlayerByIDOrName(targetNameOrID);
     if (!targetPlayer) {
-        return player.outputChatBox('!{#f7dc6f}Žaidėjas nerastas!');
+        return player.outputChatBox('!{#f7dc6f}Zaidejas nerastas!');
     }
 
     if (!targetPlayer.charName) {
-        return player.outputChatBox('!{#e74c3c}Žaidėjas dar nepasirinko veikėjo.');
+        return player.outputChatBox('!{#e74c3c}Zaidejas dar nepasirinko veikejo.');
     }
 
     if (player === targetPlayer) {
-        return player.outputChatBox('!{#f7dc6f}Negalite pervesti pinigų patys sau!');
+        return player.outputChatBox('!{#f7dc6f}Negalite pervesti pinigu patys sau!');
     }
 
     const distance = getDistanceBetweenPositions(player.position, targetPlayer.position);
     if (distance > 5) {
-        return player.outputChatBox('!{#f7dc6f}Jūs turite būti šalia kito žaidėjo, kad atliktumėte pervedimą.');
+        return player.outputChatBox('!{#f7dc6f}Jus turite buti salia kito zaidejo, kad atliktumete pervedima.');
     }
 
     if (player.money < amount) {
-        return player.outputChatBox('!{#f7dc6f}Jūs neturite pakankamai pinigų!');
+        return player.outputChatBox('!{#f7dc6f}Jus neturite pakankamai pinigu!');
     }
 
     player.money -= amount;
@@ -3587,35 +4254,35 @@ mp.events.addCommand('pay', (player, fullText, targetNameOrID, amountStr) => {
     db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName], (err) => {
         if (err) {
             console.error(err);
-            player.outputChatBox('!{#f7dc6f}Įvyko klaida atnaujinant jūsų paskyrą.');
+            player.outputChatBox('!{#f7dc6f}Ivyko klaida atnaujinant jusu paskyra.');
         }
     });
 
     db.query('UPDATE characters SET money = ? WHERE char_name = ?', [targetPlayer.money, targetPlayer.charName], (err) => {
         if (err) {
             console.error(err);
-            player.outputChatBox('!{#f7dc6f}Įvyko klaida atnaujinant gavėjo paskyrą.');
+            player.outputChatBox('!{#f7dc6f}Ivyko klaida atnaujinant gavejo paskyra.');
             return;
         }
-        player.outputChatBox(`!{#f7dc6f}Jūs pervedėte $${amount} žaidėjui ${targetPlayer.charName}.`);
-        targetPlayer.outputChatBox(`!{#f7dc6f}Jūs gavote $${amount} iš žaidėjo ${player.charName}.`);
+        player.outputChatBox(`!{#f7dc6f}Jus pervedete $${amount} zaidejui ${targetPlayer.charName}.`);
+        targetPlayer.outputChatBox(`!{#f7dc6f}Jus gavote $${amount} is zaidejo ${player.charName}.`);
     });
 });
 
 mp.events.addCommand('togglepm', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     player.isPMEnabled = !player.isPMEnabled;
 
     if (player.isPMEnabled) {
-        player.outputChatBox('!{#27AE60}Jūs įjungėte privačias žinutes.');
+        player.outputChatBox('!{#27AE60}Jus ijungete privacias zinutes.');
     } else {
-        player.outputChatBox('!{#E74C3C}Jūs išjungėte privačias žinutes.');
+        player.outputChatBox('!{#E74C3C}Jus isjungete privacias zinutes.');
     }
 
     db.query('UPDATE characters SET is_pm_enabled = ? WHERE char_name = ?', [player.isPMEnabled ? 1 : 0, player.charName], (err) => {
         if (err) {
             console.error(err);
-            player.outputChatBox('!{#E74C3C}Įvyko klaida atnaujinant jūsų privačias žinutes.');
+            player.outputChatBox('!{#E74C3C}Ivyko klaida atnaujinant jusu privacias zinutes.');
         }
     });
 });
@@ -3783,7 +4450,7 @@ function showBuyParkState(player) {
     ensureOwnedVehicleState(player);
     ensureParkLocationState(player);
 
-    player.outputChatBox('!{#f4d03f}===== Jusu garažas (Asmeninis) =====');
+    player.outputChatBox('!{#f4d03f}===== Jusu garazas (Asmeninis) =====');
 
     if (player.ownedVehicles.size === 0) {
         player.outputChatBox('!{#f7dc6f}Jus dar neturite transporto. Pirkite su /buyvehicle prie dealership.');
@@ -3979,7 +4646,7 @@ mp.events.addCommand('park', (player) => {
     const vPos = player.vehicle.position;
     const vHeading = Number.isFinite(player.vehicle.heading) ? player.vehicle.heading : DEALERSHIP_DELIVERY_HEADING;
 
-    // Match by RAGE MP entity .id — object reference (===) is unreliable across property accesses.
+    // Match by RAGE MP entity .id - object reference (===) is unreliable across property accesses.
     let record = null;
     for (const r of player.ownedVehicles.values()) {
         if (r && r.entity && r.entity.id === vId) { record = r; break; }
@@ -4010,7 +4677,7 @@ mp.events.addCommand('park', (player) => {
         Math.pow(player.position.z - vehicleParkLocation.z, 2)
     );
     if (parkDist > 15.0) {
-        return player.outputChatBox(`!{#e74c3c}Turite buti prie sio transporto parkavimo zonos. Dabar esate ~${Math.round(parkDist)}m nutolę.`);
+        return player.outputChatBox(`!{#e74c3c}Turite buti prie sio transporto parkavimo zonos. Dabar esate ~${Math.round(parkDist)}m nutole.`);
     }
 
     player.removeFromVehicle();
@@ -4038,7 +4705,7 @@ mp.events.addCommand('get', (player, _, vehicleDbIdRaw) => {
     let record = null;
     if (!vehicleDbIdRaw) {
         showBuyParkState(player);
-        return player.outputChatBox('!{#f7dc6f}Naudojimas: /get [id] — ispawnina jusu transporta. Pavyzdys: /get 1');
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /get [id] - ispawnina jusu transporta. Pavyzdys: /get 1');
     } else {
         record = getOwnedVehicleRecordByDbId(player, vehicleDbIdRaw);
     }
@@ -4092,7 +4759,7 @@ mp.events.addCommand('lock', (player) => {
     let record = null;
 
     if (player.vehicle) {
-        // Compare by RAGE MP entity .id — object reference (===) is unreliable.
+        // Compare by RAGE MP entity .id - object reference (===) is unreliable.
         const vId = player.vehicle.id;
         for (const r of player.ownedVehicles.values()) {
             if (r && r.entity && r.entity.id === vId) { record = r; break; }
@@ -4148,7 +4815,7 @@ mp.events.addCommand('lock', (player) => {
     persistOwnedVehicleState(record);
 
     if (record.locked) {
-        player.outputChatBox(`!{#e67e22}Užrakinote ${record.displayName}.`);
+        player.outputChatBox(`!{#e67e22}Uzrakinote ${record.displayName}.`);
     } else {
         player.outputChatBox(`!{#7aa164}Atrakinote ${record.displayName}.`);
     }
@@ -4160,11 +4827,11 @@ mp.events.addCommand('scrap', (player) => {
     }
 
     if (!player.vehicle) {
-        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte, kad jį supjautytumėte.');
+        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte, kad ji supjautytumete.');
     }
 
     if (player.seat !== -1 && player.seat !== 0) {
-        return player.outputChatBox('!{#e74c3c}Turite būti šio transporto vairuotoju.');
+        return player.outputChatBox('!{#e74c3c}Turite buti sio transporto vairuotoju.');
     }
 
     // Get the vehicle record
@@ -4176,7 +4843,7 @@ mp.events.addCommand('scrap', (player) => {
     // Get the vehicle model from catalog to find price
     const catalogEntry = vehicleCatalogByKey.get(record.model);
     if (!catalogEntry) {
-        return player.outputChatBox('!{#e74c3c}Šio transporto modelio negalima supjaustyti.');
+        return player.outputChatBox('!{#e74c3c}Sio transporto modelio negalima supjaustyti.');
     }
 
     // Calculate 40% of the dealership price
@@ -4202,7 +4869,7 @@ mp.events.addCommand('scrapconfirm', (player) => {
     }
 
     if (!player.pendingScrap) {
-        return player.outputChatBox('!{#e74c3c}Jūs neturite laukiančio supjaustymo.');
+        return player.outputChatBox('!{#e74c3c}Jus neturite laukiancio supjaustymo.');
     }
 
     const { vehicleId, vehicleDisplayName, scrapPrice, record } = player.pendingScrap;
@@ -4229,7 +4896,7 @@ mp.events.addCommand('scrapconfirm', (player) => {
     db.query('UPDATE characters SET money = ? WHERE char_name = ?', [player.money, player.charName]);
 
     player.call('updateMoneyHUD', [player.money]);
-    player.outputChatBox(`!{#7aa164}Supjautėte ${vehicleDisplayName} ir gavote $${scrapPrice}.`);
+    player.outputChatBox(`!{#7aa164}Supjautete ${vehicleDisplayName} ir gavote $${scrapPrice}.`);
 });
 
 mp.events.addCommand('sellto', (player, _, targetIdStr, priceStr) => {
@@ -4242,21 +4909,21 @@ mp.events.addCommand('sellto', (player, _, targetIdStr, priceStr) => {
     }
 
     if (!player.vehicle) {
-        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte, norėdami parduoti.');
+        return player.outputChatBox('!{#e74c3c}Turite buti savo transporte, noredami parduoti.');
     }
 
     if (player.seat !== -1 && player.seat !== 0) {
-        return player.outputChatBox('!{#e74c3c}Turite būti šio transporto vairuotovu.');
+        return player.outputChatBox('!{#e74c3c}Turite buti sio transporto vairuotovu.');
     }
 
     // Get target player
     const targetPlayer = getPlayerByIDOrName(targetIdStr);
     if (!targetPlayer) {
-        return player.outputChatBox('!{#e74c3c}Žaidėjas nerastas!');
+        return player.outputChatBox('!{#e74c3c}Zaidejas nerastas!');
     }
 
     if (!targetPlayer.charName) {
-        return player.outputChatBox('!{#e74c3c}Žaidėjas dar nepasirinko veikėjo.');
+        return player.outputChatBox('!{#e74c3c}Zaidejas dar nepasirinko veikejo.');
     }
 
     if (targetPlayer === player) {
@@ -4266,13 +4933,13 @@ mp.events.addCommand('sellto', (player, _, targetIdStr, priceStr) => {
     // Check distance
     const distance = getDistanceBetweenPositions(player.position, targetPlayer.position);
     if (distance > 10) {
-        return player.outputChatBox('!{#f7dc6f}Žaidėjas yra per toli. Turi būti šalia jūsų.');
+        return player.outputChatBox('!{#f7dc6f}Zaidejas yra per toli. Turi buti salia jusu.');
     }
 
     // Parse price
     const price = parseInt(priceStr);
     if (isNaN(price) || price <= 0) {
-        return player.outputChatBox('!{#f7dc6f}Prašome nurodyti galiojančią kainą (daugiau nei 0).');
+        return player.outputChatBox('!{#f7dc6f}Prasome nurodyti galiojancia kaina (daugiau nei 0).');
     }
 
     // Get vehicle record
@@ -4283,7 +4950,7 @@ mp.events.addCommand('sellto', (player, _, targetIdStr, priceStr) => {
 
     // Check if buyer has enough money
     if (targetPlayer.money < price) {
-        return player.outputChatBox(`!{#e74c3c}Žaidėjas neturi pakankamai pinigų. Jei turi: $${targetPlayer.money}`);
+        return player.outputChatBox(`!{#e74c3c}Zaidejas neturi pakankamai pinigu. Jei turi: $${targetPlayer.money}`);
     }
 
     // Store data before modifications
@@ -4322,8 +4989,8 @@ mp.events.addCommand('sellto', (player, _, targetIdStr, priceStr) => {
     targetPlayer.call('updateMoneyHUD', [targetPlayer.money]);
 
     // Notify both players
-    player.outputChatBox(`!{#7aa164}Pardavėte ${vehicleDisplayName} žaidėjui ${targetPlayer.charName} už $${price}.`);
-    targetPlayer.outputChatBox(`!{#7aa164}Nusipirkote ${vehicleDisplayName} iš žaidėjo ${player.charName} už $${price}.`);
+    player.outputChatBox(`!{#7aa164}Pardavete ${vehicleDisplayName} zaidejui ${targetPlayer.charName} uz $${price}.`);
+    targetPlayer.outputChatBox(`!{#7aa164}Nusipirkote ${vehicleDisplayName} is zaidejo ${player.charName} uz $${price}.`);
 });
 
 mp.events.addCommand('properties', (player) => {
@@ -4398,6 +5065,9 @@ mp.events.addCommand('buyproperty', (player, _, propertyIdRaw, paymentMethodRaw 
     property.inventory = [];
     property.settings = getDefaultPropertySettings();
     persistPropertyState(property);
+
+    // Show blip to new owner
+    showOwnedPropertyBlipForPlayer(player, property);
 
     player.outputChatBox(`!{#7aa164}Nusipirkote ${property.name} uz $${property.price} (${paymentMethod}).`);
     sendPropertyInfo(player, property);
@@ -4523,7 +5193,7 @@ mp.events.addCommand('exithouse', (player) => {
     player.currentPropertyId = null;
     player.currentBusinessId = null;
 
-    player.outputChatBox(`!{#7aa164}Isėjote is ${property.name}.`);
+    player.outputChatBox(`!{#7aa164}Isejote is ${property.name}.`);
 });
 
 mp.events.addCommand('exit', (player) => {
@@ -4544,7 +5214,7 @@ mp.events.addCommand('exit', (player) => {
         player.currentPropertyId = null;
         player.currentBusinessId = null;
 
-        return player.outputChatBox(`!{#7aa164}Isėjote is ${property.name}.`);
+        return player.outputChatBox(`!{#7aa164}Isejote is ${property.name}.`);
     }
 
     const business = getPlayerCurrentBusiness(player);
@@ -4669,6 +5339,214 @@ mp.events.addCommand('buy', (player, fullText) => {
     }
 });
 
+mp.events.addCommand('pawnstock', (player) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const business = getPlayerCurrentBusiness(player);
+    if (!isPawnShopBusiness(business)) {
+        return player.outputChatBox('!{#f7dc6f}Pawn stock galite perziureti tik lombardo viduje.');
+    }
+
+    openPawnShopForPlayer(player, business, '', true, false);
+});
+
+mp.events.addCommand('pawnsell', (player, _, itemId) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!itemId) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /pawnsell [inventory item ID]');
+    }
+
+    const business = getPlayerCurrentBusiness(player);
+    if (!isPawnShopBusiness(business)) {
+        return player.outputChatBox('!{#f7dc6f}Daiktus parduoti galite tik lombardo viduje.');
+    }
+
+    if (!business.ownerCharId) {
+        return player.outputChatBox('!{#e74c3c}Sis lombardas neturi savininko.');
+    }
+
+    const itemEntry = findInventoryItemByToken(player, itemId);
+    if (!itemEntry) {
+        return sendInventoryUpdate(player, 'Toks daiktas inventoriuje nerastas.', false);
+    }
+
+    const item = itemEntry.item;
+    if (!isPawnableInventoryItem(item)) {
+        return sendInventoryUpdate(player, 'Lombardas sio daikto nesuperka.', false);
+    }
+
+    const originalPrice = getPawnOriginalPrice(item);
+    const buyPrice = Math.max(1, Math.floor(originalPrice * PAWN_AUTO_SELL_RATE));
+    const bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0);
+    if (bankBalance < buyPrice) {
+        return player.outputChatBox(`!{#e74c3c}Lombardo banke nepakanka lesu. Reikia $${buyPrice}, yra $${bankBalance}.`);
+    }
+
+    const stockItem = {
+        stockId: generateInventoryItemId(),
+        type: item.type,
+        name: sanitizeInventoryItemName(item.name, INVENTORY_ITEM_DEFS[item.type].name),
+        description: item.description || INVENTORY_ITEM_DEFS[item.type].description,
+        icon: item.icon || INVENTORY_ITEM_DEFS[item.type].icon || 'BOX',
+        originalPrice,
+        buyPrice,
+        price: Math.max(1, originalPrice),
+        sellerCharName: player.charName,
+        soldAt: new Date().toISOString(),
+    };
+
+    removeInventoryItemAmount(player, itemId, 1);
+    business.pawnInventory = Array.isArray(business.pawnInventory) ? business.pawnInventory : [];
+    business.pawnInventory.push(stockItem);
+    business.bankBalance = bankBalance - buyPrice;
+    player.money = Math.max(0, parseInt(player.money, 10) || 0) + buyPrice;
+
+    persistInventory(player);
+    persistPlayerMoney(player);
+    persistBusinessState(business);
+    sendInventoryUpdate(player, `Pardavete lombardui ${stockItem.name} uz $${buyPrice}.`, true);
+    player.outputChatBox(`!{#7aa164}Pardavete ${stockItem.name} lombardui ${business.name} uz $${buyPrice}.`);
+});
+
+function buyPawnStockItem(player, stockId, updateUi = false) {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!stockId) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /pawnbuy [stockId]');
+    }
+
+    const business = getPlayerCurrentBusiness(player);
+    if (!isPawnShopBusiness(business)) {
+        return player.outputChatBox('!{#f7dc6f}Pawn daiktus pirkti galite tik lombardo viduje.');
+    }
+
+    const stockEntry = findPawnStockItem(business, stockId);
+    if (!stockEntry) {
+        if (updateUi) openPawnShopForPlayer(player, business, 'Toks daiktas neberastas.', false, true);
+        return player.outputChatBox('!{#e74c3c}Toks pawn stock ID nerastas. Naudokite /pawnstock.');
+    }
+
+    const stockItem = stockEntry.item;
+    const price = Math.max(1, parseInt(stockItem.price, 10) || 1);
+    if ((player.money || 0) < price) {
+        if (updateUi) openPawnShopForPlayer(player, business, `Nepakanka grynuju. Reikia $${price}.`, false, true);
+        return player.outputChatBox(`!{#e74c3c}Nepakanka grynuju. Reikia $${price}, turite $${player.money || 0}.`);
+    }
+
+    if (!Array.isArray(player.inventory)) player.inventory = [];
+    const addedItem = addExistingInventoryItem(player, stockItem, 1);
+    if (!addedItem) {
+        if (updateUi) openPawnShopForPlayer(player, business, 'Nepavyko prideti daikto i inventoriu.', false, true);
+        return player.outputChatBox('!{#e74c3c}Nepavyko prideti daikto i inventoriu.');
+    }
+
+    business.pawnInventory.splice(stockEntry.index, 1);
+    player.money -= price;
+    business.bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0) + price;
+
+    persistInventory(player);
+    persistPlayerMoney(player);
+    persistBusinessState(business);
+    sendInventoryUpdate(player, `Nusipirkote ${stockItem.name} uz $${price}.`, true);
+    player.outputChatBox(`!{#7aa164}Nusipirkote ${stockItem.name} is ${business.name} uz $${price}.`);
+    if (updateUi) openPawnShopForPlayer(player, business, `Nusipirkote ${stockItem.name} uz $${price}.`, true, true);
+}
+
+mp.events.addCommand('pawnbuy', (player, _, stockId) => {
+    buyPawnStockItem(player, stockId, false);
+});
+
+mp.events.add('pawnShopBuy', (player, stockId) => {
+    buyPawnStockItem(player, stockId, true);
+});
+
+mp.events.addCommand('pawnprice', (player, _, stockId, priceRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!stockId || !priceRaw) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /pawnprice [stockId] [kaina]');
+    }
+
+    const business = getOwnedBusinessContext(player);
+    if (!isPawnShopBusiness(business)) {
+        return player.outputChatBox('!{#e74c3c}Kainas keisti galite tik savo lombarde.');
+    }
+
+    const stockEntry = findPawnStockItem(business, stockId);
+    if (!stockEntry) {
+        return player.outputChatBox('!{#e74c3c}Toks pawn stock ID nerastas.');
+    }
+
+    const price = parseInt(priceRaw, 10);
+    if (!Number.isFinite(price) || price <= 0) {
+        return player.outputChatBox('!{#e74c3c}Nurodykite teisinga kaina.');
+    }
+
+    stockEntry.item.price = Math.min(price, 100000000);
+    persistBusinessPawnInventory(business);
+    player.outputChatBox(`!{#7aa164}${stockEntry.item.name} kaina pakeista i $${stockEntry.item.price}.`);
+});
+
+mp.events.addCommand('pawnrename', (player, fullText, itemId, ...nameParts) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const business = getOwnedBusinessContext(player);
+    if (!isPawnShopBusiness(business)) {
+        return player.outputChatBox('!{#e74c3c}Daiktus pervadinti gali tik lombardo savininkas savo lombarde.');
+    }
+
+    const nextName = sanitizeInventoryItemName(nameParts.join(' '), '');
+    if (!itemId || !nextName) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /pawnrename [inventory item ID] [naujas pavadinimas]');
+    }
+
+    const itemEntry = findInventoryItemByToken(player, itemId);
+    if (!itemEntry || !isPawnableInventoryItem(itemEntry.item)) {
+        return sendInventoryUpdate(player, 'Toks pawn daiktas inventoriuje nerastas.', false);
+    }
+
+    itemEntry.item.name = nextName;
+    persistInventory(player);
+    sendInventoryUpdate(player, `Daiktas pervadintas i: ${nextName}.`, true);
+    player.outputChatBox(`!{#7aa164}Daiktas pervadintas i: ${nextName}.`);
+});
+
+mp.events.addCommand('pawnstockrename', (player, fullText, stockId, ...nameParts) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    const business = getOwnedBusinessContext(player);
+    if (!isPawnShopBusiness(business)) {
+        return player.outputChatBox('!{#e74c3c}Stock pervadinti galite tik savo lombarde.');
+    }
+
+    const nextName = sanitizeInventoryItemName(nameParts.join(' '), '');
+    if (!stockId || !nextName) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /pawnstockrename [stockId] [naujas pavadinimas]');
+    }
+
+    const stockEntry = findPawnStockItem(business, stockId);
+    if (!stockEntry) {
+        return player.outputChatBox('!{#e74c3c}Toks pawn stock ID nerastas.');
+    }
+
+    stockEntry.item.name = nextName;
+    persistBusinessPawnInventory(business);
+    player.outputChatBox(`!{#7aa164}Pawn stock pervadintas i: ${nextName}.`);
+});
+
 mp.events.addCommand('bizbank', (player) => {
     if (!player.charId || !player.charName) {
         return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
@@ -4714,6 +5592,39 @@ mp.events.addCommand('bizbankwithdraw', (player, _, amountRaw) => {
     persistPlayerMoney(player);
 
     player.outputChatBox(`!{#7aa164}Isiemete $${amount} is ${business.name} banko. Naujas balansas: $${business.bankBalance}.`);
+});
+
+mp.events.addCommand('bizbankdeposit', (player, _, amountRaw) => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    }
+
+    if (!amountRaw) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /bizbankdeposit [suma]');
+    }
+
+    const business = getOwnedBusinessContext(player);
+    if (!business) {
+        return player.outputChatBox('!{#e74c3c}Turite buti savo versle arba prie jo iejimo.');
+    }
+
+    const amount = parseInt(amountRaw, 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return player.outputChatBox('!{#e74c3c}Nurodykite teisinga suma.');
+    }
+
+    const playerMoney = Math.max(0, parseInt(player.money, 10) || 0);
+    if (amount > playerMoney) {
+        return player.outputChatBox(`!{#e74c3c}Neturite tiek grynuju. Turite $${playerMoney}.`);
+    }
+
+    player.money = playerMoney - amount;
+    business.bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0) + amount;
+
+    persistBusinessState(business);
+    persistPlayerMoney(player);
+
+    player.outputChatBox(`!{#7aa164}Idejote $${amount} i ${business.name} banka. Naujas balansas: $${business.bankBalance}.`);
 });
 
 mp.events.addCommand('setbizname', (player, fullText) => {
@@ -4839,6 +5750,10 @@ mp.events.addCommand('sellproperty', (player, _, targetIdentifier, priceRaw) => 
     clearTenantFromProperty(property);
     property.settings.locked = 1;
     persistPropertyState(property);
+
+    // Update blips: clear for seller, show for buyer
+    clearOwnedPropertyBlipForPlayer(player);
+    showOwnedPropertyBlipForPlayer(targetPlayer, property);
 
     player.outputChatBox(`!{#7aa164}Pardavete ${property.name} zaidejui ${targetPlayer.charName} uz $${price}.`);
     targetPlayer.outputChatBox(`!{#7aa164}Nusipirkote ${property.name} is ${player.charName} uz $${price}.`);
@@ -5140,7 +6055,7 @@ mp.events.addCommand('aprop', (player, fullText) => {
                 return player.outputChatBox('!{#e74c3c}Naudojimas: /aprop create [price]');
             }
 
-            const safeName = 'Nuosavybė';
+            const safeName = 'Nuosavybe';
             const key = `custom-${Date.now()}-${Math.floor(Math.random() * 9999)}`;
             const dim = 8000 + Math.floor(Math.random() * 100000);
             const pos = player.position;
@@ -5310,10 +6225,15 @@ mp.events.addCommand('aprop', (player, fullText) => {
             }
 
             if (targetIdentifier.toLowerCase() === 'none') {
+                const prevOwnerId = property.ownerCharId;
                 property.ownerCharId = null;
                 property.ownerCharName = null;
                 clearTenantFromProperty(property);
                 persistPropertyState(property);
+                if (prevOwnerId) {
+                    const prevOwnerPlayer = findOnlinePlayerByCharId(prevOwnerId);
+                    if (prevOwnerPlayer) clearOwnedPropertyBlipForPlayer(prevOwnerPlayer);
+                }
                 return player.outputChatBox(`!{#7aa164}Property #${property.id} grazintas serveriui.`);
             }
 
@@ -5322,11 +6242,19 @@ mp.events.addCommand('aprop', (player, fullText) => {
                 return player.outputChatBox('!{#e74c3c}Nerastas online zaidejas pagal nurodyta identifikatoriu.');
             }
 
+            const prevOwnerId = property.ownerCharId;
             property.ownerCharId = targetPlayer.charId;
             property.ownerCharName = targetPlayer.charName;
             clearTenantFromProperty(property);
             property.settings.locked = 1;
             persistPropertyState(property);
+
+            if (prevOwnerId) {
+                const prevOwnerPlayer = findOnlinePlayerByCharId(prevOwnerId);
+                if (prevOwnerPlayer) clearOwnedPropertyBlipForPlayer(prevOwnerPlayer);
+            }
+
+            showOwnedPropertyBlipForPlayer(targetPlayer, property);
 
             targetPlayer.outputChatBox(`!{#7aa164}Administratorius priskyre jums property: ${property.name}.`);
             return player.outputChatBox(`!{#7aa164}Property #${property.id} priskirtas ${targetPlayer.charName}.`);
@@ -5369,7 +6297,7 @@ mp.events.addCommand('abiz', (player, fullText) => {
 
         if (!action) {
             player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz list, /abiz reload, /abiz select');
-            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz create [shop|gasstation|restaurant] [pavadinimas(optional)]');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz create [shop|gasstation|restaurant|pawnshop] [pavadinimas(optional)]');
             player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz setentry [id], /abiz setinterior [interiorId|list], /abiz setexit [id(optional)]');
             player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz delete [id], /abiz tpentry [id], /abiz tpinterior [id]');
             return;
@@ -5405,7 +6333,7 @@ mp.events.addCommand('abiz', (player, fullText) => {
         if (action === 'create') {
             const type = normalizeBusinessType(args[1]);
             if (!type) {
-                return player.outputChatBox('!{#e74c3c}Naudojimas: /abiz create [shop|gasstation|restaurant] [pavadinimas(optional)]');
+                return player.outputChatBox('!{#e74c3c}Naudojimas: /abiz create [shop|gasstation|restaurant|pawnshop] [pavadinimas(optional)]');
             }
 
             const pos = player.position;
@@ -5440,6 +6368,7 @@ mp.events.addCommand('abiz', (player, fullText) => {
                         exitPos: new mp.Vector3(pos.x, pos.y, pos.z),
                         exitHeading: heading,
                         dimension: getUniqueBusinessDimension(result.insertId),
+                        pawnInventory: [],
                     };
 
                     businessesById.set(business.id, business);
@@ -5832,7 +6761,7 @@ function isNearFleecaBank(player, radius = FLEECA_OPEN_BANK_RADIUS) {
 
 mp.events.addCommand('openbank', (player) => {
     if (!player.charName || !player.charId) {
-        return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+        return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     }
 
     if (!isNearFleecaBank(player)) {
@@ -5864,9 +6793,9 @@ mp.events.addCommand('openbank', (player) => {
 });
 
 mp.events.addCommand('bank', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!isNearATMOrBank(player)) {
-        player.outputChatBox('!{#e74c3c}Neesate šalia banko ar bankomato.');
+        player.outputChatBox('!{#e74c3c}Neesate salia banko ar bankomato.');
         return;
     }
 
@@ -5878,10 +6807,10 @@ mp.events.addCommand('bank', (player) => {
 });
 
 mp.events.add('bankAction', (player, type, amount) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     amount = parseInt(amount);
     if (isNaN(amount) || amount <= 0) {
-        player.call('bankError', ['Įveskite teisingą sumą.']);
+        player.call('bankError', ['Iveskite teisinga suma.']);
         return;
     }
 
@@ -5903,7 +6832,7 @@ mp.events.add('bankAction', (player, type, amount) => {
                 refreshAndNotify(player.charName, player.bankBalance, player.money);
             });
         } else {
-            player.call('bankError', ['Nepakanka lėšų sąskaitoje.']);
+            player.call('bankError', ['Nepakanka lesu saskaitoje.']);
         }
     } else if (type === 'deposit') {
         if (player.money >= amount) {
@@ -5915,15 +6844,15 @@ mp.events.add('bankAction', (player, type, amount) => {
                 refreshAndNotify(player.charName, player.bankBalance, player.money);
             });
         } else {
-            player.call('bankError', ['Neturite pakankamai grynųjų pinigų.']);
+            player.call('bankError', ['Neturite pakankamai grynuju pinigu.']);
         }
     }
 });
 
 mp.events.addCommand('withdraw', (player, amount) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!isNearATMOrBank(player)) {
-        player.outputChatBox('!{#e74c3c}Neesate šalia banko ar bankomato.');
+        player.outputChatBox('!{#e74c3c}Neesate salia banko ar bankomato.');
         return;
     }
 
@@ -5941,16 +6870,16 @@ mp.events.addCommand('withdraw', (player, amount) => {
         player.call('updateBankHUD', [player.bankBalance]);
         player.call('updateMoneyHUD', [player.money]);
 
-        player.outputChatBox(`!{#229954}Jūs išsigryninote $${amount} iš banko.`);
+        player.outputChatBox(`!{#229954}Jus issigryninote $${amount} is banko.`);
     } else {
-        player.outputChatBox("!{#FF0000}Jūsų banko sąskaitoje nėra pakankamai pinigų.");
+        player.outputChatBox("!{#FF0000}Jusu banko saskaitoje nera pakankamai pinigu.");
     }
 });
 
 mp.events.addCommand('deposit', (player, amount) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!isNearATMOrBank(player)) {
-        player.outputChatBox('!{#e74c3c}Neesate šalia banko ar bankomato.');
+        player.outputChatBox('!{#e74c3c}Neesate salia banko ar bankomato.');
         return;
     }
 
@@ -5968,14 +6897,14 @@ mp.events.addCommand('deposit', (player, amount) => {
         player.call('updateBankHUD', [player.bankBalance]);
         player.call('updateMoneyHUD', [player.money]);
 
-        player.outputChatBox(`!{#229954}Jūs įnešėte $${amount} į banko sąskaitą.`);
+        player.outputChatBox(`!{#229954}Jus inesete $${amount} i banko saskaita.`);
     } else {
-        player.outputChatBox("!{#FF0000}Neturite pakankamai grynųjų pinigų.");
+        player.outputChatBox("!{#FF0000}Neturite pakankamai grynuju pinigu.");
     }
 });
 
 mp.events.addCommand('transfer', (player, fullText, targetAccountNumberRaw, amount) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!normalizeBankAccountNumber(player.bankAccountNumber)) {
         return player.outputChatBox('!{#e74c3c}Neturite aktyvios banko saskaitos. Naudokite /openbank Fleeca banke.');
     }
@@ -6054,14 +6983,21 @@ function getPlayerByIDOrName(identifier) {
 
 function sendUsageInstructions(player, command) {
     const instructions = {
-        'kick': "[KICK] Naudojimas: /kick [ID arba vardas] - Išmesti žaidėją.",
-        'freeze': "[FREEZE] Naudojimas: /freeze [ID arba vardas] - Užšaldyti žaidėją.",
-        'heal': "[HEAL] Naudojimas: /heal [ID arba vardas] - Pagydyti žaidėją.",
-        'goto': "[GOTO] Naudojimas: /goto [ID arba vardas] - Eiti pas žaidėją.",
-        'bring': "[BRING] Naudojimas: /bring [ID arba vardas] - Atnešti žaidėją pas tave.",
-        'ban': "[BAN] Naudojimas: /ban [ID arba vardas] [Priežastis] - Užblokuoti žaidėją.",
+        'kick': "[KICK] Naudojimas: /kick [ID arba vardas] - Ismesti zaideja.",
+        'freeze': "[FREEZE] Naudojimas: /freeze [ID arba vardas] - Uzsaldyti zaideja.",
+        'heal': "[HEAL] Naudojimas: /heal [ID arba vardas] - Pagydyti zaideja.",
+        'goto': "[GOTO] Naudojimas: /goto [ID arba vardas] - Eiti pas zaideja.",
+        'bring': "[BRING] Naudojimas: /bring [ID arba vardas] - Atnesti zaideja pas tave.",
+        'ban': "[BAN] Naudojimas: /ban [ID arba vardas] [Priezastis] - Uzblokuoti zaideja.",
         'buy': "[BUY] Naudojimas: /buy [item] [kiekis] - Pirkti daiktus versle.",
+        'pawnstock': "[PAWNSTOCK] Naudojimas: /pawnstock - Parodo lombardo parduodamus daiktus.",
+        'pawnsell': "[PAWNSELL] Naudojimas: /pawnsell [inventory ID/type] - Parduoti pawn daikta lombardui uz 30%.",
+        'pawnbuy': "[PAWNBUY] Naudojimas: /pawnbuy [stockId] - Pirkti daikta is lombardo.",
+        'pawnprice': "[PAWNPRICE] Naudojimas: /pawnprice [stockId] [kaina] - Savininkui pakeisti lombardo prekes kaina.",
+        'pawnrename': "[PAWNRENAME] Naudojimas: /pawnrename [inventory ID/type] [pavadinimas] - Pervadinti pawn daikta lombarde.",
+        'pawnstockrename': "[PAWNSTOCKRENAME] Naudojimas: /pawnstockrename [stockId] [pavadinimas] - Savininkui pervadinti stock preke.",
         'bizbank': "[BIZBANK] Naudojimas: /bizbank - Parodo jusu verslo banko likuti.",
+        'bizbankdeposit': "[BIZBANKDEPOSIT] Naudojimas: /bizbankdeposit [suma] - Ideti grynuosius i verslo banka.",
         'bizbankwithdraw': "[BIZBANKWITHDRAW] Naudojimas: /bizbankwithdraw [suma] - Isimti pinigus is verslo banko.",
         'setbizname': "[SETBIZNAME] Naudojimas: /setbizname [pavadinimas] - Pervadinti savo versla.",
         'sellbiz': "[SELLBIZ] Naudojimas: /sellbiz [zaidejo ID/vardas] [kaina] - Parduoti savo versla.",
@@ -6160,7 +7096,7 @@ mp.events.addCommand('putpackage', (player) => {
     setVehicleWeaponStash(vehicle, stash);
     persistVehicleWeaponStash(vehicle);
     persistWeaponPackage(player);
-    player.outputChatBox(`!{#7aa164}Perkėlėte ${movedCount} ginklus i transporto saugykla (${stash.length}/${VEHICLE_WEAPON_STASH_LIMIT}).`);
+    player.outputChatBox(`!{#7aa164}Perkelete ${movedCount} ginklus i transporto saugykla (${stash.length}/${VEHICLE_WEAPON_STASH_LIMIT}).`);
 });
 
 mp.events.addCommand('viewpackage', (player) => {
@@ -6303,37 +7239,37 @@ mp.events.addCommand('giveweapon', (player, _, targetIdentifier) => {
 });
 
 mp.events.addCommand('giveitem', (admin, fullText, targetIdentifier, rawItemType, amountStr) => {
-    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!targetIdentifier || !rawItemType) {
         return sendUsageInstructions(admin, 'giveitem');
     }
 
     isAdmin(admin, 1, (error, hasPermission) => {
         if (error || !hasPermission) {
-            return admin.outputChatBox('!{#e74c3c}Neturite teisių naudoti šią komandą.');
+            return admin.outputChatBox('!{#e74c3c}Neturite teisiu naudoti sia komanda.');
         }
 
         const targetPlayer = getPlayerByIDOrName(targetIdentifier);
         if (!targetPlayer || !targetPlayer.charName) {
-            return admin.outputChatBox('!{#e74c3c}Žaidėjas nerastas arba nepasirinko veikėjo.');
+            return admin.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
         }
 
         const itemType = normalizeInventoryItemType(rawItemType);
         if (!itemType || !INVENTORY_ITEM_DEFS[itemType]) {
-            return admin.outputChatBox('!{#e74c3c}Nežinomas daiktas. Galimi: water, burger, bandage, medkit, cigarettes, beer');
+            return admin.outputChatBox('!{#e74c3c}Nezinomas daiktas. Galimi: water, burger, bandage, medkit, cigarettes, beer');
         }
 
         const amount = Math.max(1, parseInt(amountStr, 10) || 1);
         const addedItem = addInventoryItem(targetPlayer, itemType, amount);
         if (!addedItem) {
-            return admin.outputChatBox('!{#e74c3c}Nepavyko pridėti daikto.');
+            return admin.outputChatBox('!{#e74c3c}Nepavyko prideti daikto.');
         }
 
         persistInventory(targetPlayer);
 
         const label = formatInventoryAmount(addedItem.name, amount);
-        admin.outputChatBox(`!{#7aa164}Pridėjote ${label} žaidėjui ${targetPlayer.charName}.`);
-        targetPlayer.outputChatBox(`!{#7aa164}Administratorius ${admin.charName} davė jums ${label}.`);
+        admin.outputChatBox(`!{#7aa164}Pridejote ${label} zaidejui ${targetPlayer.charName}.`);
+        targetPlayer.outputChatBox(`!{#7aa164}Administratorius ${admin.charName} dave jums ${label}.`);
         sendInventoryUpdate(targetPlayer, `Gavote ${label}.`, true);
     });
 });
@@ -6374,40 +7310,40 @@ mp.events.addCommand('admingiveweapon', (admin, _, targetIdentifier, rawWeapon, 
 });
 
 mp.events.addCommand('kick', (player, targetIdentifier) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!targetIdentifier) {
         return sendUsageInstructions(player, 'kick');
     }
 
     isAdmin(player, 1, (error, hasPermission) => {
-        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisių.");
+        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisiu.");
 
         let target = getPlayerByIDOrName(targetIdentifier);
-        if (!target) return player.outputChatBox("[KLAIDA] Žaidėjas nerastas.");
-        target.kick("Buvo išmestas administratoriaus.");
+        if (!target) return player.outputChatBox("[KLAIDA] Zaidejas nerastas.");
+        target.kick("Buvo ismestas administratoriaus.");
     });
 });
 
 mp.events.addCommand('freeze', (player, targetIdentifier) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!targetIdentifier) {
         return sendUsageInstructions(player, 'freeze');
     }
 
     isAdmin(player, 1, (error, hasPermission) => {
-        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisių.");
+        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisiu.");
 
         let target = getPlayerByIDOrName(targetIdentifier);
-        if (!target) return player.outputChatBox("[KLAIDA] Žaidėjas nerastas.");
+        if (!target) return player.outputChatBox("[KLAIDA] Zaidejas nerastas.");
 
         if (target.frozen) {
             target.call('freezePlayer', [false]);
             target.frozen = false;
-            player.outputChatBox(`[INFO] Atšaldėte žaidėją ${target.charName || target.name}.`);
+            player.outputChatBox(`[INFO] Atsaldete zaideja ${target.charName || target.name}.`);
         } else {
             target.call('freezePlayer', [true]);
             target.frozen = true;
-            player.outputChatBox(`[INFO] Užšaldėte žaidėją ${target.charName || target.name}.`);
+            player.outputChatBox(`[INFO] Uzsaldete zaideja ${target.charName || target.name}.`);
         }
     });
 });
@@ -6438,60 +7374,60 @@ mp.events.addCommand('heal', (admin, targetIdentifier) => {
 });
 
 mp.events.addCommand('goto', (player, targetIdentifier) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!targetIdentifier) {
         return sendUsageInstructions(player, 'goto');
     }
 
     isAdmin(player, 1, (error, hasPermission) => {
-        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisių.");
+        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisiu.");
 
         let target = getPlayerByIDOrName(targetIdentifier);
-        if (!target) return player.outputChatBox("[KLAIDA] Žaidėjas nerastas.");
+        if (!target) return player.outputChatBox("[KLAIDA] Zaidejas nerastas.");
         player.position = target.position;
     });
 });
 
 mp.events.addCommand('bring', (player, targetIdentifier) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!targetIdentifier) {
         return sendUsageInstructions(player, 'bring');
     }
 
     isAdmin(player, 1, (error, hasPermission) => {
-        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisių.");
+        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisiu.");
 
         let target = getPlayerByIDOrName(targetIdentifier);
-        if (!target) return player.outputChatBox("[KLAIDA] Žaidėjas nerastas.");
+        if (!target) return player.outputChatBox("[KLAIDA] Zaidejas nerastas.");
         target.position = player.position;
     });
 });
 
 mp.events.addCommand('ban', (player, fullText) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!fullText) {
         return sendUsageInstructions(player, 'ban');
     }
 
     const args = fullText.split(" ");
     const targetIdentifier = args[0];
-    const reason = args.slice(1).join(" ") || "Nenurodyta priežastis";
+    const reason = args.slice(1).join(" ") || "Nenurodyta priezastis";
 
     isAdmin(player, 1, (error, hasPermission) => {
-        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisių.");
+        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisiu.");
 
         let target = getPlayerByIDOrName(targetIdentifier);
-        if (!target) return player.outputChatBox("[KLAIDA] Žaidėjas nerastas.");
+        if (!target) return player.outputChatBox("[KLAIDA] Zaidejas nerastas.");
 
         const ip = target.ip;
         const ucpName = target.name;
 
         db.query('INSERT INTO bans (ip, ucp_name, reason, admin) VALUES (?, ?, ?, ?)', [ip, ucpName, reason, player.charName], (error) => {
-            if (error) return player.outputChatBox("[KLAIDA] Įvyko klaida bandant užblokuoti žaidėją.");
+            if (error) return player.outputChatBox("[KLAIDA] Ivyko klaida bandant uzblokuoti zaideja.");
 
-            target.kick(`Buvo užblokuotas. Priežastis: ${reason}`);
-            player.outputChatBox(`[INFO] Jūs užblokavote žaidėją ${target.charName || target.name} (UCP: ${ucpName}, IP: ${ip}). Priežastis: ${reason}`);
-            mp.players.broadcast(`[INFO] Žaidėjas ${target.charName || target.name} buvo užblokuotas. Priežastis: ${reason}`);
+            target.kick(`Buvo uzblokuotas. Priezastis: ${reason}`);
+            player.outputChatBox(`[INFO] Jus uzblokavote zaideja ${target.charName || target.name} (UCP: ${ucpName}, IP: ${ip}). Priezastis: ${reason}`);
+            mp.players.broadcast(`[INFO] Zaidejas ${target.charName || target.name} buvo uzblokuotas. Priezastis: ${reason}`);
         });
     });
 });
@@ -6504,7 +7440,7 @@ async function getAdminLevelFromDB(player) {
         const query = "SELECT admin_level FROM characters WHERE char_name = ?";
         db.query(query, [player.charName], (err, results) => {
             if (err) {
-                console.error("Klaida tikrinant admin lygį:", err);
+                console.error("Klaida tikrinant admin lygi:", err);
                 resolve(0);
             } else {
                 resolve(results.length > 0 ? results[0]["admin_level"] : 0);
@@ -6514,14 +7450,14 @@ async function getAdminLevelFromDB(player) {
 }
 
 mp.events.addCommand('helpme', (player, fullText) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!fullText) {
         player.outputChatBox("[HELP] Naudojimas: /helpme <klausimas>");
         return;
     }
 
     if (activeHelpRequests.has(player.id)) {
-        player.outputChatBox("[HELP] Jūs jau pateikėte pagalbos prašymą. Palaukite administratoriaus atsakymo.");
+        player.outputChatBox("[HELP] Jus jau pateikete pagalbos prasyma. Palaukite administratoriaus atsakymo.");
         return;
     }
 
@@ -6534,75 +7470,75 @@ mp.events.addCommand('helpme', (player, fullText) => {
         }
     });
 
-    player.outputChatBox("[HELP] Jūsų pagalbos prašymas buvo išsiųstas administratoriams.");
+    player.outputChatBox("[HELP] Jusu pagalbos prasymas buvo issiustas administratoriams.");
 });
 
 mp.events.addCommand('accepthelp', async (admin, playerId) => {
-    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     const adminLevel = await getAdminLevelFromDB(admin);
     if (adminLevel < 1) {
-        admin.outputChatBox("[HELP] Jūs nesate administratorius.");
+        admin.outputChatBox("[HELP] Jus nesate administratorius.");
         return;
     }
 
     const target = getPlayerByIDOrName(playerId);
     if (!target) {
-        admin.outputChatBox("[HELP] Žaidėjas nerastas.");
+        admin.outputChatBox("[HELP] Zaidejas nerastas.");
         return;
     }
 
     if (!activeHelpRequests.has(target.id)) {
-        admin.outputChatBox("[HELP] Šis žaidėjas nepateikė pagalbos prašymo.");
+        admin.outputChatBox("[HELP] Sis zaidejas nepateike pagalbos prasymo.");
         return;
     }
 
     activeHelpRequests.delete(target.id);
-    target.outputChatBox(`!{#7aa164}[HELP] Administratorius ${admin.charName} jums padės.`);
-    admin.outputChatBox(`[HELP] Jūs priėmėte ${target.charName || target.name} (${target.id}) pagalbos prašymą.`);
+    target.outputChatBox(`!{#7aa164}[HELP] Administratorius ${admin.charName} jums pades.`);
+    admin.outputChatBox(`[HELP] Jus priemete ${target.charName || target.name} (${target.id}) pagalbos prasyma.`);
 });
 
 mp.events.addCommand('declinehelp', async (admin, playerId) => {
-    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     const adminLevel = await getAdminLevelFromDB(admin);
     if (adminLevel < 1) {
-        admin.outputChatBox("[HELP] Jūs nesate administratorius.");
+        admin.outputChatBox("[HELP] Jus nesate administratorius.");
         return;
     }
 
     const target = getPlayerByIDOrName(playerId);
     if (!target) {
-        admin.outputChatBox("[HELP] Žaidėjas nerastas.");
+        admin.outputChatBox("[HELP] Zaidejas nerastas.");
         return;
     }
 
     if (!activeHelpRequests.has(target.id)) {
-        admin.outputChatBox("[HELP] Šis žaidėjas nepateikė pagalbos prašymo.");
+        admin.outputChatBox("[HELP] Sis zaidejas nepateike pagalbos prasymo.");
         return;
     }
 
     activeHelpRequests.delete(target.id);
-    target.outputChatBox(`!{#cd5d3c}[HELP] Administratorius ${admin.charName} atmetė jūsų pagalbos prašymą.`);
-    admin.outputChatBox(`[HELP] Jūs atmetėte ${target.charName || target.name} (${target.id}) pagalbos prašymą.`);
+    target.outputChatBox(`!{#cd5d3c}[HELP] Administratorius ${admin.charName} atmete jusu pagalbos prasyma.`);
+    admin.outputChatBox(`[HELP] Jus atmetete ${target.charName || target.name} (${target.id}) pagalbos prasyma.`);
 });
 
 const reports = new Map();
 
 mp.events.addCommand("report", async (player, fullText, targetId, ...reasonArray) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!targetId || reasonArray.length === 0) {
-        return player.outputChatBox("Naudojimas: /report [žaidėjo ID] [priežastis]");
+        return player.outputChatBox("Naudojimas: /report [zaidejo ID] [priezastis]");
     }
     if (reports.has(player.id)) {
-        return player.outputChatBox("Jūsų reportas jau laukia administratorių sprendimo.");
+        return player.outputChatBox("Jusu reportas jau laukia administratoriu sprendimo.");
     }
 
     const target = getPlayerByIDOrName(targetId);
     if (!target) {
-        return player.outputChatBox("Žaidėjas su tokiu ID nerastas.");
+        return player.outputChatBox("Zaidejas su tokiu ID nerastas.");
     }
 
     if (!target.charName) {
-        return player.outputChatBox("Žaidėjas dar nepasirinko veikėjo.");
+        return player.outputChatBox("Zaidejas dar nepasirinko veikejo.");
     }
 
     const reason = reasonArray.join(" ");
@@ -6611,20 +7547,20 @@ mp.events.addCommand("report", async (player, fullText, targetId, ...reasonArray
     mp.players.forEach(async (admin) => {
         const adminLvl = await getAdminLevelFromDB(admin);
         if (adminLvl >= 1) {
-            admin.outputChatBox(`!{#f0e237}[REPORT] ${player.charName} pranešė apie ${target.charName}: ${reason} (ID: ${player.id})`);
-            admin.outputChatBox(`!{#f0e237}Norint priimti reportą: /acceptreport ${player.id}`);
-            admin.outputChatBox(`!{#f0e237}Norint atmesti reportą: /declinereport ${player.id}`);
+            admin.outputChatBox(`!{#f0e237}[REPORT] ${player.charName} pranese apie ${target.charName}: ${reason} (ID: ${player.id})`);
+            admin.outputChatBox(`!{#f0e237}Norint priimti reporta: /acceptreport ${player.id}`);
+            admin.outputChatBox(`!{#f0e237}Norint atmesti reporta: /declinereport ${player.id}`);
         }
     });
 
-    player.outputChatBox("Jūsų reportas buvo išsiųstas administracijai.");
+    player.outputChatBox("Jusu reportas buvo issiustas administracijai.");
 });
 
 mp.events.addCommand("acceptreport", async (admin, fullText, reportId) => {
-    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     const adminLevel = await getAdminLevelFromDB(admin);
     if (adminLevel < 1) {
-        return admin.outputChatBox("Neturite teisių naudoti šią komandą.");
+        return admin.outputChatBox("Neturite teisiu naudoti sia komanda.");
     }
     if (!reportId || !reports.has(parseInt(reportId))) {
         return admin.outputChatBox("Neteisingas reporto ID.");
@@ -6633,20 +7569,20 @@ mp.events.addCommand("acceptreport", async (admin, fullText, reportId) => {
     const report = reports.get(parseInt(reportId));
     reports.delete(parseInt(reportId));
 
-    report.player.outputChatBox(`!{#7aa164}Jūsų report buvo priimtas administratoriaus ${admin.charName}.`);
+    report.player.outputChatBox(`!{#7aa164}Jusu report buvo priimtas administratoriaus ${admin.charName}.`);
     mp.players.forEach(async adminPlayer => {
         const adminLevel = await getAdminLevelFromDB(adminPlayer);
         if (adminLevel >= 1) {
-            adminPlayer.outputChatBox(`[REPORT] ${admin.charName} priėmė ${report.player.charName} reportą prieš ${report.target.charName}.`);
+            adminPlayer.outputChatBox(`[REPORT] ${admin.charName} prieme ${report.player.charName} reporta pries ${report.target.charName}.`);
         }
     });
 });
 
 mp.events.addCommand("declinereport", async (admin, fullText, reportId) => {
-    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     const adminLevel = await getAdminLevelFromDB(admin);
     if (adminLevel < 1) {
-        return admin.outputChatBox("Neturite teisių naudoti šią komandą.");
+        return admin.outputChatBox("Neturite teisiu naudoti sia komanda.");
     }
     if (!reportId || !reports.has(parseInt(reportId))) {
         return admin.outputChatBox("Neteisingas reporto ID.");
@@ -6655,8 +7591,8 @@ mp.events.addCommand("declinereport", async (admin, fullText, reportId) => {
     const report = reports.get(parseInt(reportId));
     reports.delete(parseInt(reportId));
 
-    report.player.outputChatBox("!{#cd5d3c}Jūsų report buvo atmestas administratoriaus.");
-    admin.outputChatBox(`[REPORT] Jūs atmetėte ${report.player.charName} reportą prieš ${report.target.charName}.`);
+    report.player.outputChatBox("!{#cd5d3c}Jusu report buvo atmestas administratoriaus.");
+    admin.outputChatBox(`[REPORT] Jus atmetete ${report.player.charName} reporta pries ${report.target.charName}.`);
 });
 
 
@@ -6665,13 +7601,13 @@ mp.events.addCommand('admins', (player) => {
     const onlineAdmins = mp.players.toArray().filter(p => p.adminLevel >= 1 && p.adminLevel <= 2);
 
     if (onlineAdmins.length === 0) {
-        player.outputChatBox('!{#f7dc6f}Šiuo metu nėra prisijungusių administratorių.');
+        player.outputChatBox('!{#f7dc6f}Siuo metu nera prisijungusiu administratoriu.');
         return;
     }
 
-    player.outputChatBox('!{#f7dc6f}===== Prisijungę Administratoriai =====');
+    player.outputChatBox('!{#f7dc6f}===== Prisijunge Administratoriai =====');
     onlineAdmins.forEach(admin => {
-        const adminLevelText = admin.adminLevel === 1 ? 'Administratorius' : 'Vadovybė';
+        const adminLevelText = admin.adminLevel === 1 ? 'Administratorius' : 'Vadovybe';
         player.outputChatBox(`[${adminLevelText}] ${admin.adminName} (ID: ${admin.id})`);
     });
     player.outputChatBox('!{#f7dc6f}=====================================');
@@ -6679,18 +7615,18 @@ mp.events.addCommand('admins', (player) => {
 
 // /setaname command - Set admin name for display in /admins
 mp.events.addCommand('setaname', (player, fullText) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!fullText) {
         player.outputChatBox('Naudojimas: /setaname [admin vardas]');
         return;
     }
 
     isAdmin(player, 1, (error, hasPermission) => {
-        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisių.");
+        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisiu.");
 
         const newAdminName = fullText.trim();
         if (newAdminName.length < 3 || newAdminName.length > 20) {
-            player.outputChatBox('!{#e74c3c}Admin vardas turi būti nuo 3 iki 20 simbolių.');
+            player.outputChatBox('!{#e74c3c}Admin vardas turi buti nuo 3 iki 20 simboliu.');
             return;
         }
 
@@ -6698,18 +7634,18 @@ mp.events.addCommand('setaname', (player, fullText) => {
         db.query('UPDATE characters SET admin_name = ? WHERE char_name = ?', [newAdminName, player.charName], (err) => {
             if (err) {
                 console.error('[KLAIDA] Nepavyko atnaujinti admin vardo:', err);
-                player.outputChatBox('!{#e74c3c}Įvyko klaida keičiant admin vardą.');
+                player.outputChatBox('!{#e74c3c}Ivyko klaida keiciant admin varda.');
                 return;
             }
 
             player.adminName = newAdminName;
-            player.outputChatBox(`!{#7aa164}Jūsų admin vardas nustatytas: ${newAdminName}`);
+            player.outputChatBox(`!{#7aa164}Jusu admin vardas nustatytas: ${newAdminName}`);
         });
     });
 });
 
 mp.events.addCommand('changechar', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
 
     if (player.isDowned) {
         const now = Date.now();
@@ -6721,6 +7657,7 @@ mp.events.addCommand('changechar', (player) => {
     }
 
     // Save current character data
+    cleanupDMVTest(player, true);
     saveCharacterData(player);
     cleanupPlayerOwnedVehicles(player, true);
     console.log(`[DEBUG] Saved data for ${player.charName}`);
@@ -6755,6 +7692,7 @@ mp.events.addCommand('changechar', (player) => {
     player.playtime = 0;
     player.isPMEnabled = true;
     player.adminLevel = 0;
+    player.hasDriversLicense = false;
     player.contacts = null;
     player.phoneNumber = null;
     player.bankAccountNumber = null;
@@ -6788,8 +7726,22 @@ mp.events.addCommand('changechar', (player) => {
 
     // Load character selection UI
     loadCharacterSelection(player);
-    player.outputChatBox('!{#f7dc6f}Jūs atsijungėte nuo veikėjo. Pasirinkite naują veikėją.');
+    player.outputChatBox('!{#f7dc6f}Jus atsijungete nuo veikejo. Pasirinkite nauja veikeja.');
     console.log('[DEBUG] Called loadCharacterSelection');
+});
+
+mp.events.add('requestOnlineCharacters', (player) => {
+    if (!player || !player.charName) return;
+
+    const onlineCharacters = mp.players.toArray()
+        .filter((target) => target && target.charName)
+        .map((target) => ({
+            id: target.id,
+            name: target.charName,
+        }))
+        .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+
+    player.call('showOnlineCharactersUI', [JSON.stringify(onlineCharacters)]);
 });
 
 mp.events.addCommand('acceptdeath', (player) => {
@@ -6816,9 +7768,152 @@ mp.events.addCommand('acceptdeath', (player) => {
 
 
 mp.events.addCommand('coords', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     const coords = player.position;
     player.outputChatBox(`Current Coordinates: X: ${coords.x.toFixed(2)}, Y: ${coords.y.toFixed(2)}, Z: ${coords.z.toFixed(2)}`);
+});
+
+function openDMVInteraction(player) {
+    if (!player || !player.charId || !player.charName) return;
+    if (!isPlayerNearDMV(player)) return;
+
+    if (player.hasDriversLicense) {
+        return player.outputChatBox('!{#f7dc6f}Jus jau turite vairuotojo pazymejima.');
+    }
+
+    if (activeDMVTests.has(player.id)) {
+        return player.outputChatBox('!{#f7dc6f}Jusu DMV testas jau vyksta.');
+    }
+
+    player.call('openDMVStartUI');
+}
+
+function startPaidDMVTheory(player) {
+    if (!player || !player.charId || !player.charName) return;
+    if (!isPlayerNearDMV(player)) {
+        return player.outputChatBox('!{#e74c3c}Turite buti DMV vietoje, kad pradeti testa.');
+    }
+
+    if (player.hasDriversLicense) {
+        return player.outputChatBox('!{#f7dc6f}Jus jau turite vairuotojo pazymejima.');
+    }
+
+    if (activeDMVTests.has(player.id)) {
+        return player.outputChatBox('!{#f7dc6f}Jusu DMV testas jau vyksta.');
+    }
+
+    const currentMoney = Number(player.money) || 0;
+    if (currentMoney < DMV_TEST_FEE) {
+        return player.outputChatBox(`!{#e74c3c}DMV testas kainuoja $${DMV_TEST_FEE}. Neturite pakankamai grynuju pinigu.`);
+    }
+
+    player.money = currentMoney - DMV_TEST_FEE;
+    persistPlayerMoney(player);
+    activeDMVTests.set(player.id, {
+        phase: 'theory',
+        vehicle: null,
+        checkpointIndex: 0,
+        startedAt: Date.now(),
+    });
+    player.outputChatBox(`!{#85c1e9}Sumokejote $${DMV_TEST_FEE} uz DMV testa. Neislaikius reikes moketi is naujo.`);
+    player.call('openDMVQuizUI');
+}
+
+mp.events.add('requestDMVInteraction', (player) => {
+    openDMVInteraction(player);
+});
+
+mp.events.addCommand('dmv', (player) => {
+    openDMVInteraction(player);
+});
+
+mp.events.add('startDMVTest', (player) => {
+    startPaidDMVTheory(player);
+});
+
+mp.events.add('submitDMVTheory', (player, answersJson) => {
+    if (!player || !player.charId || !player.charName) return;
+    if (!isPlayerNearDMV(player)) {
+        cleanupDMVTest(player, true);
+        return player.call('dmvTheoryFailed', ['Turite buti DMV vietoje. Testas nutrauktas, mokestis negrazinamas.', true]);
+    }
+
+    const state = activeDMVTests.get(player.id);
+    if (!state || state.phase !== 'theory') {
+        return player.call('dmvTheoryFailed', ['Pradekite DMV testa is naujo ir sumokekite mokesti.', true]);
+    }
+
+    let answers = [];
+    try {
+        answers = JSON.parse(String(answersJson || '[]'));
+    } catch (e) {
+        answers = [];
+    }
+
+    const passed = Array.isArray(answers)
+        && answers.length === DMV_THEORY_ANSWERS.length
+        && DMV_THEORY_ANSWERS.every((answer, index) => String(answers[index] || '').toLowerCase() === answer);
+
+    if (!passed) {
+        cleanupDMVTest(player, true);
+        return player.call('dmvTheoryFailed', ['Atsakymai neteisingi. Testas neislaikytas, mokestis negrazinamas.', true]);
+    }
+
+    startDMVPracticalTest(player);
+});
+
+mp.events.add('cancelDMVTheory', (player) => {
+    if (!player || !player.charId) return;
+
+    const state = activeDMVTests.get(player.id);
+    if (!state || state.phase !== 'theory') return;
+
+    cleanupDMVTest(player, true);
+    player.outputChatBox('!{#f7dc6f}DMV teorijos testas uzdarytas. Norint bandyti vel, reikes moketi is naujo.');
+});
+
+mp.events.add('dmvCheckpointReached', (player, checkpointIndexRaw) => {
+    if (!player || !player.charId || !player.charName) return;
+
+    const state = activeDMVTests.get(player.id);
+    if (!state || !state.vehicle) return;
+
+    const checkpointIndex = parseInt(checkpointIndexRaw, 10);
+    if (!Number.isFinite(checkpointIndex) || checkpointIndex !== state.checkpointIndex) return;
+
+    if (player.vehicle !== state.vehicle) {
+        return failDMVPracticalTest(player, 'DMV testas nutrauktas, nes palikote testo automobili. Norint bandyti vel, reikes moketi is naujo.');
+    }
+
+    const target = DMV_ROUTE_POINTS[state.checkpointIndex];
+    const distance = getDistanceBetweenPositions(player.position, target);
+    if (distance > 7.5) return;
+
+    state.checkpointIndex += 1;
+    if (state.checkpointIndex >= DMV_ROUTE_POINTS.length) {
+        completeDMVTest(player);
+    } else {
+        player.outputChatBox(`!{#85c1e9}DMV checkpoint ${state.checkpointIndex}/${DMV_ROUTE_POINTS.length} pasiektas.`);
+    }
+});
+
+mp.events.add('playerExitVehicle', (player, vehicle) => {
+    if (!player || !vehicle) return;
+
+    const state = activeDMVTests.get(player.id);
+    if (!state || state.phase !== 'practical') return;
+    if (state.vehicle !== vehicle && Number(state.vehicle?.id) !== Number(vehicle.id)) return;
+
+    failDMVPracticalTest(player, 'DMV praktinis testas neislaikytas, nes islipote is testo automobilio. Norint bandyti vel, reikes moketi is naujo.');
+});
+
+mp.events.add('dmvVehicleLeft', (player) => {
+    if (!player || !player.charId || !player.charName) return;
+
+    const state = activeDMVTests.get(player.id);
+    if (!state || state.phase !== 'practical') return;
+
+    failDMVPracticalTest(player, 'DMV praktinis testas neislaikytas, nes nebesate testo automobilio vairuotojas. Norint bandyti vel, reikes moketi is naujo.');
 });
 
 mp.events.addCommand('createtwittertables', (player) => {
@@ -7009,7 +8104,7 @@ mp.events.add('inventoryGiveItem', (player, itemId, targetIdentifier, amountStr)
     const itemName = item.name;
 
     removeInventoryItemAmount(player, itemId, amount);
-    addInventoryItem(targetPlayer, itemType, amount);
+    addExistingInventoryItem(targetPlayer, item, amount);
     persistInventory(player);
     persistInventory(targetPlayer);
 
@@ -7043,7 +8138,7 @@ mp.events.addCommand('phone', (player) => openPhone(player));
 // ==================== OPEN PHONE FUNCTION (FIXED) ====================
 
 
-// ==================== DRIVE / PAVEŽĖJŲ SISTEMA (CLEAN & FIXED) ====================
+// ==================== DRIVE / PAVEZEJU SISTEMA (CLEAN & FIXED) ====================
 
 function clearRidePickupBlip(ride) {
     if (!ride || !ride.blip) return;
@@ -7057,7 +8152,7 @@ function clearRidePickupBlip(ride) {
 
 function openPhone(player) {
     if (!player.charName) {
-        return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+        return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     }
 
     let callStatus = 'idle';
@@ -7091,14 +8186,14 @@ mp.events.add('toggleDriverStatus', (player) => {
 
     if (activeDrivers.has(player.id)) {
         activeDrivers.delete(player.id);
-        player.outputChatBox('!{#cd5d3c}Jūs nebesate Drive vairuotojas.');
+        player.outputChatBox('!{#cd5d3c}Jus nebesate Drive vairuotojas.');
         player.call('updateDriverStatus', [false]);
     } else {
         if (!player.vehicle) {
-            return player.outputChatBox('!{#e74c3c}Jums reikia būti transporto priemonėje!');
+            return player.outputChatBox('!{#e74c3c}Jums reikia buti transporto priemoneje!');
         }
         activeDrivers.set(player.id, { player, status: "available" });
-        player.outputChatBox('!{#7aa164}Jūs tapote Drive vairuotoju!');
+        player.outputChatBox('!{#7aa164}Jus tapote Drive vairuotoju!');
         player.call('updateDriverStatus', [true]);
     }
 });
@@ -7107,11 +8202,11 @@ mp.events.add('toggleDriverStatus', (player) => {
 mp.events.add('requestRide', (player) => {
     if (!player.charName) return;
     if (activeRides.has(player.id)) {
-        return player.outputChatBox('!{#e74c3c}Jūs jau turite aktyvią kelionę!');
+        return player.outputChatBox('!{#e74c3c}Jus jau turite aktyvia kelione!');
     }
 
     if (activeDrivers.size === 0) {
-        return player.outputChatBox('!{#f7dc6f}Šiuo metu nėra laisvų vairuotojų.');
+        return player.outputChatBox('!{#f7dc6f}Siuo metu nera laisvu vairuotoju.');
     }
 
     activeRides.set(player.id, {
@@ -7125,28 +8220,28 @@ mp.events.add('requestRide', (player) => {
         if (data.status === "available") {
             const dist = getDistanceBetweenPositions(player.position, data.player.position);
             if (dist < 700) {
-                data.player.outputChatBox(`!{#f7dc6f}[Drive] ${player.charName} ieško pavežėjimo! /acceptdrive ${player.id}`);
+                data.player.outputChatBox(`!{#f7dc6f}[Drive] ${player.charName} iesko pavezejimo! /acceptdrive ${player.id}`);
             }
         }
     });
 
-    player.outputChatBox('!{#7aa164}Užklausa išsiųsta vairuotojams...');
+    player.outputChatBox('!{#7aa164}Uzklausa issiusta vairuotojams...');
 });
 
 // Accept ride command
 mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
     if (!driver.charName || !activeDrivers.has(driver.id)) {
-        return driver.outputChatBox('!{#e74c3c}Jūs nesate aktyvus vairuotojas!');
+        return driver.outputChatBox('!{#e74c3c}Jus nesate aktyvus vairuotojas!');
     }
 
     const reqId = parseInt(requesterIdStr);
     if (!activeRides.has(reqId)) {
-        return driver.outputChatBox('!{#f7dc6f}Užklausa nebegalioja.');
+        return driver.outputChatBox('!{#f7dc6f}Uzklausa nebegalioja.');
     }
 
     const ride = activeRides.get(reqId);
     if (ride.driver) {
-        return driver.outputChatBox('!{#e74c3c}Šią užklausą jau priėmė kitas vairuotojas.');
+        return driver.outputChatBox('!{#e74c3c}Sia uzklausa jau prieme kitas vairuotojas.');
     }
 
     ride.driver = driver;
@@ -7158,8 +8253,8 @@ mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
         scale: 1.2
     });
 
-    driver.outputChatBox(`!{#7aa164}Priėmėte ${ride.requester.charName}! Važiuokite jo pasiimti.`);
-    ride.requester.outputChatBox(`!{#7aa164}Vairuotojas ${driver.charName} priėmė jūsų užklausą!`);
+    driver.outputChatBox(`!{#7aa164}Priemete ${ride.requester.charName}! Vaziuokite jo pasiimti.`);
+    ride.requester.outputChatBox(`!{#7aa164}Vairuotojas ${driver.charName} prieme jusu uzklausa!`);
 
     ride.interval = setInterval(() => {
         if (!ride.driver || !ride.requester) {
@@ -7177,8 +8272,8 @@ mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
             }
 
             activeRides.delete(reqId);
-            ride.driver.outputChatBox('!{#7aa164}✅ Jūs pasiekėte keleivį!');
-            ride.requester.outputChatBox('!{#7aa164}✅ Vairuotojas atvyko pas jus!');
+            ride.driver.outputChatBox('!{#7aa164} Jus pasiekete keleivi!');
+            ride.requester.outputChatBox('!{#7aa164} Vairuotojas atvyko pas jus!');
         }
     }, 2000);
 });
@@ -7187,15 +8282,15 @@ mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
 
 // /call command
 mp.events.addCommand('call', (player, phoneNumber) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!phoneNumber) return player.outputChatBox('Naudojimas: /call [telefono numeris]');
     if (!requirePhoneSim(player)) return;
-    if (activeCalls.has(player.id)) return player.outputChatBox('!{#e74c3c}Jūs jau esate skambutyje arba laukiate atsakymo.');
+    if (activeCalls.has(player.id)) return player.outputChatBox('!{#e74c3c}Jus jau esate skambutyje arba laukiate atsakymo.');
 
     const target = mp.players.toArray().find(p => p.phoneNumber === phoneNumber);
     if (!target || !target.charName) {
-        player.call('callFailed', ['Šis telefono numeris nerastas arba žaidėjas neprisijungęs.']);
-        return player.outputChatBox('!{#f7dc6f}Šis telefono numeris nerastas arba žaidėjas neprisijungęs.');
+        player.call('callFailed', ['Sis telefono numeris nerastas arba zaidejas neprisijunges.']);
+        return player.outputChatBox('!{#f7dc6f}Sis telefono numeris nerastas arba zaidejas neprisijunges.');
     }
 
     if (target.id === player.id) {
@@ -7204,18 +8299,18 @@ mp.events.addCommand('call', (player, phoneNumber) => {
     }
 
     if (!startCall(player, target)) {
-        player.call('callFailed', ['Skambutis negali būti pradėtas.']);
-        return player.outputChatBox('!{#e74c3c}Skambutis negali būti pradėtas.');
+        player.call('callFailed', ['Skambutis negali buti pradetas.']);
+        return player.outputChatBox('!{#e74c3c}Skambutis negali buti pradetas.');
     }
 });
 
 // /answer command
 mp.events.addCommand('answer', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
 
     const callRequest = activeCalls.get(player.id);
     if (!callRequest || callRequest.status !== 'incoming') {
-        return player.outputChatBox('!{#f7dc6f}Šiuo metu jums niekas neskambina.');
+        return player.outputChatBox('!{#f7dc6f}Siuo metu jums niekas neskambina.');
     }
 
     const caller = callRequest.caller;
@@ -7223,33 +8318,35 @@ mp.events.addCommand('answer', (player) => {
     activeCalls.set(player.id, activeCallData);
     activeCalls.set(caller.id, activeCallData);
 
-    player.outputChatBox(`!{#7aa164}Jūs priėmėte skambutį iš ${caller.charName}.`);
-    caller.outputChatBox(`!{#7aa164}${player.charName} priėmė jūsų skambutį.`);
+    player.outputChatBox(`!{#7aa164}Jus priemete skambuti is ${caller.charName}.`);
+    caller.outputChatBox(`!{#7aa164}${player.charName} prieme jusu skambuti.`);
     player.call('callStarted', [caller.charName, caller.phoneNumber]); // Update phone UI
     caller.call('callStarted', [player.charName, player.phoneNumber]); // Update caller's phone UI
 });
 
 // /decline command
 mp.events.addCommand('decline', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
 
     const callRequest = activeCalls.get(player.id);
     if (!callRequest || callRequest.status !== 'incoming') {
-        return player.outputChatBox('!{#f7dc6f}Šiuo metu jums niekas neskambina.');
+        return player.outputChatBox('!{#f7dc6f}Siuo metu jums niekas neskambina.');
     }
 
     const caller = callRequest.caller;
     activeCalls.delete(player.id);
     activeCalls.delete(caller.id);
 
-    player.outputChatBox(`!{#cd5d3c}Jūs atmetėte skambutį iš ${caller.charName}.`);
-    caller.outputChatBox(`!{#cd5d3c}${player.charName} atmetė jūsų skambutį.`);
+    player.outputChatBox(`!{#cd5d3c}Jus atmetete skambuti is ${caller.charName}.`);
+    caller.outputChatBox(`!{#cd5d3c}${player.charName} atmete jusu skambuti.`);
     player.call('callEnded');
     caller.call('callEnded');
 });
 
 // Handle player disconnect
 mp.events.add('playerQuit', (player) => {
+    cleanupDMVTest(player, false);
+
     // Character timers
     if (player.timer) {
         clearInterval(player.timer);
@@ -7349,7 +8446,7 @@ mp.events.add('playerQuit', (player) => {
     }
 
     if (!player.charId) {
-        console.log(`[INFO] Žaidėjas ${player.name} atsijungė be pasirinkto veikėjo.`);
+        console.log(`[INFO] Zaidejas ${player.name} atsijunge be pasirinkto veikejo.`);
     }
 });
 
@@ -7419,7 +8516,7 @@ mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
     }
 
     // Turn off engine when driver enters vehicle
-    if (seat === -1 || seat === 0) {
+    if ((seat === -1 || seat === 0) && !vehicle.isDMVTestVehicle) {
         // Set immediately
         try {
             vehicle.engine = false;
@@ -7451,49 +8548,49 @@ mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
 // Server-side
 mp.events.add('openPhoneUI', (player, isDriver) => {
     if (!player.charId) {
-        player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+        player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
         return;
     }
     const contacts = player.contacts || [];
     player.isPhoneOpen = true;
     console.log(`[DEBUG] Sending contacts to client for charId ${player.charId}:`, contacts);
-    player.call('loadContacts', [JSON.stringify(contacts), isDriver, player.phoneNumber || 'Nėra numerio']);
+    player.call('loadContacts', [JSON.stringify(contacts), isDriver, player.phoneNumber || 'Nera numerio']);
 });
 
 // Add contact to database
 mp.events.add('addContact', (player, name, number) => {
-    if (!player.charId) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
-    if (!/^\d+$/.test(number)) return player.outputChatBox('!{#e74c3c}Numeris turi būti tik skaitmenys!');
+    if (!player.charId) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    if (!/^\d+$/.test(number)) return player.outputChatBox('!{#e74c3c}Numeris turi buti tik skaitmenys!');
 
     db.query('SELECT COUNT(*) as count FROM contacts WHERE char_id = ?', [player.charId], (err, countResult) => {
         if (err) {
-            console.error('[KLAIDA] Nepavyko patikrinti kontaktų skaičiaus:', err);
-            return player.outputChatBox('!{#e74c3c}Klaida pridedant kontaktą.');
+            console.error('[KLAIDA] Nepavyko patikrinti kontaktu skaiciaus:', err);
+            return player.outputChatBox('!{#e74c3c}Klaida pridedant kontakta.');
         }
 
         if (countResult[0].count >= 50) {
-            return player.outputChatBox('!{#e74c3c}Jūsų kontaktų sąrašas pilnas!');
+            return player.outputChatBox('!{#e74c3c}Jusu kontaktu sarasas pilnas!');
         }
 
         db.query('SELECT * FROM contacts WHERE char_id = ? AND contact_number = ?', [player.charId, number], (err, results) => {
             if (err) {
                 console.error('[KLAIDA] Nepavyko patikrinti kontakto:', err);
-                return player.outputChatBox('!{#e74c3c}Klaida pridedant kontaktą.');
+                return player.outputChatBox('!{#e74c3c}Klaida pridedant kontakta.');
             }
 
             if (results.length > 0) {
-                return player.outputChatBox('!{#e74c3c}Šis numeris jau yra jūsų kontaktuose!');
+                return player.outputChatBox('!{#e74c3c}Sis numeris jau yra jusu kontaktuose!');
             }
 
             db.query('INSERT INTO contacts (char_id, contact_name, contact_number) VALUES (?, ?, ?)',
                 [player.charId, name, number], (err) => {
                     if (err) {
-                        console.error('[KLAIDA] Nepavyko pridėti kontakto:', err);
-                        return player.outputChatBox('!{#e74c3c}Klaida pridedant kontaktą.');
+                        console.error('[KLAIDA] Nepavyko prideti kontakto:', err);
+                        return player.outputChatBox('!{#e74c3c}Klaida pridedant kontakta.');
                     }
 
                     loadCharacterContacts(player);
-                    player.outputChatBox(`!{#7aa164}Pridėtas kontaktas: ${name} (${number})`);
+                    player.outputChatBox(`!{#7aa164}Pridetas kontaktas: ${name} (${number})`);
                 });
         });
     });
@@ -7501,12 +8598,12 @@ mp.events.add('addContact', (player, name, number) => {
 
 // Remove contact from database
 mp.events.add('removeContact', (player, number) => {
-    if (!player.charId) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charId) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
 
     db.query('DELETE FROM contacts WHERE char_id = ? AND contact_number = ?', [player.charId, number], (err, result) => {
         if (err) {
-            console.error('[KLAIDA] Nepavyko pašalinti kontakto:', err);
-            return player.outputChatBox('!{#e74c3c}Klaida šalinant kontaktą.');
+            console.error('[KLAIDA] Nepavyko pasalinti kontakto:', err);
+            return player.outputChatBox('!{#e74c3c}Klaida salinant kontakta.');
         }
 
         if (result.affectedRows === 0) return;
@@ -7514,7 +8611,7 @@ mp.events.add('removeContact', (player, number) => {
         loadCharacterContacts(player);
         const removedContact = (player.contacts || []).find(c => c.number === number);
         if (removedContact) {
-            player.outputChatBox(`!{#cd5d3c}Pašalintas kontaktas: ${removedContact.name}`);
+            player.outputChatBox(`!{#cd5d3c}Pasalintas kontaktas: ${removedContact.name}`);
         }
     });
 });
@@ -7526,17 +8623,17 @@ mp.events.add('callContact', (player, number) => {
 
 // Update /sharenumber command
 mp.events.addCommand('sharenumber', (player, fullText, targetId, contactName) => {
-    if (!player.charId) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charId) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!targetId || !contactName) {
         return player.outputChatBox('Naudojimas: /sharenumber [ID] [vardas]');
     }
 
     const target = mp.players.at(parseInt(targetId));
     if (!target) {
-        return player.outputChatBox('!{#e74c3c}Žaidėjas nerastas!');
+        return player.outputChatBox('!{#e74c3c}Zaidejas nerastas!');
     }
     if (!target.charId) {
-        return player.outputChatBox('!{#e74c3c}Žaidėjas dar nepasirinko veikėjo.');
+        return player.outputChatBox('!{#e74c3c}Zaidejas dar nepasirinko veikejo.');
     }
     if (!requirePhoneSim(player)) return;
 
@@ -7547,25 +8644,25 @@ mp.events.addCommand('sharenumber', (player, fullText, targetId, contactName) =>
         }
 
         if (results.length > 0) {
-            return player.outputChatBox('!{#e74c3c}Jūsų numeris jau yra šio žaidėjo kontaktuose!');
+            return player.outputChatBox('!{#e74c3c}Jusu numeris jau yra sio zaidejo kontaktuose!');
         }
 
         db.query('INSERT INTO contacts (char_id, contact_name, contact_number) VALUES (?, ?, ?)',
             [target.charId, contactName, player.phoneNumber], (err) => {
                 if (err) {
-                    console.error('[KLAIDA] Nepavyko pridėti kontakto:', err);
+                    console.error('[KLAIDA] Nepavyko prideti kontakto:', err);
                     return player.outputChatBox('!{#e74c3c}Klaida dalinantis numeriu.');
                 }
 
                 loadCharacterContacts(target);
-                player.outputChatBox(`!{#7aa164}Jūs pasidalinote savo numeriu su ${target.charName} kaip ${contactName}`);
-                target.outputChatBox(`!{#7aa164}${player.charName} pridėjo jus į kontaktus kaip ${contactName} (${player.phoneNumber})`);
+                player.outputChatBox(`!{#7aa164}Jus pasidalinote savo numeriu su ${target.charName} kaip ${contactName}`);
+                target.outputChatBox(`!{#7aa164}${player.charName} pridejo jus i kontaktus kaip ${contactName} (${player.phoneNumber})`);
             });
     });
 });
 
 mp.events.add('call', (player, number) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!requirePhoneSim(player)) return;
 
     const target = mp.players.toArray().find(p => p.phoneNumber === number);
@@ -7574,22 +8671,22 @@ mp.events.add('call', (player, number) => {
         return;
     }
     if (!target.charName) {
-        player.outputChatBox('!{#e74c3c}Šis žaidėjas dar nepasirinko veikėjo!');
+        player.outputChatBox('!{#e74c3c}Sis zaidejas dar nepasirinko veikejo!');
         return;
     }
     if (activeCalls.has(target.id)) {
-        player.outputChatBox('!{#e74c3c}Šis numeris šiuo metu užimtas!');
+        player.outputChatBox('!{#e74c3c}Sis numeris siuo metu uzimtas!');
         return;
     }
 
     if (!startCall(player, target)) {
-        player.outputChatBox('!{#e74c3c}Skambutis negali būti pradėtas.');
+        player.outputChatBox('!{#e74c3c}Skambutis negali buti pradetas.');
     }
 });
 
 mp.events.add('acceptCall', (player) => {
     if (!activeCalls.has(player.id) || activeCalls.get(player.id).status !== 'incoming') {
-        player.outputChatBox('!{#e74c3c}Nėra gaunamo skambučio!');
+        player.outputChatBox('!{#e74c3c}Nera gaunamo skambucio!');
         return;
     }
 
@@ -7599,15 +8696,15 @@ mp.events.add('acceptCall', (player) => {
     activeCalls.set(player.id, { caller: caller, target: player, status: 'active' });
     activeCalls.set(caller.id, { caller: caller, target: player, status: 'active' });
 
-    player.outputChatBox(`!{#7aa164}Jūs priėmėte skambutį nuo ${caller.charName}!`);
-    caller.outputChatBox(`!{#7aa164}${player.charName} priėmė jūsų skambutį!`);
+    player.outputChatBox(`!{#7aa164}Jus priemete skambuti nuo ${caller.charName}!`);
+    caller.outputChatBox(`!{#7aa164}${player.charName} prieme jusu skambuti!`);
     player.call('callStarted', [caller.charName, caller.phoneNumber]);
     caller.call('callStarted', [player.charName, player.phoneNumber]);
 });
 
 mp.events.add('declineCall', (player) => {
     if (!activeCalls.has(player.id) || activeCalls.get(player.id).status !== 'incoming') {
-        player.outputChatBox('!{#e74c3c}Nėra gaunamo skambučio!');
+        player.outputChatBox('!{#e74c3c}Nera gaunamo skambucio!');
         return;
     }
 
@@ -7617,15 +8714,15 @@ mp.events.add('declineCall', (player) => {
     activeCalls.delete(player.id);
     activeCalls.delete(caller.id);
 
-    player.outputChatBox(`!{#7aa164}Jūs atmetėte skambutį nuo ${caller.charName}.`);
-    caller.outputChatBox(`!{#e74c3c}${player.charName} atmetė jūsų skambutį.`);
+    player.outputChatBox(`!{#7aa164}Jus atmetete skambuti nuo ${caller.charName}.`);
+    caller.outputChatBox(`!{#e74c3c}${player.charName} atmete jusu skambuti.`);
     player.call('callEnded');
     caller.call('callEnded');
 });
 
 mp.events.addCommand('hangup', (player) => {
     if (!activeCalls.has(player.id)) {
-        player.outputChatBox('!{#e74c3c}Jūs nesate skambutyje!');
+        player.outputChatBox('!{#e74c3c}Jus nesate skambutyje!');
         return;
     }
 
@@ -7635,11 +8732,11 @@ mp.events.addCommand('hangup', (player) => {
     activeCalls.delete(player.id);
     if (partner && activeCalls.has(partner.id)) {
         activeCalls.delete(partner.id);
-        partner.outputChatBox('!{#e74c3c}Skambutis baigtas kitos pusės.');
+        partner.outputChatBox('!{#e74c3c}Skambutis baigtas kitos puses.');
         partner.call('callEnded');
     }
 
-    player.outputChatBox('!{#7aa164}Jūs baigėte skambutį.');
+    player.outputChatBox('!{#7aa164}Jus baigete skambuti.');
     player.call('callEnded');
     console.log(`[DEBUG] Call ended by ${player.charName}`);
 });
@@ -7674,15 +8771,15 @@ function sendMessageNotification(recipient, senderNumber, senderName, messageTex
 
 // /sms command (from chat)
 mp.events.addCommand('sms', (player, fullText, targetNumber, ...messageArray) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!requirePhoneSim(player)) return;
     if (!targetNumber || messageArray.length === 0) {
-        return player.outputChatBox('Naudojimas: /sms [telefono numeris] [žinutė]');
+        return player.outputChatBox('Naudojimas: /sms [telefono numeris] [zinute]');
     }
 
     const messageText = messageArray.join(' ');
     if (messageText.length > 500) {
-        return player.outputChatBox('!{#e74c3c}Žinutė per ilga! Maksimumas 500 simbolių.');
+        return player.outputChatBox('!{#e74c3c}Zinute per ilga! Maksimumas 500 simboliu.');
     }
 
     // Anti-spam check
@@ -7693,7 +8790,7 @@ mp.events.addCommand('sms', (player, fullText, targetNumber, ...messageArray) =>
     } else {
         cooldown.count++;
         if (cooldown.count > MAX_MESSAGES_PER_MINUTE) {
-            return player.outputChatBox('!{#e74c3c}Per daug žinučių! Palaukite minutę.');
+            return player.outputChatBox('!{#e74c3c}Per daug zinuciu! Palaukite minute.');
         }
     }
     messageCooldowns.set(player, cooldown);
@@ -7706,11 +8803,11 @@ mp.events.addCommand('sms', (player, fullText, targetNumber, ...messageArray) =>
         [player.charId, player.phoneNumber, targetNumber, messageText],
         (err) => {
             if (err) {
-                console.error('[KLAIDA] Nepavyko išsaugoti žinutės:', err);
-                return player.outputChatBox('!{#e74c3c}Klaida siunčiant žinutę.');
+                console.error('[KLAIDA] Nepavyko issaugoti zinutes:', err);
+                return player.outputChatBox('!{#e74c3c}Klaida siunciant zinute.');
             }
 
-            player.outputChatBox(`!{#7aa164}Žinutė nusiųsta → ${targetNumber}${target ? ` (${target.charName})` : ' (neprisijungęs)'}`);
+            player.outputChatBox(`!{#7aa164}Zinute nusiusta -> ${targetNumber}${target ? ` (${target.charName})` : ' (neprisijunges)'}`);
 
             // Send notification to recipient
             if (target && target !== player) {
@@ -7722,18 +8819,18 @@ mp.events.addCommand('sms', (player, fullText, targetNumber, ...messageArray) =>
 
 // Send message from Phone UI
 mp.events.add('sendMessage', (player, recipientNumber, messageText) => {
-    console.log(`[DEBUG] Phone UI sendMessage: ${player.charName} → ${recipientNumber}`);
+    console.log(`[DEBUG] Phone UI sendMessage: ${player.charName} -> ${recipientNumber}`);
 
-    if (!player.charName || !player.charId) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName || !player.charId) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!requirePhoneSim(player)) return;
     if (!recipientNumber || !messageText || messageText.trim().length === 0) {
-        return player.outputChatBox('!{#e74c3c}Įveskite gavėją ir žinutę!');
+        return player.outputChatBox('!{#e74c3c}Iveskite gaveja ir zinute!');
     }
     if (!/^\d+$/.test(recipientNumber)) {
-        return player.outputChatBox('!{#e74c3c}Numeris turi būti tik skaitmenys!');
+        return player.outputChatBox('!{#e74c3c}Numeris turi buti tik skaitmenys!');
     }
     if (messageText.length > 500) {
-        return player.outputChatBox('!{#e74c3c}Žinutė per ilga! (max 500 simbolių)');
+        return player.outputChatBox('!{#e74c3c}Zinute per ilga! (max 500 simboliu)');
     }
 
     // Anti-spam
@@ -7744,7 +8841,7 @@ mp.events.add('sendMessage', (player, recipientNumber, messageText) => {
     } else {
         cooldown.count++;
         if (cooldown.count > MAX_MESSAGES_PER_MINUTE) {
-            return player.outputChatBox('!{#e74c3c}Per daug žinučių! Palaukite minutę.');
+            return player.outputChatBox('!{#e74c3c}Per daug zinuciu! Palaukite minute.');
         }
     }
     messageCooldowns.set(player, cooldown);
@@ -7758,10 +8855,10 @@ mp.events.add('sendMessage', (player, recipientNumber, messageText) => {
         (err) => {
             if (err) {
                 console.error('[KLAIDA] Failed to save UI message:', err);
-                return player.outputChatBox('!{#e74c3c}Klaida siunčiant žinutę.');
+                return player.outputChatBox('!{#e74c3c}Klaida siunciant zinute.');
             }
 
-            player.outputChatBox(`!{#7aa164}Žinutė nusiųsta → ${recipientNumber}${target ? ` (${target.charName})` : ''}`);
+            player.outputChatBox(`!{#7aa164}Zinute nusiusta -> ${recipientNumber}${target ? ` (${target.charName})` : ''}`);
 
             // Notify the recipient
             if (target && target !== player) {
@@ -7900,19 +8997,19 @@ mp.events.add('requestTwitterData', (player) => {
 
 // Register unique handle
 mp.events.add('registerTwitterHandle', (player, handle) => {
-    if (!player.charId) return player.outputChatBox('!{#e74c3c}Pasirinkite veikėją!');
+    if (!player.charId) return player.outputChatBox('!{#e74c3c}Pasirinkite veikeja!');
     if (!/^[a-zA-Z0-9_]+$/.test(handle)) {
-        return player.outputChatBox('!{#e74c3c}Leidžiami tik raidės, skaičiai ir _ !');
+        return player.outputChatBox('!{#e74c3c}Leidziami tik raides, skaiciai ir _ !');
     }
 
     db.query('SELECT * FROM twitter_accounts WHERE handle = ?', [handle], (err, rows) => {
         if (rows.length > 0) {
-            return player.outputChatBox('!{#e74c3c}Šis @slapyvardis jau užimtas!');
+            return player.outputChatBox('!{#e74c3c}Sis @slapyvardis jau uzimtas!');
         }
 
         db.query('INSERT INTO twitter_accounts (char_id, handle) VALUES (?, ?)', [player.charId, handle], (err) => {
             if (err) return console.error(err);
-            player.outputChatBox(`!{#7aa164}Jūsų @${handle} sėkmingai užregistruotas!`);
+            player.outputChatBox(`!{#7aa164}Jusu @${handle} sekmingai uzregistruotas!`);
             player.call('twitterHandleRegistered', [handle]);
         });
     });
@@ -7923,18 +9020,18 @@ mp.events.add('postTweet', (player, content) => {
     if (!player.charId) return;
 
     if (content.length > 150) {
-        return player.outputChatBox('!{#e74c3c}Skelbimas per ilgas! (max 150 simbolių)');
+        return player.outputChatBox('!{#e74c3c}Skelbimas per ilgas! (max 150 simboliu)');
     }
 
     const now = Date.now();
     if (lastTweetTime.has(player.id) && now - lastTweetTime.get(player.id) < TWITTER_COOLDOWN) {
         const remaining = Math.ceil((TWITTER_COOLDOWN - (now - lastTweetTime.get(player.id))) / 60000);
-        return player.outputChatBox(`!{#e74c3c}Galite skelbti tik kartą per valandą. Liko ${remaining} min.`);
+        return player.outputChatBox(`!{#e74c3c}Galite skelbti tik karta per valanda. Liko ${remaining} min.`);
     }
 
     db.query('SELECT handle FROM twitter_accounts WHERE char_id = ?', [player.charId], (err, rows) => {
         if (rows.length === 0) {
-            return player.outputChatBox('!{#e74c3c}Pirmiausia užregistruokite @slapyvardį!');
+            return player.outputChatBox('!{#e74c3c}Pirmiausia uzregistruokite @slapyvardi!');
         }
 
         const handle = rows[0].handle;
@@ -7976,7 +9073,7 @@ mp.events.add('postTweet', (player, content) => {
 // ====================== MOBILE BANKING APP ======================
 
 mp.events.add('openBankApp', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
 
     // Get balance + last 5 transactions
     db.query(`
@@ -8035,11 +9132,11 @@ mp.events.add('bankTransfer', (player, recipientAccountRaw, amountStr) => {
     db.query('SELECT balance FROM bank_accounts WHERE char_name = ?', [player.charName], (err, senderRes) => {
         if (err || senderRes.length === 0) {
             console.log('[BANK] bankTransfer failed sender lookup', player.charName, recipientAccountNumber, amount, err);
-            return player.call('bankTransferResult', [false, 'Nepakanka lėšų sąskaitoje!']);
+            return player.call('bankTransferResult', [false, 'Nepakanka lesu saskaitoje!']);
         }
         if (senderRes[0].balance < amount) {
             console.log('[BANK] bankTransfer insufficient balance', player.charName, recipientAccountNumber, amount);
-            return player.call('bankTransferResult', [false, 'Nepakanka lėšų sąskaitoje!']);
+            return player.call('bankTransferResult', [false, 'Nepakanka lesu saskaitoje!']);
         }
 
         // Check recipient exists
@@ -8081,9 +9178,9 @@ mp.events.add('bankTransfer', (player, recipientAccountRaw, amountStr) => {
 // ==================== CLOTHING SYSTEM ====================
 
 const CLOTHING_STORES = [
-    { x: -710.2, y: -152.0, z: 37.4 },  // Suburban – Rockford Hills
-    { x: 121.6, y: -221.3, z: 54.5 },  // Suburban – Pillbox Hill
-    { x: 613.8, y: 2763.1, z: 42.1 },  // Suburban – Paleto Bay
+    { x: -710.2, y: -152.0, z: 37.4 },  // Suburban - Rockford Hills
+    { x: 121.6, y: -221.3, z: 54.5 },  // Suburban - Pillbox Hill
+    { x: 613.8, y: 2763.1, z: 42.1 },  // Suburban - Paleto Bay
     { x: 75.4, y: -1393.4, z: 29.4 },  // Binco
 ];
 
@@ -8092,7 +9189,7 @@ const CLOTHING_STORE_RADIUS = 5.0;
 // Blips so players can find the stores on the minimap
 CLOTHING_STORES.forEach((pos) => {
     mp.blips.new(73, new mp.Vector3(pos.x, pos.y, pos.z), {
-        name: 'Drabužių parduotuvė',
+        name: 'Drabuziu parduotuve',
         color: 47,
         scale: 0.85,
         shortRange: true,
@@ -8110,16 +9207,16 @@ function isNearClothingStore(player) {
 }
 
 mp.events.addCommand('changeclothes', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!isNearClothingStore(player)) {
-        return player.outputChatBox('!{#e74c3c}Prašome eiti į drabužių parduotuvę.');
+        return player.outputChatBox('!{#e74c3c}Prasome eiti i drabuziu parduotuve.');
     }
 
     const currentClothes = player.outfitData || {};
     player.call('openClothingUI', [JSON.stringify(currentClothes)]);
 });
 
-// Live preview – apply clothes without saving
+// Live preview - apply clothes without saving
 mp.events.add('previewClothes', (player, compStr, drawStr, texStr) => {
     const component = parseInt(compStr);
     const drawable = parseInt(drawStr);
@@ -8128,12 +9225,12 @@ mp.events.add('previewClothes', (player, compStr, drawStr, texStr) => {
     player.setClothes(component, drawable, texture, 2);
 });
 
-// Save clothes – persist to DB and keep applied
+// Save clothes - persist to DB and keep applied
 mp.events.add('saveClothes', (player, clothesJson) => {
     if (!player.charId) return;
 
     if (player.money < 100) {
-        return player.call('clothingError', ['Nepakanka pinigų! Reikia $100.']);
+        return player.call('clothingError', ['Nepakanka pinigu! Reikia $100.']);
     }
 
     let clothes;
@@ -8147,7 +9244,7 @@ mp.events.add('saveClothes', (player, clothesJson) => {
         const dr = parseInt(data.d);
         const tx = parseInt(data.t);
         if (!ALLOWED.has(c) || isNaN(dr) || isNaN(tx) || dr < 0 || tx < 0 || dr > 999 || tx > 99) {
-            return player.call('clothingError', ['Klaida: neleistinos reikšmės.']);
+            return player.call('clothingError', ['Klaida: neleistinos reiksmes.']);
         }
         player.setClothes(c, dr, tx, 2);
     }
@@ -8159,15 +9256,15 @@ mp.events.add('saveClothes', (player, clothesJson) => {
     db.query('UPDATE characters SET clothes = ? WHERE id = ?', [JSON.stringify(clothes), player.charId], (err) => {
         if (err) {
             console.error('[CLOTHES] Save failed:', err.message);
-            player.call('clothingError', ['Klaida išsaugant drabužius.']);
+            player.call('clothingError', ['Klaida issaugant drabuzius.']);
         } else {
             player.call('updateMoneyHUD', [player.money]);
-            player.call('clothingSuccess', ['Drabužiai išsaugoti! Nuskaičiuota $100.']);
+            player.call('clothingSuccess', ['Drabuziai issaugoti! Nuskaiciuota $100.']);
         }
     });
 });
 
-// Close UI – revert any un-saved preview changes back to outfitData
+// Close UI - revert any un-saved preview changes back to outfitData
 mp.events.add('closeClothingUI', (player) => {
     if (player.outfitData) {
         for (const [comp, data] of Object.entries(player.outfitData)) {
@@ -8211,9 +9308,9 @@ function isNearBarberShop(player) {
 }
 
 mp.events.addCommand('barber', (player) => {
-    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prašome pasirinkti veikėją.');
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     if (!isNearBarberShop(player)) {
-        return player.outputChatBox('!{#e74c3c}Prašome eiti į kirpyklą.');
+        return player.outputChatBox('!{#e74c3c}Prasome eiti i kirpykla.');
     }
 
     const current = player.barberData || {
@@ -8233,7 +9330,7 @@ mp.events.add('saveBarber', (player, barberJson) => {
         return player.call('barberError', ['Kirpykla per toli.']);
     }
     if (player.money < 50) {
-        return player.call('barberError', ['Nepakanka pinigų! Reikia $50.']);
+        return player.call('barberError', ['Nepakanka pinigu! Reikia $50.']);
     }
 
     let barber;
@@ -8260,11 +9357,11 @@ mp.events.add('saveBarber', (player, barberJson) => {
     db.query('UPDATE characters SET barber = ? WHERE id = ?', [JSON.stringify(normalized), player.charId], (err) => {
         if (err) {
             console.error('[BARBER] Save failed:', err.message);
-            player.call('barberError', ['Nepavyko išsaugoti šukuosenos.']);
+            player.call('barberError', ['Nepavyko issaugoti sukuosenos.']);
         } else {
             player.call('applyBarberAppearance', [JSON.stringify(normalized)]);
             player.call('updateMoneyHUD', [player.money]);
-            player.call('barberSuccess', ['Išvaizda išsaugota. Nuskaičiuota $50.']);
+            player.call('barberSuccess', ['Isvaizda issaugota. Nuskaiciuota $50.']);
         }
     });
 });
@@ -8281,4 +9378,332 @@ mp.events.add('closeBarberUI', (player) => {
     // Revert unsaved preview values.
     player.call('applyBarberAppearance', [JSON.stringify(current)]);
     player.call('closeBarberUIBrowser');
+});
+
+// Note: older placeholder handler removed. The real handler below accepts (player, username, email, password, answersJson).
+
+// New handler with email and answers
+mp.events.add('register:submit', (player, username, email, password, answersJson) => {
+    if (!username || !email || !password) { try { player.call('register:error', ['Iveskite vartotojo varda, el. pasta ir slaptazodi.']); } catch (e) { } return; }
+    const normalized = String(username).trim();
+    const normalizedEmail = String(email).trim().toLowerCase();
+    if (normalized.length < 3 || normalized.length > 64) { try { player.call('register:error', ['Vartotojo vardas turi buti 3-64 simboliu.']); } catch (e) { } return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) { try { player.call('register:error', ['Neteisingas el. pasto formatas.']); } catch (e) { } return; }
+    if (String(password).length < 6) { try { player.call('register:error', ['Slaptazodis turi buti bent 6 simboliu.']); } catch (e) { } return; }
+
+    // Parse answers (trusting client for now)
+    let answers = [];
+    try { answers = JSON.parse(String(answersJson || '[]')); } catch (e) { answers = []; }
+
+    const normalizeRegisterQuizAnswer = (value) => String(value || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/å¡/g, 's')
+        .replace(/å¾/g, 'z')
+        .replace(/å«/g, 'u')
+        .replace(/å³/g, 'u')
+        .replace(/ä—/g, 'e')
+        .replace(/ä™/g, 'e')
+        .replace(/ä…/g, 'a')
+        .replace(/ä¯/g, 'i')
+        .replace(/ä/g, 'c');
+
+    // Strict quiz validation: require all answers to match expected answers.
+    const CORRECT_QUIZ_ANSWERS = [
+        'Ne',
+        'Ne',
+        'Pranesti administracijai',
+        'Ne',
+        'Ne'
+    ];
+    if (!Array.isArray(answers) || answers.length !== CORRECT_QUIZ_ANSWERS.length) {
+        try { player.call('register:error', ['Klaida: atsakymai neteisingi.']); } catch (e) { }
+        return;
+    }
+
+    for (let i = 0; i < CORRECT_QUIZ_ANSWERS.length; i++) {
+        const a = normalizeRegisterQuizAnswer(answers[i]);
+        const b = normalizeRegisterQuizAnswer(CORRECT_QUIZ_ANSWERS[i]);
+        if (a !== b) {
+            try { player.call('register:error', ['Klaida: atsakymai neteisingi.']); } catch (e) { }
+            return;
+        }
+    }
+
+    // Check existing username or email
+    db.query('SELECT id FROM players WHERE name = ? OR email = ? LIMIT 1', [normalized, normalizedEmail], (err, results) => {
+        if (err) {
+            console.error('[DATABASE] Failed to check existing player for registration:', err);
+            try { player.call('register:error', ['Duomenu bazes klaida. Bandykite veliau.']); } catch (e) { }
+            return;
+        }
+        if (results.length > 0) {
+            try { player.call('register:error', ['Vartotojo vardas arba el. pastas jau uzimtas.']); } catch (e) { }
+            return;
+        }
+
+        bcrypt.hash(String(password), 10, (hashErr, hash) => {
+            if (hashErr) { console.error('[BCRYPT] Failed to hash password:', hashErr); try { player.call('register:error', ['Klaida kuriant paskyra. Bandykite veliau.']); } catch (e) { } return; }
+
+            // Insert player with pending email confirmation
+            db.query('INSERT INTO players (name, password, email, email_confirmed, reg_answers) VALUES (?, ?, ?, 0, ?)', [normalized, hash, normalizedEmail, JSON.stringify(answers)], (insertErr, insertRes) => {
+                if (insertErr) {
+                    console.error('[DATABASE] Failed to insert new player:', insertErr);
+                    // If a UNIQUE index exists this will return ER_DUP_ENTRY on duplicate email/name.
+                    if (insertErr.code === 'ER_DUP_ENTRY') {
+                        try { player.call('register:error', ['Vartotojo vardas arba el. pastas jau uzimtas.']); } catch (e) { }
+                    } else {
+                        try { player.call('register:error', ['Duomenu bazes klaida. Bandykite veliau.']); } catch (e) { }
+                    }
+                    return;
+                }
+
+                const newId = insertRes.insertId;
+                // Create a confirmation token
+                // Generate a short numeric confirmation code and store it.
+                const code = String(Math.floor(100000 + Math.random() * 900000));
+                db.query('INSERT INTO email_confirm_tokens (player_id, token, created_at) VALUES (?, ?, NOW())', [newId, code], (tErr) => {
+                    if (tErr) console.error('[EMAIL] Failed to store confirmation token:', tErr);
+                    // Send confirmation email with numeric code if transport configured
+                    if (mailTransport) {
+                        const mailText = `Jusu patvirtinimo kodas: ${code}`;
+                        mailTransport.sendMail({
+                            from: process.env.SMTP_FROM || 'CaliforniaRP <info@californiarp.lt>',
+                            to: normalizedEmail,
+                            subject: 'Jusu patvirtinimo kodas',
+                            text: mailText,
+                            html: `<p>Jusu patvirtinimo kodas: <strong>${code}</strong></p>`
+                        }, (mailErr) => {
+                            if (mailErr) console.error('[EMAIL] send error:', mailErr);
+                        });
+                    }
+
+                    // Notify client that registration succeeded; awaiting confirmation code
+                    const successMsg = 'Registracija sekminga. Patikrinkite el. pasta ir iveskite atsiusta koda.';
+                    try { player.call('register:success', [successMsg]); } catch (e) { }
+                });
+            });
+        });
+    });
+});
+
+// Email transport setup (nodemailer)
+let mailTransport = null;
+try {
+    const nodemailer = require('nodemailer');
+    // Use environment variables for SMTP configuration. Set these in your .env or hosting env:
+    // SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
+    const SMTP_HOST = process.env.SMTP_HOST || 'smtp.hostinger.com';
+    const SMTP_PORT = parseInt(process.env.SMTP_PORT, 10) || 465;
+    const SMTP_USER = process.env.SMTP_USER || 'info@californiarp.lt';
+    const SMTP_PASS = process.env.SMTP_PASS || 'ProjekciukoEmailas123;';
+    const SMTP_FROM = process.env.SMTP_FROM || 'CaliforniaRP <info@californiarp.lt>';
+
+    if (SMTP_USER && SMTP_PASS) {
+        mailTransport = nodemailer.createTransport({
+            host: SMTP_HOST,
+            port: SMTP_PORT,
+            secure: SMTP_PORT === 465,
+            auth: { user: SMTP_USER, pass: SMTP_PASS },
+            tls: { rejectUnauthorized: false }
+        });
+        console.log('[EMAIL] Mail transport configured using', SMTP_USER);
+
+        // optional quick verify
+        mailTransport.verify((vErr, success) => {
+            if (vErr) console.warn('[EMAIL] SMTP verify failed', vErr);
+            else console.log('[EMAIL] SMTP verify OK');
+        });
+    } else {
+        console.log('[EMAIL] SMTP credentials not provided; email disabled (set SMTP_USER and SMTP_PASS)');
+    }
+} catch (e) {
+    console.warn('[EMAIL] nodemailer not available; email features disabled');
+}
+
+// Player requests to create a new character (stores request for admin approval)
+mp.events.add('createCharacterRequest', (player, firstName, lastName, age, gender, bio) => {
+    if (!firstName || !lastName) return player.call('character:create:error', [JSON.stringify({ message: 'Iveskite varda ir pavarde.' })]);
+    const ucp = player.name || '';
+    // Prevent multiple pending requests per account
+    db.query('SELECT id FROM pending_characters WHERE ucp_username = ? LIMIT 1', [ucp], (checkErr, checkRows) => {
+        if (checkErr) {
+            console.error('[CHAR] pending check failed', checkErr);
+            return player.call('character:create:error', [JSON.stringify({ message: 'Klaida tikrinant esamas paraiskas.' })]);
+        }
+        if (checkRows && checkRows.length > 0) {
+            return player.call('character:create:error', [JSON.stringify({ message: 'Jau turite laukianti veikeja. Palaukite administracijos sprendimo.' })]);
+        }
+
+        // proceed to insert
+        const f = String(firstName).trim();
+        const l = String(lastName).trim();
+        const a = Number(age) || null;
+        const g = String(gender || '').trim();
+        const b = String(bio || '').trim().slice(0, 2000);
+        db.query('INSERT INTO pending_characters (ucp_username, first_name, last_name, age, gender, bio) VALUES (?, ?, ?, ?, ?, ?)', [ucp, f, l, a, g, b], (err, result) => {
+            if (err) {
+                console.error('[CHAR] Failed to create pending character:', err);
+                return player.call('character:create:error', [JSON.stringify({ message: 'Klaida siunciant uzklausa.' })]);
+            }
+            const insertedId = result && result.insertId ? result.insertId : null;
+            const createdAt = new Date().toISOString();
+            const payload = {
+                message: 'Jusu veikejo paraiska issiusta administracijai.',
+                id: insertedId,
+                firstName: f,
+                lastName: l,
+                age: a,
+                gender: g,
+                bio: b,
+                createdAt
+            };
+            try { player.call('character:create:ok', [JSON.stringify(payload)]); } catch (e) { }
+            // Notify online admins in chat about new pending request
+            const onlinePlayers = mp.players.toArray();
+            for (const p of onlinePlayers) {
+                isAdmin(p, 1, (admErr, has) => {
+                    if (!admErr && has) {
+                        try { p.outputChatBox(`!{#f7dc6f}Nauja veikejo paraiska nuo ${ucp}: ${f} ${l} (id:${insertedId})`); } catch (e) { }
+                    }
+                });
+            }
+        });
+    });
+});
+
+// Admin requests list of pending characters
+mp.events.add('requestPendingCharacters', (player) => {
+    isAdmin(player, 1, (err, ok) => {
+        if (err || !ok) return player.outputChatBox('!{#e74c3c}Neturite teisiu perziureti laukianciu veikeju.');
+        db.query('SELECT id, ucp_username, first_name, last_name, age, gender, bio, created_at FROM pending_characters ORDER BY created_at DESC', (qErr, rows) => {
+            if (qErr) { console.error('[CHAR] Failed to fetch pending characters:', qErr); return; }
+            try { player.call('openPendingCharsUI', [JSON.stringify(rows || [])]); } catch (e) { }
+        });
+    });
+});
+
+// Admin approves pending character: insert into characters and remove pending record
+mp.events.add('approveCharacter', (player, pendingId) => {
+    isAdmin(player, 1, (err, ok) => {
+        if (err || !ok) return player.outputChatBox('!{#e74c3c}Neturite teisiu patvirtinti veikeju.');
+        db.query('SELECT * FROM pending_characters WHERE id = ? LIMIT 1', [pendingId], (sErr, rows) => {
+            if (sErr || !rows || rows.length === 0) return player.outputChatBox('!{#e74c3c}Paraiska nerasta.');
+            const req = rows[0];
+            const charName = `${req.first_name} ${req.last_name}`;
+
+            // Compute a safe next ID and insert
+            db.query('SELECT MAX(id) AS maxId FROM characters', (mErr, mRows) => {
+                if (mErr) {
+                    console.error('[CHAR] Failed to compute next char id:', mErr);
+                    return player.outputChatBox('!{#e74c3c}Klaida patvirtinant veikeja.');
+                }
+                const maxId = (mRows && mRows[0] && mRows[0].maxId) ? Number(mRows[0].maxId) : 0;
+                const newIdToUse = maxId + 1;
+
+                db.query('INSERT INTO characters (id, char_name, ucp_username, money, bank_balance, playtime, health, is_approved) VALUES (?, ?, ?, 0, 0, 0, 100, 1)', [newIdToUse, charName, req.ucp_username], (iErr) => {
+                    if (iErr) {
+                        console.error('[CHAR] Failed to insert approved character:', iErr);
+                        return player.outputChatBox('!{#e74c3c}Klaida patvirtinant veikeja.');
+                    }
+
+                    // Delete pending request
+                    db.query('DELETE FROM pending_characters WHERE id = ?', [pendingId], (dErr) => {
+                        if (dErr) console.error('[CHAR] Failed to delete pending:', dErr);
+                    });
+
+                    player.outputChatBox(`!{#7aa164}Patvirtintas veikejas #${newIdToUse} - ${charName}`);
+
+                    // Notify the UCP user if online; refresh selection for them (but not the admin who approved)
+                    const onlinePlayers = mp.players.toArray();
+                    for (const p of onlinePlayers) {
+                        try {
+                            if (p.name && p.name.toLowerCase() === String(req.ucp_username).toLowerCase()) {
+                                const msg = `Jusu veikejo paraiska patvirtinta: ${charName}`;
+                                try { p.call('character:accepted', [JSON.stringify({ message: msg, charId: newIdToUse })]); } catch (e) { try { p.outputChatBox(`!{#7aa164}${msg}`); } catch (e2) { } }
+                                if (p !== player) {
+                                    try { loadCharacterSelection(p); } catch (e) { console.error('[CHAR] failed to refresh selection for user', e); }
+                                }
+                            }
+                        } catch (e) { console.error('[CHAR] notify loop error', e); }
+                    }
+                });
+            });
+        });
+    });
+});
+
+// Admin rejects a pending character
+mp.events.add('rejectCharacter', (player, pendingId) => {
+    isAdmin(player, 1, (err, ok) => {
+        if (err || !ok) return player.outputChatBox('!{#e74c3c}Neturite teisiu atmesti veikeju.');
+        db.query('SELECT * FROM pending_characters WHERE id = ? LIMIT 1', [pendingId], (sErr, rows) => {
+            if (sErr || !rows || rows.length === 0) return player.outputChatBox('!{#e74c3c}Paraiska nerasta.');
+            const req = rows[0];
+            db.query('DELETE FROM pending_characters WHERE id = ?', [pendingId], (dErr) => {
+                if (dErr) { console.error('[CHAR] Failed to delete pending on reject:', dErr); return player.outputChatBox('!{#e74c3c}Klaida.'); }
+
+                player.outputChatBox(`!{#f39c12}Atmesta veikejo paraiska #${pendingId} - ${req.first_name} ${req.last_name}`);
+
+                // Notify the UCP user if online; refresh selection for them (but not the admin who rejected)
+                const onlinePlayers = mp.players.toArray();
+                for (const p of onlinePlayers) {
+                    try {
+                        if (p.name && p.name.toLowerCase() === String(req.ucp_username).toLowerCase()) {
+                            const msg = `Jusu veikejo paraiska atmesta: ${req.first_name} ${req.last_name}`;
+                            try { p.call('character:rejected', [JSON.stringify({ message: msg, pendingId: pendingId })]); } catch (e) { try { p.outputChatBox(`!{#f39c12}${msg}`); } catch (e2) { } }
+                            if (p !== player) {
+                                try { loadCharacterSelection(p); } catch (e) { console.error('[CHAR] failed to refresh selection for user after reject', e); }
+                            }
+                        }
+                    } catch (e) { console.error('[CHAR] notify loop error', e); }
+                }
+            });
+        });
+    });
+});
+
+// Admin command to open pending characters UI
+mp.events.addCommand('pendingchars', (player) => {
+    isAdmin(player, 1, (err, ok) => {
+        if (err || !ok) return player.outputChatBox('!{#e74c3c}Neturite teisiu perziureti laukianciu veikeju.');
+        db.query('SELECT id, ucp_username, first_name, last_name, age, gender, bio, created_at FROM pending_characters ORDER BY created_at DESC', (qErr, rows) => {
+            if (qErr) { console.error('[CHAR] Failed to fetch pending characters:', qErr); return player.outputChatBox('!{#e74c3c}Klaida uzkraunant laukiancius veikejus.'); }
+            try { player.call('openPendingCharsUI', [JSON.stringify(rows || [])]); } catch (e) { }
+        });
+    });
+});
+
+// Fallback admin commands to approve/reject by id when UI is not working
+mp.events.addCommand('approve', (player, pendingIdRaw) => {
+    if (!pendingIdRaw) return player.outputChatBox('Naudojimas: /approve <pendingId>');
+    if (!player.charId) return player.outputChatBox('Pirmiausia pasirinkite veikeja.');
+    isAdmin(player, 1, (err, ok) => {
+        if (err || !ok) return player.outputChatBox('Neturite teisiu.');
+        const pid = Number(pendingIdRaw);
+        if (!Number.isFinite(pid)) return player.outputChatBox('Netinkamas ID.');
+        // reuse existing approve handler
+        mp.events.call('approveCharacter', player, pid);
+    });
+});
+
+mp.events.addCommand('reject', (player, pendingIdRaw) => {
+    if (!pendingIdRaw) return player.outputChatBox('Naudojimas: /reject <pendingId>');
+    if (!player.charId) return player.outputChatBox('Pirmiausia pasirinkite veikeja.');
+    isAdmin(player, 1, (err, ok) => {
+        if (err || !ok) return player.outputChatBox('Neturite teisiu.');
+        const pid = Number(pendingIdRaw);
+        if (!Number.isFinite(pid)) return player.outputChatBox('Netinkamas ID.');
+        mp.events.call('rejectCharacter', player, pid);
+    });
+});
+
+// Server receives admin UI ready handshake (for diagnostics)
+mp.events.add('adminPendingLoadedServer', (player) => {
+    try {
+        console.log(`[ADMIN UI] admin ${player.name || player.ip || player.id} reported admin panel ready`);
+        player.outputChatBox('!{#85c1e9}Admin panelis aktyvus.');
+    } catch (e) { console.error(e); }
 });

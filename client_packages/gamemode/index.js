@@ -10,9 +10,22 @@ let dealershipCatalog = [];
 let dealershipCam = null;
 const DEALERSHIP_PREVIEW_POSITION = new mp.Vector3(-56.58, -1111.95, 26.44);
 const DEALERSHIP_PREVIEW_HEADING = 69.0;
+const DMV_PICKUP_POSITION = new mp.Vector3(-270.86, -693.14, 34.28);
 let inventoryBrowser = null;
 let isInventoryOpen = false;
 let lastInventoryRequestAt = 0;
+let pawnShopBrowser = null;
+let isPawnShopOpen = false;
+let dmvStartBrowser = null;
+let dmvQuizBrowser = null;
+let dmvRouteActive = false;
+let dmvRoutePoints = [];
+let dmvRouteIndex = 0;
+let lastDmvCheckpointReportAt = 0;
+let dmvCheckpointBlip = null;
+let onlineCharactersBrowser = null;
+let isOnlineCharactersOpen = false;
+let lastOnlineCharactersRequestAt = 0;
 let lastPassengerEnterAttemptAt = 0;
 let pendingInventoryState = null;
 let isInventoryDomReady = false;
@@ -23,6 +36,8 @@ let passengerShuffleActiveUntil = 0;
 let passengerShuffleNextAt = 0;
 let passengerShuffleAttempts = 0;
 let ownedVehicleBlip = null;
+let ownedPropertyBlips = new Map();
+let ownedPropertyBlip = null;
 const WEAPON_UNARMED_HASH = mp.game.joaat('weapon_unarmed');
 const NON_AMMO_WEAPON_HASHES = new Set([
     WEAPON_UNARMED_HASH,
@@ -59,8 +74,170 @@ function canToggleInventory() {
         && !houseBrowser
         && !browser
         && !paycheckBrowser
+        && !isPawnShopOpen
+        && !dmvStartBrowser
+        && !dmvQuizBrowser
+        && !isOnlineCharactersOpen
         && !isNativeChatInputActive()
         && !globalThis.__isPhoneOpen;
+}
+
+function canToggleOnlineCharacters() {
+    return !isLoginUIActive
+        && !loginUI
+        && !bankUI
+        && !clothingUI
+        && !barberUI
+        && !dealershipBrowser
+        && !houseBrowser
+        && !browser
+        && !paycheckBrowser
+        && !isPawnShopOpen
+        && !dmvStartBrowser
+        && !dmvQuizBrowser
+        && !isInventoryOpen
+        && !isNativeChatInputActive()
+        && !globalThis.__isPhoneOpen;
+}
+
+function closeOnlineCharactersBrowser() {
+    if (onlineCharactersBrowser) {
+        try { onlineCharactersBrowser.destroy(); } catch (e) { }
+        onlineCharactersBrowser = null;
+    }
+
+    isOnlineCharactersOpen = false;
+    mp.gui.cursor.show(false, false);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(true);
+}
+
+function closePawnShopBrowser() {
+    if (pawnShopBrowser) {
+        try { pawnShopBrowser.destroy(); } catch (e) { }
+        pawnShopBrowser = null;
+    }
+
+    isPawnShopOpen = false;
+    mp.gui.cursor.show(false, false);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(true);
+}
+
+function closeDMVStartBrowser() {
+    if (dmvStartBrowser) {
+        try { dmvStartBrowser.destroy(); } catch (e) { }
+        dmvStartBrowser = null;
+    }
+
+    mp.gui.cursor.show(false, false);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(true);
+}
+
+function closeDMVQuizBrowser(notifyServer = false) {
+    if (notifyServer && dmvQuizBrowser) {
+        try { mp.events.callRemote('cancelDMVTheory'); } catch (e) { }
+    }
+
+    if (dmvQuizBrowser) {
+        try { dmvQuizBrowser.destroy(); } catch (e) { }
+        dmvQuizBrowser = null;
+    }
+
+    mp.gui.cursor.show(false, false);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(true);
+}
+
+function stopDMVRoute() {
+    if (dmvCheckpointBlip) {
+        try { dmvCheckpointBlip.destroy(); } catch (e) { }
+        dmvCheckpointBlip = null;
+    }
+
+    dmvRouteActive = false;
+    dmvRoutePoints = [];
+    dmvRouteIndex = 0;
+    lastDmvCheckpointReportAt = 0;
+}
+
+function updateDMVCheckpointBlip() {
+    if (dmvCheckpointBlip) {
+        try { dmvCheckpointBlip.destroy(); } catch (e) { }
+        dmvCheckpointBlip = null;
+    }
+
+    if (!dmvRouteActive || !Array.isArray(dmvRoutePoints) || dmvRouteIndex >= dmvRoutePoints.length) return;
+
+    const point = dmvRoutePoints[dmvRouteIndex];
+    if (!point) return;
+
+    const x = Number(point.x);
+    const y = Number(point.y);
+    const z = Number(point.z);
+    if (![x, y, z].every(Number.isFinite)) return;
+
+    try {
+        dmvCheckpointBlip = mp.blips.new(1, new mp.Vector3(x, y, z), {
+            name: `DMV checkpoint ${dmvRouteIndex + 1}`,
+            color: 3,
+            scale: 0.9,
+            shortRange: false,
+        });
+
+        if (dmvCheckpointBlip && typeof dmvCheckpointBlip.setRoute === 'function') {
+            dmvCheckpointBlip.setRoute(true);
+        }
+
+        if (dmvCheckpointBlip && typeof dmvCheckpointBlip.setRouteColour === 'function') {
+            dmvCheckpointBlip.setRouteColour(3);
+        }
+    } catch (e) { }
+
+    try {
+        if (mp.game && mp.game.ui && typeof mp.game.ui.setNewWaypoint === 'function') {
+            mp.game.ui.setNewWaypoint(x, y);
+        }
+    } catch (e) { }
+}
+
+function sendPawnShopStateToBrowser(payloadJson, statusText = '', success = true) {
+    if (!pawnShopBrowser) return;
+    pawnShopBrowser.execute(`renderPawnShop(${JSON.stringify(payloadJson || '{}')}, ${JSON.stringify(statusText || '')}, ${JSON.stringify(Boolean(success))});`);
+}
+
+function openPawnShopBrowser(payloadJson, statusText = '', success = true) {
+    if (!pawnShopBrowser) {
+        pawnShopBrowser = mp.browsers.new('package://cef/pawnShopUI.html');
+    }
+
+    isPawnShopOpen = true;
+    mp.gui.cursor.show(true, true);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(false);
+
+    setTimeout(() => {
+        sendPawnShopStateToBrowser(payloadJson, statusText, success);
+    }, 80);
+}
+
+function openOnlineCharactersBrowser(playersJson) {
+    if (!onlineCharactersBrowser) {
+        onlineCharactersBrowser = mp.browsers.new('package://cef/online_players.html');
+    }
+
+    isOnlineCharactersOpen = true;
+    mp.gui.cursor.show(true, true);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(false);
+
+    const safeJson = JSON.stringify(playersJson || '[]');
+    setTimeout(() => {
+        if (onlineCharactersBrowser) {
+            onlineCharactersBrowser.execute(`renderOnlineCharacters(${safeJson});`);
+        }
+    }, 40);
 }
 
 function setInventoryUiOpenState(isOpen) {
@@ -271,6 +448,46 @@ mp.events.add('clearOwnedVehicleBlip', () => {
     clearOwnedVehicleBlip();
 });
 
+function clearOwnedPropertyBlip(id) {
+    try {
+        if (typeof id === 'number' || typeof id === 'string') {
+            const key = Number(id);
+            const b = ownedPropertyBlips.get(key);
+            if (b) {
+                try { b.destroy(); } catch (e) { }
+                ownedPropertyBlips.delete(key);
+            }
+            return;
+        }
+
+        // Clear all
+        for (const [, b] of ownedPropertyBlips) {
+            try { b.destroy(); } catch (e) { }
+        }
+        ownedPropertyBlips.clear();
+    } catch (e) {
+        ownedPropertyBlips.clear();
+    }
+}
+
+mp.events.add('showOwnedPropertyBlip', (id, x, y, z, label) => {
+    if (!Number.isFinite(Number(id))) return;
+    const key = Number(id);
+    // Replace existing blip for this property id
+    clearOwnedPropertyBlip(key);
+    const blip = mp.blips.new(40, new mp.Vector3(Number(x), Number(y), Number(z)), {
+        name: String(label || 'Owned Property'),
+        color: 2,
+        scale: 0.7,
+        shortRange: true,
+    });
+    ownedPropertyBlips.set(key, blip);
+});
+
+mp.events.add('clearOwnedPropertyBlip', (id) => {
+    clearOwnedPropertyBlip(id);
+});
+
 
 mp.events.add('freezePlayer', (freeze) => {
     if (freeze) {
@@ -418,6 +635,10 @@ mp.keys.bind(0x45, false, function () { // 'E' key
             paycheckBrowser.destroy();
             paycheckBrowser = null;
         }, 100);
+    }
+
+    if (!isLoginUIActive && !isNativeChatInputActive() && !dmvStartBrowser && !dmvQuizBrowser) {
+        mp.events.callRemote('requestDMVInteraction');
     }
 });
 
@@ -871,6 +1092,101 @@ mp.events.add('requestInventoryRefresh', () => {
     mp.events.callRemote('requestInventoryRefresh');
 });
 
+mp.events.add('openPawnShopUI', (payloadJson, statusText = '', success = true) => {
+    openPawnShopBrowser(payloadJson, statusText, success);
+});
+
+mp.events.add('updatePawnShopUI', (payloadJson, statusText = '', success = true) => {
+    if (!isPawnShopOpen) {
+        openPawnShopBrowser(payloadJson, statusText, success);
+        return;
+    }
+
+    sendPawnShopStateToBrowser(payloadJson, statusText, success);
+});
+
+mp.events.add('pawnShopBuy', (stockId) => {
+    mp.events.callRemote('pawnShopBuy', String(stockId || ''));
+});
+
+mp.events.add('closePawnShopUI', () => {
+    closePawnShopBrowser();
+});
+
+mp.events.add('openDMVQuizUI', () => {
+    closeDMVStartBrowser();
+
+    if (dmvQuizBrowser) {
+        try { dmvQuizBrowser.destroy(); } catch (e) { }
+        dmvQuizBrowser = null;
+    }
+
+    dmvQuizBrowser = mp.browsers.new('package://cef/dmvQuizUI.html');
+    mp.gui.cursor.show(true, true);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(false);
+});
+
+mp.events.add('openDMVStartUI', () => {
+    if (dmvStartBrowser) {
+        try { dmvStartBrowser.destroy(); } catch (e) { }
+        dmvStartBrowser = null;
+    }
+
+    dmvStartBrowser = mp.browsers.new('package://cef/dmvStartUI.html');
+    mp.gui.cursor.show(true, true);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(false);
+});
+
+mp.events.add('startDMVTest', () => {
+    closeDMVStartBrowser();
+    mp.events.callRemote('startDMVTest');
+});
+
+mp.events.add('closeDMVStart', () => {
+    closeDMVStartBrowser();
+});
+
+mp.events.add('submitDMVTheory', (answersJson) => {
+    mp.events.callRemote('submitDMVTheory', String(answersJson || '[]'));
+});
+
+mp.events.add('closeDMVQuiz', () => {
+    closeDMVQuizBrowser(true);
+});
+
+mp.events.add('dmvTheoryFailed', (message, shouldClose) => {
+    if (dmvQuizBrowser) {
+        dmvQuizBrowser.execute(`document.getElementById('status').textContent = ${JSON.stringify(String(message || 'Atsakymai neteisingi.'))};`);
+    }
+
+    if (shouldClose) {
+        setTimeout(() => {
+            closeDMVQuizBrowser();
+        }, 1600);
+    }
+});
+
+mp.events.add('startDMVRoute', (routeJson) => {
+    closeDMVQuizBrowser();
+    try {
+        const parsed = JSON.parse(String(routeJson || '[]'));
+        dmvRoutePoints = Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+        dmvRoutePoints = [];
+    }
+
+    dmvRouteIndex = 0;
+    dmvRouteActive = dmvRoutePoints.length > 0;
+    lastDmvCheckpointReportAt = 0;
+    updateDMVCheckpointBlip();
+});
+
+mp.events.add('stopDMVRoute', () => {
+    stopDMVRoute();
+});
+
 function canUsePassengerEnterHotkey() {
     return !isLoginUIActive
         && !bankUI
@@ -879,6 +1195,9 @@ function canUsePassengerEnterHotkey() {
         && !dealershipBrowser
         && !houseBrowser
         && !inventoryBrowser
+        && !pawnShopBrowser
+        && !dmvStartBrowser
+        && !dmvQuizBrowser
         && !paycheckBrowser
         && !globalThis.__isPhoneOpen
         && !isNativeChatInputActive();
@@ -1012,6 +1331,37 @@ mp.keys.bind(0x49, true, () => {
             mp.events.callRemote('requestInventoryOpen');
         }
     }, 260);
+});
+
+mp.keys.bind(0x50, true, () => {
+    if (isOnlineCharactersOpen) {
+        closeOnlineCharactersBrowser();
+        return;
+    }
+
+    if (!canToggleOnlineCharacters()) {
+        return;
+    }
+
+    const now = Date.now();
+    if (now - lastOnlineCharactersRequestAt < 250) {
+        return;
+    }
+
+    lastOnlineCharactersRequestAt = now;
+    mp.events.callRemote('requestOnlineCharacters');
+});
+
+mp.events.add('showOnlineCharactersUI', (playersJson) => {
+    if (!canToggleOnlineCharacters() && !isOnlineCharactersOpen) {
+        return;
+    }
+
+    openOnlineCharactersBrowser(playersJson);
+});
+
+mp.events.add('closeOnlineCharactersUI', () => {
+    closeOnlineCharactersBrowser();
 });
 
 
@@ -1357,9 +1707,11 @@ mp.events.add('applyBarberAppearance', (barberJson) => {
 
 let camera = null;
 let loginUI = null;
+let registerUI = null;
 let cameraPosition = new mp.Vector3(-80, -1525, 300);  // Higher position for the camera (view of Los Santos)
 let cameraRotation = new mp.Vector3(-20, 0, 0);  // Looking downward for a good view of the city
 let isLoginUIActive = false;
+let isRegisterUIActive = false;
 
 mp.events.add('openLoginUI', () => {
     // Open the login UI
@@ -1384,6 +1736,101 @@ mp.events.add('openLoginUI', () => {
     mp.game.cam.renderScriptCams(true, false, 0, true, true);  // Start rendering the camera
 });
 
+mp.events.add('openRegisterUI', () => {
+    // Open the register UI
+    registerUI = mp.browsers.new("package://cef/registerUI.html");
+    isRegisterUIActive = true;
+    mp.gui.chat.show(false);
+    setTimeout(() => { mp.gui.cursor.show(true, true); }, 100);
+    mp.game.ui.displayRadar(false);
+    // reuse camera if needed
+    if (!camera) {
+        camera = mp.cameras.new('default', cameraPosition, cameraRotation, 50);
+        camera.setActive(true);
+        mp.game.cam.renderScriptCams(true, false, 0, true, true);
+    }
+});
+
+// Open register UI requested from CEF (login -> register)
+mp.events.add('openRegisterFromRegister', () => {
+    // no-op placeholder
+});
+
+mp.events.add('openRegisterFromUI', () => {
+    // Called from CEF to open register directly
+    if (loginUI) {
+        loginUI.execute(`hideLoginUI();`);
+        setTimeout(() => {
+            if (loginUI) { loginUI.destroy(); loginUI = null; isLoginUIActive = false; }
+            mp.events.call('openRegisterUI');
+        }, 140);
+    } else {
+        mp.events.call('openRegisterUI');
+    }
+});
+
+// When register is submitted from CEF, forward to server (include email and answers)
+mp.events.add('register:submit', (username, email, password, answersJson) => {
+    mp.events.callRemote('register:submit', username, email, password, answersJson);
+});
+
+// Forward forgot/reset CEF triggers to server
+mp.events.add('forgotPassword', (email) => {
+    mp.events.callRemote('forgotPassword', String(email || ''));
+});
+mp.events.add('verifyResetCode', (code) => {
+    mp.events.callRemote('verifyResetCode', String(code || ''));
+});
+mp.events.add('resetPassword', (token, newPassword) => {
+    mp.events.callRemote('resetPassword', String(token || ''), String(newPassword || ''));
+});
+
+// Forward verify code from CEF to server
+mp.events.add('verifyEmailCode', (code) => {
+    mp.events.callRemote('verifyEmailCode', String(code || ''));
+});
+
+// Forward resend request from CEF to server
+mp.events.add('resendVerifyCode', (email) => {
+    mp.events.callRemote('resendVerifyCode', String(email || ''));
+});
+
+// Server notifies registration success (accepts an optional message)
+mp.events.add('register:success', (message) => {
+    if (registerUI) {
+        try { registerUI.execute(`window.registerSuccess(${JSON.stringify(message || '')})`); } catch (e) { }
+        // Do not destroy the register UI here — wait for verification success.
+    } else {
+        mp.events.call('openLoginUI');
+    }
+});
+
+// Server notifies registration error
+mp.events.add('register:error', (message) => {
+    if (registerUI) {
+        try { registerUI.execute(`window.registerError(${JSON.stringify(message)})`); } catch (e) { }
+    } else {
+        mp.gui.chat.push(message);
+    }
+});
+
+// Forward verify results to CEF
+mp.events.add('register:verify:success', (message) => {
+    if (registerUI) {
+        try { registerUI.execute(`window.registerVerifySuccess(${JSON.stringify(message || '')})`); } catch (e) { }
+        // allow CEF to animate/hide before destroying and opening login
+        setTimeout(() => {
+            if (registerUI) { registerUI.destroy(); registerUI = null; isRegisterUIActive = false; }
+            mp.events.call('openLoginUI');
+        }, 1200);
+    } else {
+        mp.events.call('openLoginUI');
+    }
+});
+mp.events.add('register:verify:error', (message) => {
+    if (registerUI) { try { registerUI.execute(`window.registerVerifyError(${JSON.stringify(message || '')})`); } catch (e) { } }
+});
+
 // When login is submitted
 mp.events.add('login:submit', (username, password) => {
     mp.events.callRemote('validateLogin', username, password);
@@ -1393,6 +1840,45 @@ mp.events.add('login:submit', (username, password) => {
 mp.events.add('login:failed', (message) => {
     mp.gui.chat.push(message);  // Show the reason in chat
     mp.gui.cursor.show(true, true);  // Keep cursor visible after failure
+});
+
+// Forgot/reset password flow: forward server events into login UI CEF
+mp.events.add('forgot:sent', (message) => {
+    if (loginUI) { try { loginUI.execute(`window.forgotSent(${JSON.stringify(message || '')})`); } catch (e) { } }
+});
+mp.events.add('forgot:error', (message) => {
+    if (loginUI) { try { loginUI.execute(`window.forgotError(${JSON.stringify(message || '')})`); } catch (e) { } }
+});
+mp.events.add('reset:code:ok', (username) => {
+    if (loginUI) { try { loginUI.execute(`window.resetCodeOk(${JSON.stringify(username || '')})`); } catch (e) { } }
+});
+mp.events.add('reset:code:error', (message) => {
+    if (loginUI) { try { loginUI.execute(`window.resetCodeError(${JSON.stringify(message || '')})`); } catch (e) { } }
+});
+mp.events.add('reset:success', (message) => {
+    if (loginUI) { try { loginUI.execute(`window.resetSuccess(${JSON.stringify(message || '')})`); } catch (e) { } }
+});
+mp.events.add('reset:error', (message) => {
+    if (loginUI) { try { loginUI.execute(`window.resetError(${JSON.stringify(message || '')})`); } catch (e) { } }
+});
+
+// Allow CEF to open register UI via this event (handled above where login UI is closed first)
+
+// Switch back to login from register UI
+mp.events.add('openLoginFromRegister', () => {
+    if (registerUI) {
+        registerUI.execute(`hideRegisterUI();`);
+        setTimeout(() => {
+            if (registerUI) { registerUI.destroy(); registerUI = null; isRegisterUIActive = false; }
+            mp.events.call('openLoginUI');
+        }, 160);
+    } else {
+        mp.events.call('openLoginUI');
+    }
+});
+
+mp.events.add('register:hideCursor', () => {
+    mp.gui.cursor.show(false, false);
 });
 
 // On successful login, hide UI, reset camera, and allow chat again
@@ -1431,6 +1917,12 @@ mp.events.add('login:hideCursor', () => {
     mp.gui.cursor.show(false, false);  // Hide the cursor
 });
 
+mp.events.add('closeCharacterSelectionUI', () => {
+    if (browser) {
+        mp.gui.cursor.show(true, true);
+    }
+});
+
 // Show error message in the login UI if login fails
 mp.events.add('login:error', (message) => {
     if (loginUI) {
@@ -1443,6 +1935,7 @@ mp.events.add('login:error', (message) => {
 // client_scripts/character_selection.js
 let browser;
 let cameraChar;
+let previewSaved = null;
 
 mp.events.add('showCharacterSelectionUI', (charactersJson) => {
     cameraChar = mp.cameras.new('characterSelectionCam');
@@ -1452,13 +1945,42 @@ mp.events.add('showCharacterSelectionUI', (charactersJson) => {
     cameraChar.setActive(true);
     mp.game.cam.renderScriptCams(true, false, 0, true, false);
 
-    mp.players.local.freezePosition(true);
-    mp.players.local.setVisible(false, false);
+    // Save current player position/dimension so we can restore later
+    try {
+        previewSaved = {
+            pos: new mp.Vector3(mp.players.local.position.x, mp.players.local.position.y, mp.players.local.position.z),
+            dim: mp.players.local.dimension,
+            visible: true
+        };
+    } catch (e) { previewSaved = null; }
+
+    // Teleport local player to preview area and show model
+    try {
+        mp.players.local.freezePosition(true);
+        mp.players.local.setVisible(true, true);
+        // safe preview coords near camera target
+        mp.players.local.position = new mp.Vector3(441.0, -978.0, 30.0);
+    } catch (e) { console.error('preview teleport failed', e); }
     mp.game.ui.displayHud(false);
     mp.game.ui.displayRadar(false);
 
+    if (browser) {
+        try { browser.destroy(); } catch (e) { }
+        browser = null;
+    }
     browser = mp.browsers.new('package://cef/character_selection.html');
-    browser.execute(`displayCharacters(${charactersJson})`);
+    try { browser.execute(`displayCharacters(${charactersJson})`); } catch (e) { console.error('displayCharacters execution failed', e); }
+
+    // Auto-request card previews for characters that have appearance data
+    try {
+        const payload = JSON.parse(charactersJson);
+        const approved = Array.isArray(payload) ? payload : (payload.approved || []);
+        approved.forEach(char => {
+            if (char && char.id && (char.clothes || char.barber)) {
+                mp.events.call('requestCharacterCardPreview', char.id, char.clothes, char.barber);
+            }
+        });
+    } catch (e) {}
 
     // Disable the chat input (to prevent T or t from opening chat)
     mp.gui.chat.show(false);  // Disable the chat
@@ -1490,11 +2012,122 @@ mp.events.add('selectCharacter', (charId) => {
         mp.game.ui.displayRadar(true);
     }
 
-    mp.players.local.freezePosition(false);
-    mp.players.local.setVisible(true, true);
+    // Restore player position and visibility after selection
+    try {
+        if (previewSaved && previewSaved.pos) {
+            mp.players.local.position = new mp.Vector3(previewSaved.pos.x, previewSaved.pos.y, previewSaved.pos.z);
+            mp.players.local.dimension = previewSaved.dim || 0;
+        }
+    } catch (e) { console.error('failed to restore preview position', e); }
+    try { mp.players.local.freezePosition(false); mp.players.local.setVisible(true, true); } catch (e) { }
 
     mp.gui.chat.show(true);
     mp.gui.cursor.show(false, false);  // Hide the cursor
+});
+
+// Create character request from CEF -> forward to server
+mp.events.add('createCharacterRequest', (firstName, lastName, age, gender, bio) => {
+    mp.events.callRemote('createCharacterRequest', firstName, lastName, age, gender, bio);
+});
+
+// Admin: request pending characters list
+mp.events.add('requestPendingCharacters', () => {
+    mp.events.callRemote('requestPendingCharacters');
+});
+
+// Client: open admin pending characters UI when server sends list
+let adminPendingUI = null;
+mp.events.add('openPendingCharsUI', (listJson) => {
+    try {
+        // Always recreate admin UI so it becomes top-most and receives clicks
+        try { if (adminPendingUI) { adminPendingUI.destroy(); adminPendingUI = null; } } catch (e) { }
+        adminPendingUI = mp.browsers.new('package://cef/admin_pending_chars.html');
+        // Give the CEF a moment to initialise before calling the handler
+        setTimeout(() => {
+            try { adminPendingUI.execute(`try{document.body.focus();window.openPending(${listJson});}catch(e){console.error(e)}`); } catch (e) { console.error('execute openPending failed', e); }
+            mp.gui.cursor.show(true, true);
+        }, 120);
+    } catch (e) { console.error('Failed to open pending chars UI', e); }
+});
+
+// Handshake from admin CEF when it is ready
+mp.events.add('adminPendingLoaded', () => {
+    try {
+        // ensure cursor is visible and input is active
+        mp.gui.cursor.show(true, true);
+        console.log('Admin pending CEF reported ready');
+        try { mp.events.callRemote('adminPendingLoadedServer'); } catch (e) { }
+    } catch (e) { console.error(e); }
+});
+
+// Close admin pending UI (called from CEF)
+mp.events.add('closeAdminPendingUI', () => {
+    try {
+        if (adminPendingUI) {
+            try { adminPendingUI.destroy(); } catch (e) { }
+            adminPendingUI = null;
+        }
+        try { mp.gui.cursor.show(false, false); } catch (e) { }
+    } catch (e) { console.error('Failed to close admin pending UI', e); }
+});
+
+// Approve from CEF triggers server remote
+mp.events.add('approveCharacter', (pendingId) => {
+    mp.events.callRemote('approveCharacter', pendingId);
+    // refresh admin list shortly after approving to reflect changes
+    try { setTimeout(() => { mp.events.call('requestPendingCharacters'); }, 400); } catch (e) { }
+});
+mp.events.add('rejectCharacter', (pendingId) => {
+    mp.events.callRemote('rejectCharacter', pendingId);
+    // refresh admin list shortly after rejecting to reflect changes
+    try { setTimeout(() => { mp.events.call('requestPendingCharacters'); }, 400); } catch (e) { }
+});
+
+// Forward server responses for character creation to the character selection browser
+mp.events.add('character:create:ok', (message) => {
+    try {
+        // Server sends a JSON string; pass it directly into the CEF handler so it becomes an object.
+        if (browser) browser.execute(`try{window.characterCreateOk(${message});}catch(e){console.error(e)}`);
+        else mp.gui.chat.push(String(message || 'Paraiška išsiųsta'));
+    } catch (e) { console.error(e); }
+});
+mp.events.add('character:create:error', (message) => {
+    try {
+        if (browser) browser.execute(`try{window.characterCreateError(${message});}catch(e){console.error(e)}`);
+        else mp.gui.chat.push(String(message || 'Klaida'));
+    } catch (e) { console.error(e); }
+});
+
+// Server notifies player their pending character was rejected while they're on selection
+mp.events.add('character:rejected', (jsonPayload) => {
+    try {
+        if (browser) browser.execute(`try{window.showRejected(${jsonPayload});}catch(e){console.error(e)}`);
+        else mp.gui.chat.push('Jūsų veikėjo paraiška atmesta.');
+    } catch (e) { console.error(e); }
+});
+
+// Server notifies player their character was accepted (optional)
+mp.events.add('character:accepted', (jsonPayload) => {
+    try {
+        if (browser) browser.execute(`try{window.showAccepted(${jsonPayload});}catch(e){console.error(e)}`);
+        else mp.gui.chat.push('Jūsų veikėjas patvirtintas.');
+    } catch (e) { console.error(e); }
+});
+
+// Preview a character when user highlights a card in the CEF
+mp.events.add('previewCharacter', (charId) => {
+    try {
+        // Move local player to preview spot and keep camera focused
+        if (!cameraChar) {
+            cameraChar = mp.cameras.new('characterSelectionCam');
+            cameraChar.setCoord(150.0, -1000.0, 300.0);
+            cameraChar.pointAtCoord(441.0, -978.0, 30.0);
+            cameraChar.setFov(70.0);
+            cameraChar.setActive(true);
+            mp.game.cam.renderScriptCams(true, false, 0, true, false);
+        }
+        try { mp.players.local.position = new mp.Vector3(441.0, -978.0, 30.0); mp.players.local.setVisible(true, true); mp.players.local.freezePosition(true); } catch (e) { }
+    } catch (e) { console.error('previewCharacter failed', e); }
 });
 
 
@@ -1502,6 +2135,11 @@ mp.events.add('selectCharacter', (charId) => {
 mp.events.add('playerQuit', () => {
     if (browser) browser.destroy();
     if (dealershipBrowser) dealershipBrowser.destroy();
+    closePawnShopBrowser();
+    closeDMVStartBrowser();
+    closeDMVQuizBrowser();
+    stopDMVRoute();
+    closeOnlineCharactersBrowser();
     destroyLocalDealershipPreviewVehicle();
     if (dealershipCam) {
         dealershipCam.setActive(false);
@@ -1527,6 +2165,11 @@ mp.events.add('playerQuit', () => {
     }
 
     inventoryBrowser = null;
+    pawnShopBrowser = null;
+    isPawnShopOpen = false;
+    dmvStartBrowser = null;
+    dmvQuizBrowser = null;
+    stopDMVRoute();
     houseBrowser = null;
     dealershipBrowser = null;
     dealershipCatalog = [];
@@ -1564,7 +2207,7 @@ mp.events.add('render', () => {
     const text = `${speedKmh} km/h`;
     const rawFuelLevel = Number(vehicle.getVariable('fuelLevel'));
     const fuelLevel = Number.isFinite(rawFuelLevel) ? Math.max(0, Math.min(100, rawFuelLevel)) : 100;
-    const fuelText = `Fuel: ${fuelLevel.toFixed(0)}%`;
+    const fuelText = `Kuras: ${fuelLevel.toFixed(0)}%`;
 
     mp.game.graphics.drawText(text, [0.9, 0.87], {
         font: 4,
@@ -1621,6 +2264,81 @@ mp.events.add('render', () => {
     mp.events.callRemote('requestClearEmptyWeapon', String(weaponHash));
 });
 
+mp.events.add('render', () => {
+    const localPlayer = mp.players.local;
+    if (!localPlayer || !localPlayer.position || dmvRouteActive || dmvStartBrowser || dmvQuizBrowser) return;
+
+    const dx = localPlayer.position.x - DMV_PICKUP_POSITION.x;
+    const dy = localPlayer.position.y - DMV_PICKUP_POSITION.y;
+    const dz = localPlayer.position.z - DMV_PICKUP_POSITION.z;
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (distance > 8.0) return;
+
+    try {
+        mp.game.graphics.drawText('Spauskite E DMV testui', [0.5, 0.78], {
+            font: 4,
+            color: [255, 255, 255, 235],
+            scale: [0.42, 0.42],
+            outline: true,
+            alignment: 1,
+        });
+    } catch (e) {}
+});
+
+mp.events.add('render', () => {
+    if (!dmvRouteActive || !Array.isArray(dmvRoutePoints) || dmvRouteIndex >= dmvRoutePoints.length) return;
+
+    const point = dmvRoutePoints[dmvRouteIndex];
+    if (!point) return;
+
+    const x = Number(point.x);
+    const y = Number(point.y);
+    const z = Number(point.z);
+    if (![x, y, z].every(Number.isFinite)) return;
+
+    try {
+        mp.game.graphics.drawMarker(
+            1,
+            x, y, z - 1.0,
+            0, 0, 0,
+            0, 0, 0,
+            4.2, 4.2, 1.1,
+            24, 199, 210, 170,
+            false, true, 2,
+            false, null, null, false
+        );
+        mp.game.graphics.drawText(`DMV checkpoint ${dmvRouteIndex + 1}/${dmvRoutePoints.length}`, [0.5, 0.82], {
+            font: 4,
+            color: [255, 255, 255, 235],
+            scale: [0.45, 0.45],
+            outline: true,
+            alignment: 1,
+        });
+    } catch (e) {}
+
+    const localPlayer = mp.players.local;
+    if (!localPlayer || !localPlayer.position) return;
+
+    const now = Date.now();
+
+    const dx = localPlayer.position.x - x;
+    const dy = localPlayer.position.y - y;
+    const dz = localPlayer.position.z - z;
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    if (distance <= 4.2 && now - lastDmvCheckpointReportAt > 900) {
+        lastDmvCheckpointReportAt = now;
+        mp.events.callRemote('dmvCheckpointReached', dmvRouteIndex);
+        dmvRouteIndex += 1;
+
+        if (dmvRouteIndex >= dmvRoutePoints.length) {
+            stopDMVRoute();
+        } else {
+            updateDMVCheckpointBlip();
+        }
+    }
+});
+
 
 // Handle Esc key for closing custom UIs (dealership, inventory) only
 // Let RAGE MP handle chat natively
@@ -1633,6 +2351,22 @@ mp.keys.bind(0x1B, true, () => {
 
     if (isInventoryOpen) {
         closeInventoryBrowser();
+    }
+
+    if (isPawnShopOpen) {
+        closePawnShopBrowser();
+    }
+
+    if (dmvStartBrowser) {
+        closeDMVStartBrowser();
+    }
+
+    if (dmvQuizBrowser) {
+        closeDMVQuizBrowser(true);
+    }
+
+    if (isOnlineCharactersOpen) {
+        closeOnlineCharactersBrowser();
     }
 });
 

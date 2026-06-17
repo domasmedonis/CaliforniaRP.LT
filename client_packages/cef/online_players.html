@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Characters</title>
+    <style>
+        :root {
+            --panel: rgba(255, 255, 255, 0.86);
+            --panel-strong: rgba(255, 255, 255, 0.96);
+            --line: rgba(28, 85, 128, 0.16);
+            --text: #173044;
+            --muted: #60798d;
+            --accent: #12c8d2;
+            --accent-2: #3b8cff;
+            --shadow: 0 22px 70px rgba(34, 78, 120, 0.24);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            background: transparent !important;
+            background-color: rgba(0, 0, 0, 0) !important;
+            font-family: Manrope, Segoe UI, Arial, sans-serif;
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-end;
+            padding: 38px;
+            pointer-events: none;
+        }
+
+        .panel {
+            width: 360px;
+            max-height: min(680px, calc(100vh - 76px));
+            display: grid;
+            grid-template-rows: auto auto minmax(0, 1fr);
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(233, 249, 255, 0.96));
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            pointer-events: auto;
+            animation: panelIn 160ms ease-out;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 18px 18px 14px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .title {
+            min-width: 0;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 19px;
+            line-height: 1.15;
+            letter-spacing: 0;
+        }
+
+        .subtitle {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .close {
+            width: 34px;
+            height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--text);
+            cursor: pointer;
+            font-weight: 800;
+        }
+
+        .close:hover {
+            border-color: rgba(232, 79, 99, 0.45);
+            color: #d9314a;
+        }
+
+        .summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 18px;
+            background: rgba(19, 200, 210, 0.08);
+            border-bottom: 1px solid var(--line);
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .count {
+            color: var(--text);
+            font-weight: 800;
+        }
+
+        .list {
+            min-height: 120px;
+            max-height: calc(100vh - 210px);
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .list::-webkit-scrollbar {
+            width: 7px;
+        }
+
+        .list::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: rgba(59, 140, 255, 0.28);
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 40px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 11px;
+            padding: 10px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+        }
+
+        .row:nth-child(odd) {
+            background: rgba(255, 255, 255, 0.48);
+        }
+
+        .row:hover {
+            border-color: rgba(19, 200, 210, 0.28);
+            background: rgba(19, 200, 210, 0.08);
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            display: grid;
+            place-items: center;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #061014;
+            font-weight: 900;
+            box-shadow: 0 8px 18px rgba(59, 140, 255, 0.22);
+        }
+
+        .name {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 14px;
+            font-weight: 800;
+        }
+
+        .id {
+            padding: 4px 7px;
+            border-radius: 7px;
+            background: rgba(28, 85, 128, 0.08);
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .empty {
+            height: 150px;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        @keyframes panelIn {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <section class="panel">
+        <div class="header">
+            <div class="title">
+                <h1>Prisijungę veikėjai</h1>
+                <div class="subtitle">Šiuo metu serveryje esantys veikėjai</div>
+            </div>
+            <button class="close" onclick="closePanel()">X</button>
+        </div>
+        <div class="summary">
+            <span>Spauskite P, kad uždarytumėte</span>
+            <span class="count" id="count">0 prisijungę</span>
+        </div>
+        <div class="list" id="list">
+            <div class="empty">Kraunami prisijungę veikėjai...</div>
+        </div>
+    </section>
+
+    <script>
+        function escapeHtml(value) {
+            return String(value || '').replace(/[&<>"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[char]));
+        }
+
+        function renderOnlineCharacters(playersJson) {
+            let players = [];
+
+            try {
+                players = JSON.parse(playersJson || '[]');
+            } catch (e) {
+                players = [];
+            }
+
+            const list = document.getElementById('list');
+            const count = document.getElementById('count');
+            const countLabel = players.length === 1 ? 'prisijungęs' : 'prisijungę';
+            count.innerText = `${players.length} ${countLabel}`;
+
+            if (!players.length) {
+                list.innerHTML = '<div class="empty">Šiuo metu nėra prisijungusių veikėjų.</div>';
+                return;
+            }
+
+            list.innerHTML = players.map((player) => {
+                const name = escapeHtml(player.name || 'Unknown');
+                const initial = escapeHtml(name.trim().charAt(0).toUpperCase() || '?');
+                const id = Number.isFinite(Number(player.id)) ? Number(player.id) : '-';
+
+                return `
+                    <div class="row">
+                        <div class="avatar">${initial}</div>
+                        <div class="name" title="${name}">${name}</div>
+                        <div class="id">#${id}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function closePanel() {
+            try {
+                mp.trigger('closeOnlineCharactersUI');
+            } catch (e) {}
+        }
+    </script>
+</body>
+
+</html>
