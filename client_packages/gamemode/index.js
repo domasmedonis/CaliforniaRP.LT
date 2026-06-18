@@ -47,10 +47,89 @@ const NON_AMMO_WEAPON_HASHES = new Set([
 let lastAmmoCheckAt = 0;
 let lastEmptyWeaponRequestHash = null;
 let fallbackChatInputActive = false;
+let activeDrugVisualTimeout = null;
 
 mp.gui.chat.push('Hello World')
 
 globalThis.__isInventoryOpen = false;
+
+function setLocalDrugHealthCapacity(maxHealthRaw) {
+    const maxHealth = Math.max(100, Number(maxHealthRaw) || 200);
+    const localPlayer = mp.players.local;
+
+    try {
+        if (localPlayer && typeof localPlayer.setMaxHealth === 'function') {
+            localPlayer.setMaxHealth(maxHealth);
+        }
+        if (mp.game.entity && localPlayer && localPlayer.handle && typeof mp.game.entity.setEntityMaxHealth === 'function') {
+            mp.game.entity.setEntityMaxHealth(localPlayer.handle, maxHealth);
+        }
+        if (mp.game.player && typeof mp.game.player.setHealthRechargeMultiplier === 'function') {
+            mp.game.player.setHealthRechargeMultiplier(0.0);
+        }
+    } catch (e) {
+        // Server health remains authoritative; this only prevents local client clamping where supported.
+    }
+}
+
+function playDrugScreenEffect(effectType, label, durationMs) {
+    const effectMap = {
+        weed: { screen: 'DrugsMichaelAliensFightIn', timecycle: 'spectator5', shake: 'DRUNK_SHAKE', intensity: 0.18 },
+        cocaine: { screen: 'RaceTurbo', timecycle: 'rply_saturation', shake: 'ROAD_VIBRATION_SHAKE', intensity: 0.42 },
+        meth: { screen: 'DrugsTrevorClownsFightIn', timecycle: 'rply_saturation_neg', shake: 'DRUNK_SHAKE', intensity: 0.52 },
+        crack: { screen: 'DrugsTrevorClownsFightIn', timecycle: 'damage', shake: 'FAMILY5_DRUG_TRIP_SHAKE', intensity: 0.58 },
+        shrooms: { screen: 'DrugsMichaelAliensFightIn', timecycle: 'DMT_flight', shake: 'DRUNK_SHAKE', intensity: 0.34 },
+        codeine: { screen: 'DrugsMichaelAliensFightIn', timecycle: 'drug_wobbly', shake: 'DRUNK_SHAKE', intensity: 0.16 },
+        percocet: { screen: 'DrugsMichaelAliensFightIn', timecycle: 'BarryFadeOut', shake: 'DRUNK_SHAKE', intensity: 0.2 },
+        heroin: { screen: 'DrugsDrivingOut', timecycle: 'drug_drive_blend01', shake: 'DRUNK_SHAKE', intensity: 0.24 },
+        ecstasy: { screen: 'Rampage', timecycle: 'MP_corona_switch', shake: 'ROAD_VIBRATION_SHAKE', intensity: 0.28 },
+        lsd: { screen: 'DMT_flight_intro', timecycle: 'DMT_flight', shake: 'FAMILY5_DRUG_TRIP_SHAKE', intensity: 0.4 },
+    };
+
+    const config = effectMap[effectType] || effectMap.weed;
+    const duration = Math.max(5000, Number(durationMs) || 300000);
+
+    if (activeDrugVisualTimeout) {
+        clearTimeout(activeDrugVisualTimeout);
+        activeDrugVisualTimeout = null;
+    }
+
+    try {
+        if (mp.game.graphics && typeof mp.game.graphics.stopScreenEffect === 'function') {
+            Object.keys(effectMap).forEach((key) => {
+                try { mp.game.graphics.stopScreenEffect(effectMap[key].screen); } catch (e) { }
+            });
+        }
+        if (mp.game.graphics && typeof mp.game.graphics.startScreenEffect === 'function') {
+            mp.game.graphics.startScreenEffect(config.screen, 0, true);
+        }
+        if (mp.game.graphics && typeof mp.game.graphics.setTimecycleModifier === 'function') {
+            mp.game.graphics.setTimecycleModifier(config.timecycle);
+        }
+        if (mp.game.cam && typeof mp.game.cam.shakeGameplayCam === 'function') {
+            mp.game.cam.shakeGameplayCam(config.shake, config.intensity);
+        }
+    } catch (e) {
+        // Visual effects are cosmetic; ignore unavailable natives on older clients.
+    }
+
+    activeDrugVisualTimeout = setTimeout(() => {
+        try {
+            if (mp.game.graphics && typeof mp.game.graphics.stopScreenEffect === 'function') {
+                mp.game.graphics.stopScreenEffect(config.screen);
+            }
+            if (mp.game.graphics && typeof mp.game.graphics.clearTimecycleModifier === 'function') {
+                mp.game.graphics.clearTimecycleModifier();
+            }
+            if (mp.game.cam && typeof mp.game.cam.stopGameplayCamShaking === 'function') {
+                mp.game.cam.stopGameplayCamShaking(true);
+            }
+        } catch (e) {
+            // Cosmetic cleanup only.
+        }
+        activeDrugVisualTimeout = null;
+    }, duration);
+}
 
 function isNativeChatInputActive() {
     try {
@@ -1090,6 +1169,14 @@ mp.events.add('inventoryGiveItem', (itemId, targetIdentifier, amount) => {
 
 mp.events.add('requestInventoryRefresh', () => {
     mp.events.callRemote('requestInventoryRefresh');
+});
+
+mp.events.add('setDrugHealthCapacity', (maxHealth) => {
+    setLocalDrugHealthCapacity(maxHealth);
+});
+
+mp.events.add('playDrugVisualEffect', (effectType, label, durationMs) => {
+    playDrugScreenEffect(String(effectType || ''), String(label || ''), Number(durationMs) || 300000);
 });
 
 mp.events.add('openPawnShopUI', (payloadJson, statusText = '', success = true) => {

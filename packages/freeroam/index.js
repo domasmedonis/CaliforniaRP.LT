@@ -12,6 +12,10 @@ const vehicleFuelRuntimeState = new Map();
 const activeDMVTests = new Map();
 
 const INVENTORY_GIVE_RADIUS = 5.0;
+const DRUG_EFFECT_DELAY_MS = 120000;
+const DRUG_EFFECT_HEAL_DURATION_MS = 300000;
+const DRUG_VISUAL_EFFECT_DURATION_MS = 300000;
+const DRUG_MAX_HEALTH = 200;
 const WEAPON_GIVE_RADIUS = 5.0;
 const DEFAULT_WEAPON_AMMO = 120;
 const VEHICLE_WEAPON_STASH_LIMIT = 10;
@@ -145,6 +149,96 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
         giveable: true,
         consumeOnUse: true,
     },
+    weed: {
+        name: 'Zole',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 15 gyvybiu.',
+        icon: 'weed',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    cocaine: {
+        name: 'Kokainas',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 50 gyvybiu.',
+        icon: 'cocaine',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    meth: {
+        name: 'Metamfetaminas',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 30 gyvybiu.',
+        icon: 'meth',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    crack: {
+        name: 'Krekas',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 25 gyvybes.',
+        icon: 'crack',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    shrooms: {
+        name: 'Grybai',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 20 gyvybiu.',
+        icon: 'shrooms',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    codeine: {
+        name: 'Kodeinas',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 30 gyvybiu.',
+        icon: 'codeine',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    percocet: {
+        name: 'Percocet',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 30 gyvybiu.',
+        icon: 'percocet',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    heroin: {
+        name: 'Heroinas',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 30 gyvybiu.',
+        icon: 'heroin',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    ecstasy: {
+        name: 'Ekstazis',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 20 gyvybiu.',
+        icon: 'ecstasy',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
+    lsd: {
+        name: 'LSD',
+        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 20 gyvybiu.',
+        icon: 'lsd',
+        usable: true,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: true,
+    },
     simcard: {
         name: 'SIM kortele',
         description: 'Aktyvuoja telefono numeri.',
@@ -226,6 +320,27 @@ const INVENTORY_ITEM_ALIASES = Object.freeze({
     cigaretes: 'cigarettes',
     beer: 'beer',
     alus: 'beer',
+    weed: 'weed',
+    zole: 'weed',
+    cocaine: 'cocaine',
+    kokainas: 'cocaine',
+    coke: 'cocaine',
+    meth: 'meth',
+    metamfetaminas: 'meth',
+    metamfetamine: 'meth',
+    crack: 'crack',
+    krekas: 'crack',
+    shrooms: 'shrooms',
+    grybai: 'shrooms',
+    mushrooms: 'shrooms',
+    codeine: 'codeine',
+    kodeinas: 'codeine',
+    percocet: 'percocet',
+    heroin: 'heroin',
+    heroinas: 'heroin',
+    ecstasy: 'ecstasy',
+    ekstazis: 'ecstasy',
+    lsd: 'lsd',
     sim: 'simcard',
     simcard: 'simcard',
     simkortele: 'simcard',
@@ -240,6 +355,19 @@ const INVENTORY_ITEM_ALIASES = Object.freeze({
     ziedas: 'ring',
     camera: 'camera',
     kamera: 'camera',
+});
+
+const DRUG_EFFECT_DEFS = Object.freeze({
+    weed: { heal: 15, effect: 'weed' },
+    cocaine: { heal: 50, effect: 'cocaine' },
+    meth: { heal: 30, effect: 'meth' },
+    crack: { heal: 25, effect: 'crack' },
+    shrooms: { heal: 20, effect: 'shrooms' },
+    codeine: { heal: 30, effect: 'codeine' },
+    percocet: { heal: 30, effect: 'percocet' },
+    heroin: { heal: 30, effect: 'heroin' },
+    ecstasy: { heal: 20, effect: 'ecstasy' },
+    lsd: { heal: 20, effect: 'lsd' },
 });
 
 const TWITTER_COOLDOWN = 3600000; // 1 hour between posts
@@ -552,6 +680,7 @@ function enterDownedState(player) {
     if (!player || !player.charId || player.isDowned) return;
 
     cleanupDMVTest(player, true);
+    clearPlayerDrugEffectTimers(player);
 
     const now = Date.now();
     const downedPos = player.position
@@ -2488,6 +2617,79 @@ function broadcastInventoryAction(player, message) {
     mp.players.forEachInRange(player.position, 10, (nearbyPlayer) => {
         nearbyPlayer.outputChatBox(`!{#f7dc6f}${message}`);
     });
+}
+
+function clearPlayerDrugEffectTimers(player) {
+    if (!player || !Array.isArray(player.drugEffectTimers)) return;
+
+    player.drugEffectTimers.forEach((timer) => {
+        if (!timer) return;
+        if (timer.type === 'interval') clearInterval(timer.id);
+        else clearTimeout(timer.id);
+    });
+    player.drugEffectTimers = [];
+}
+
+function trackDrugEffectTimer(player, id, type) {
+    if (!player) return;
+    if (!Array.isArray(player.drugEffectTimers)) player.drugEffectTimers = [];
+    player.drugEffectTimers.push({ id, type });
+}
+
+function untrackDrugEffectTimer(player, id) {
+    if (!player || !Array.isArray(player.drugEffectTimers)) return;
+    player.drugEffectTimers = player.drugEffectTimers.filter(timer => timer && timer.id !== id);
+}
+
+function startDrugInventoryEffect(player, item) {
+    const drugDef = DRUG_EFFECT_DEFS[item.type];
+    if (!player || !player.charName || !drugDef) return false;
+
+    const healTotal = Math.max(1, parseInt(drugDef.heal, 10) || 1);
+    const itemName = item.name || INVENTORY_ITEM_DEFS[item.type].name;
+
+    const delayTimer = setTimeout(() => {
+        untrackDrugEffectTimer(player, delayTimer);
+
+        if (!player || !player.charName || player.isDowned) return;
+
+        player.outputChatBox(`!{#b58cff}${itemName} pradeda veikti. Sveikata atsistatys palaipsniui.`);
+        player.call('setDrugHealthCapacity', [DRUG_MAX_HEALTH]);
+        player.call('playDrugVisualEffect', [drugDef.effect, itemName, DRUG_VISUAL_EFFECT_DURATION_MS]);
+
+        let remainingHeal = healTotal;
+        const tickMs = Math.max(750, Math.floor(DRUG_EFFECT_HEAL_DURATION_MS / healTotal));
+        const healTimer = setInterval(() => {
+            if (!player || !player.charName || player.isDowned || remainingHeal <= 0) {
+                clearInterval(healTimer);
+                untrackDrugEffectTimer(player, healTimer);
+                return;
+            }
+
+            const currentHealth = Math.max(1, Math.ceil(Number(player.health) || 100));
+            if (currentHealth >= DRUG_MAX_HEALTH) {
+                clearInterval(healTimer);
+                untrackDrugEffectTimer(player, healTimer);
+                return;
+            }
+
+            const nextHealth = Math.min(DRUG_MAX_HEALTH, currentHealth + 1);
+            const addedHealth = nextHealth - currentHealth;
+
+            player.health = nextHealth;
+            remainingHeal -= addedHealth;
+
+            if (remainingHeal <= 0) {
+                clearInterval(healTimer);
+                untrackDrugEffectTimer(player, healTimer);
+            }
+        }, tickMs);
+
+        trackDrugEffectTimer(player, healTimer, 'interval');
+    }, DRUG_EFFECT_DELAY_MS);
+
+    trackDrugEffectTimer(player, delayTimer, 'timeout');
+    return true;
 }
 
 function startCall(caller, target) {
@@ -7256,7 +7458,7 @@ mp.events.addCommand('giveitem', (admin, fullText, targetIdentifier, rawItemType
 
         const itemType = normalizeInventoryItemType(rawItemType);
         if (!itemType || !INVENTORY_ITEM_DEFS[itemType]) {
-            return admin.outputChatBox('!{#e74c3c}Nezinomas daiktas. Galimi: water, burger, bandage, medkit, cigarettes, beer');
+            return admin.outputChatBox('!{#e74c3c}Nezinomas daiktas. Galimi: water, burger, bandage, medkit, cigarettes, beer, weed, cocaine, meth, crack, shrooms, codeine, percocet, heroin, ecstasy, lsd');
         }
 
         const amount = Math.max(1, parseInt(amountStr, 10) || 1);
@@ -7676,6 +7878,7 @@ mp.events.addCommand('changechar', (player) => {
         delete player.vehicleMarkerTimer;
     }
     clearDeathState(player, true);
+    clearPlayerDrugEffectTimers(player);
     if (playerTimeInfo[player.id] && playerTimeInfo[player.id].interval) {
         clearInterval(playerTimeInfo[player.id].interval);
         delete playerTimeInfo[player.id];
@@ -7990,6 +8193,20 @@ mp.events.add('inventoryUseItem', (player, itemId) => {
     const item = itemEntry.item;
     if (!item.usable) {
         return sendInventoryUpdate(player, 'Sio daikto naudoti negalima.', false);
+    }
+
+    if (DRUG_EFFECT_DEFS[item.type]) {
+        const started = startDrugInventoryEffect(player, item);
+        if (!started) {
+            return sendInventoryUpdate(player, 'Sio daikto naudoti nepavyko.', false);
+        }
+
+        removeInventoryItemAmount(player, itemId, 1);
+        persistInventory(player);
+
+        const statusText = `${item.name} suvartota. Poveiki pajusite po 2 minuciu.`;
+        player.outputChatBox(`!{#7aa164}${statusText}`);
+        return sendInventoryUpdate(player, statusText, true);
     }
 
     const currentHealth = Math.max(1, Math.ceil(player.health || 100));
@@ -8346,6 +8563,7 @@ mp.events.addCommand('decline', (player) => {
 // Handle player disconnect
 mp.events.add('playerQuit', (player) => {
     cleanupDMVTest(player, false);
+    clearPlayerDrugEffectTimers(player);
 
     // Character timers
     if (player.timer) {
