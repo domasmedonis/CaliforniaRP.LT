@@ -2038,25 +2038,25 @@ function getNearbyBusiness(player, radius = BUSINESS_INTERACT_RADIUS) {
             closestDistance = distance;
             closest = business;
         }
+    });
 
-        function getNearbyBusinessByInteractRadius(player, maxRadius = BUSINESS_INTERACT_RADIUS_MAX) {
-            if (!player || !player.position || Number(player.dimension) !== 0) return null;
+    return closest;
+}
 
-            const searchRadius = sanitizeBusinessInteractRadius(maxRadius);
-            let closest = null;
-            let closestDistance = Number.POSITIVE_INFINITY;
+function getNearbyBusinessByInteractRadius(player, maxRadius = BUSINESS_INTERACT_RADIUS_MAX) {
+    if (!player || !player.position || Number(player.dimension) !== 0) return null;
 
-            businessesById.forEach((business) => {
-                const distance = getDistanceBetweenPositions(player.position, business.entryPos);
-                const businessRadius = getBusinessInteractRadius(business);
-                if (distance > searchRadius || distance > businessRadius) return;
-                if (distance <= closestDistance) {
-                    closestDistance = distance;
-                    closest = business;
-                }
-            });
+    const searchRadius = sanitizeBusinessInteractRadius(maxRadius);
+    let closest = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
 
-            return closest;
+    businessesById.forEach((business) => {
+        const distance = getDistanceBetweenPositions(player.position, business.entryPos);
+        const businessRadius = getBusinessInteractRadius(business);
+        if (distance > searchRadius || distance > businessRadius) return;
+        if (distance <= closestDistance) {
+            closestDistance = distance;
+            closest = business;
         }
     });
 
