@@ -396,6 +396,13 @@ const DOWNED_ACCEPTDEATH_DELAY_MS = 120000;
 const DEATH_RESPAWN_PENALTY_CASH = 500;
 const HOSPITAL_RESPAWN_POS = new mp.Vector3(361.69, -583.99, 28.83);
 const HOSPITAL_RESPAWN_HEADING = 70.0;
+const POLICE_FACTION_NAME = 'police';
+const PD_DUTY_POINT = new mp.Vector3(441.09, -982.93, 30.69);
+const PD_DUTY_RADIUS = 30.0;
+const FINE_MAX_AMOUNT = 50000;
+const FINE_INTERACT_RADIUS = 5.0;
+const POLICE_DUTY_WEAPON = 'weapon_pistol';
+const POLICE_DUTY_AMMO = 90;
 const STATIC_247_SHOP_REGISTERS = Object.freeze([
     { x: 24.47, y: -1347.35, z: 29.5 },
     { x: -46.62, y: -1757.93, z: 29.42 },
@@ -3093,6 +3100,14 @@ function bootstrapDatabase() {
         }
     });
 
+    db.query('ALTER TABLE characters ADD COLUMN faction VARCHAR(32) NULL DEFAULT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[FACTION] Failed to add faction column:', err.message);
+        } else {
+            console.log('[FACTION] faction column ready.');
+        }
+    });
+
     db.query('ALTER TABLE bans ADD COLUMN ucp_name VARCHAR(64) NULL', (err) => {
         if (err && err.code !== 'ER_DUP_FIELDNAME') {
             console.error('[BANS] Failed to add ucp_name column:', err.message);
@@ -3776,6 +3791,8 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.weaponPackageWeapons = parseWeaponPackage(charData.weapon_package);
         player.savedEquippedWeaponHash = sanitizeWeaponHash(charData.equipped_weapon_hash);
         player.savedEquippedWeaponAmmo = charData.equipped_weapon_ammo != null ? charData.equipped_weapon_ammo : null;
+        player.faction = charData.faction || null;
+        player.isOnDuty = false;
         if (charData.inventory === null || charData.inventory === undefined || charData.inventory === '') {
             persistInventory(player);
         }
@@ -4277,9 +4294,16 @@ mp.events.addCommand('help', (player) => {
     player.outputChatBox(`KITOS KOMANDOS - /stats, /pay, /bank, /withdraw, /deposit, /openbank, /changechar, /report, /admins`);
     player.outputChatBox(`KITOS KOMANDOS - /togglepm, /time, /barber, /changeclothes, /inv`);
     player.outputChatBox(`TURTAS - /helphouse, /helpvehicle`);
+    player.outputChatBox(`POLICIJA - /helppolicija`);
     player.outputChatBox(`!{#ADD8E6}----------------------------`);
     player.outputChatBox(`Ivedus komanda gausite komandos paaiskinima.`);
     player.outputChatBox(`Daugiau informacijos galite rasti musu forume arba /helpme <klausimas>.`);
+});
+
+mp.events.addCommand('helppolicija', (player) => {
+    player.outputChatBox(`POLICIJA - /duty - Prisiregistruoti/atsiregistruoti is tarnybos (reikia buti PD)`);
+    player.outputChatBox(`POLICIJA - /fine [ID arba vardas] [suma] [priezastis] - Israszyti bauda zaidejai`);
+    player.outputChatBox(`POLICIJA (ADMIN) - /setfaction [ID arba vardas] [police/none] - Priskirti frakcija`);
 });
 
 mp.events.addCommand('helphouse', (player) => {
@@ -4404,7 +4428,8 @@ const knownCommands = new Set([
     'call', 'answer', 'decline', 'hangup', 'acceptdeath',
     'sharenumber', 'sms',
     'pay', 'togglepm',
-    'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock', 'refill', 'scrap', 'scrapconfirm', 'sellto'
+    'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock', 'refill', 'scrap', 'scrapconfirm', 'sellto',
+    'duty', 'fine', 'setfaction', 'helppolicija'
 ]);
 
 mp.events.add('playerCommand', (player, command) => {
@@ -4486,6 +4511,114 @@ mp.events.addCommand('togglepm', (player) => {
             console.error(err);
             player.outputChatBox('!{#E74C3C}Ivyko klaida atnaujinant jusu privacias zinutes.');
         }
+    });
+});
+
+mp.events.addCommand('duty', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    if (player.faction !== POLICE_FACTION_NAME) {
+        return player.outputChatBox('!{#e74c3c}Si komanda skirta tik policijos darbuotojams.');
+    }
+    if (!isNearPoint(player, PD_DUTY_POINT, PD_DUTY_RADIUS)) {
+        return player.outputChatBox('!{#e74c3c}Jus turite buti policijos departamento patalpose, kad eitumete/atsirezistruotumete is tarnybos.');
+    }
+
+    player.isOnDuty = !player.isOnDuty;
+
+    if (player.isOnDuty) {
+        const weaponHash = typeof mp.joaat === 'function' ? mp.joaat(POLICE_DUTY_WEAPON) : 453432689;
+        setSingleWeaponForPlayer(player, weaponHash, POLICE_DUTY_AMMO);
+        persistEquippedWeapon(player);
+        mp.players.broadcast(`!{#85c1e9}[POLICIJA] ${player.charName} prisiregistravo tarnybai.`);
+        player.outputChatBox('!{#7aa164}Jus prisiregistravote tarnybai. Gautas tarnybinis ginklas.');
+    } else {
+        setSingleWeaponForPlayer(player, WEAPON_UNARMED_HASH, 0);
+        persistEquippedWeapon(player);
+        mp.players.broadcast(`!{#85c1e9}[POLICIJA] ${player.charName} atsiregistravo is tarnybos.`);
+        player.outputChatBox('!{#e74c3c}Jus atsiregistravote is tarnybos. Tarnybinis ginklas atimtas.');
+    }
+});
+
+mp.events.addCommand('fine', (player, fullText, targetIdentifier, amountStr, ...reasonArray) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    if (player.faction !== POLICE_FACTION_NAME || !player.isOnDuty) {
+        return player.outputChatBox('!{#e74c3c}Si komanda skirta tik budeintiems policijos darbuotojams.');
+    }
+    if (!targetIdentifier || !amountStr) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /fine [ID arba vardas] [suma] [priezastis]');
+    }
+
+    const amount = parseInt(amountStr, 10);
+    if (isNaN(amount) || amount <= 0) {
+        return player.outputChatBox('!{#f7dc6f}Prasome nurodyti galiojancia suma.');
+    }
+    if (amount > FINE_MAX_AMOUNT) {
+        return player.outputChatBox(`!{#f7dc6f}Maksimali bauda yra $${FINE_MAX_AMOUNT}.`);
+    }
+
+    const targetPlayer = getPlayerByIDOrName(targetIdentifier);
+    if (!targetPlayer) return player.outputChatBox('!{#f7dc6f}Zaidejas nerastas!');
+    if (!targetPlayer.charName) return player.outputChatBox('!{#e74c3c}Zaidejas dar nepasirinko veikejo.');
+    if (player === targetPlayer) return player.outputChatBox('!{#f7dc6f}Negalite bausti patys saves.');
+
+    const distance = getDistanceBetweenPositions(player.position, targetPlayer.position);
+    if (distance > FINE_INTERACT_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Jus turite buti salia zaidejo, kad israsytumete bauda.');
+    }
+
+    if (targetPlayer.money < amount) {
+        return player.outputChatBox('!{#f7dc6f}Zaidejas neturi pakankamai pinigu moketi bauda.');
+    }
+
+    const reason = reasonArray.length > 0 ? reasonArray.join(' ') : 'Pazeidimas';
+
+    targetPlayer.money -= amount;
+    targetPlayer.call('updateMoneyHUD', [targetPlayer.money]);
+
+    db.query('UPDATE characters SET money = ? WHERE char_name = ?', [targetPlayer.money, targetPlayer.charName], (err) => {
+        if (err) console.error('[FINE] Failed to update target money:', err.message);
+    });
+
+    player.outputChatBox(`!{#7aa164}[POLICIJA] Baudos kvitas israszytas: ${targetPlayer.charName} - $${amount} (${reason}).`);
+    targetPlayer.outputChatBox(`!{#e74c3c}[POLICIJA] Pareigunas ${player.charName} israse Jums $${amount} bauda. Priezastis: ${reason}.`);
+});
+
+mp.events.addCommand('setfaction', (admin, fullText, targetIdentifier, factionRaw) => {
+    if (!admin.charName) return admin.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    isAdmin(admin, 1, (err, hasPermission) => {
+        if (err || !hasPermission) return admin.outputChatBox('!{#e74c3c}Neturite teisiu.');
+        if (!targetIdentifier) {
+            return admin.outputChatBox('!{#f7dc6f}Naudojimas: /setfaction [ID arba vardas] [police/none]');
+        }
+
+        const targetPlayer = getPlayerByIDOrName(targetIdentifier);
+        if (!targetPlayer) return admin.outputChatBox('!{#f7dc6f}Zaidejas nerastas!');
+        if (!targetPlayer.charName) return admin.outputChatBox('!{#e74c3c}Zaidejas dar nepasirinko veikejo.');
+
+        const newFaction = (!factionRaw || factionRaw.toLowerCase() === 'none') ? null : factionRaw.toLowerCase();
+        const validFactions = [POLICE_FACTION_NAME];
+        if (newFaction !== null && !validFactions.includes(newFaction)) {
+            return admin.outputChatBox(`!{#f7dc6f}Galimos frakcijos: ${validFactions.join(', ')}, none`);
+        }
+
+        targetPlayer.faction = newFaction;
+
+        if (!newFaction && targetPlayer.isOnDuty) {
+            targetPlayer.isOnDuty = false;
+            setSingleWeaponForPlayer(targetPlayer, WEAPON_UNARMED_HASH, 0);
+            persistEquippedWeapon(targetPlayer);
+            targetPlayer.outputChatBox('!{#e74c3c}Jusu frakcija buvo pakeista. Jus buvote istrinti is tarnybos.');
+        }
+
+        db.query('UPDATE characters SET faction = ? WHERE id = ?', [newFaction, targetPlayer.charId], (dbErr) => {
+            if (dbErr) {
+                console.error('[FACTION] Failed to update faction:', dbErr.message);
+                return admin.outputChatBox('!{#e74c3c}Ivyko klaida atnaujinant frakcija.');
+            }
+            const factionText = newFaction || 'nera';
+            admin.outputChatBox(`!{#7aa164}[ADMIN] ${targetPlayer.charName} frakcija pakeista i: ${factionText}.`);
+            targetPlayer.outputChatBox(`!{#85c1e9}[ADMIN] Jusu frakcija pakeista i: ${factionText}.`);
+        });
     });
 });
 
