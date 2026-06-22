@@ -131,10 +131,10 @@
 
         .row {
             display: grid;
-            grid-template-columns: 40px minmax(0, 1fr) auto;
+            grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
-            gap: 11px;
-            padding: 10px;
+            gap: 10px;
+            padding: 9px 10px;
             border: 1px solid transparent;
             border-radius: 8px;
         }
@@ -146,18 +146,6 @@
         .row:hover {
             border-color: rgba(19, 200, 210, 0.28);
             background: rgba(19, 200, 210, 0.08);
-        }
-
-        .avatar {
-            width: 40px;
-            height: 40px;
-            display: grid;
-            place-items: center;
-            border-radius: 8px;
-            background: linear-gradient(135deg, var(--accent), var(--accent-2));
-            color: #061014;
-            font-weight: 900;
-            box-shadow: 0 8px 18px rgba(59, 140, 255, 0.22);
         }
 
         .name {
@@ -252,12 +240,10 @@
 
             list.innerHTML = players.map((player) => {
                 const name = escapeHtml(player.name || 'Unknown');
-                const initial = escapeHtml(name.trim().charAt(0).toUpperCase() || '?');
                 const id = Number.isFinite(Number(player.id)) ? Number(player.id) : '-';
 
                 return `
                     <div class="row">
-                        <div class="avatar">${initial}</div>
                         <div class="name" title="${name}">${name}</div>
                         <div class="id">#${id}</div>
                     </div>

@@ -10,12 +10,12 @@ const activeCalls = new Map();
 const pendingRentOffers = new Map();
 const vehicleFuelRuntimeState = new Map();
 const activeDMVTests = new Map();
+const activeEmergencyReports = new Map();
+let nextEmergencyReportId = 1;
 
 const INVENTORY_GIVE_RADIUS = 5.0;
 const DRUG_EFFECT_DELAY_MS = 120000;
-const DRUG_EFFECT_HEAL_DURATION_MS = 300000;
 const DRUG_VISUAL_EFFECT_DURATION_MS = 300000;
-const DRUG_MAX_HEALTH = 200;
 const WEAPON_GIVE_RADIUS = 5.0;
 const DEFAULT_WEAPON_AMMO = 120;
 const VEHICLE_WEAPON_STASH_LIMIT = 10;
@@ -151,7 +151,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     weed: {
         name: 'Zole',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 15 gyvybiu.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia lengva apsvaigima.',
         icon: 'weed',
         usable: true,
         droppable: true,
@@ -160,7 +160,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     cocaine: {
         name: 'Kokainas',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 50 gyvybiu.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia stipru stimuliuojanti efekta.',
         icon: 'cocaine',
         usable: true,
         droppable: true,
@@ -169,7 +169,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     meth: {
         name: 'Metamfetaminas',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 30 gyvybiu.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia intensyvu apsvaigima.',
         icon: 'meth',
         usable: true,
         droppable: true,
@@ -178,7 +178,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     crack: {
         name: 'Krekas',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 25 gyvybes.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia astria reakcija.',
         icon: 'crack',
         usable: true,
         droppable: true,
@@ -187,7 +187,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     shrooms: {
         name: 'Grybai',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 20 gyvybiu.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia haliucinacini efekta.',
         icon: 'shrooms',
         usable: true,
         droppable: true,
@@ -196,7 +196,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     codeine: {
         name: 'Kodeinas',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 30 gyvybiu.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia raminanti efekta.',
         icon: 'codeine',
         usable: true,
         droppable: true,
@@ -205,7 +205,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     percocet: {
         name: 'Percocet',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 30 gyvybiu.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia raminanti efekta.',
         icon: 'percocet',
         usable: true,
         droppable: true,
@@ -214,7 +214,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     heroin: {
         name: 'Heroinas',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 30 gyvybiu.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia sunku apsvaigima.',
         icon: 'heroin',
         usable: true,
         droppable: true,
@@ -223,7 +223,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     ecstasy: {
         name: 'Ekstazis',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 20 gyvybiu.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia energinga apsvaigima.',
         icon: 'ecstasy',
         usable: true,
         droppable: true,
@@ -232,7 +232,7 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
     },
     lsd: {
         name: 'LSD',
-        description: 'Po 2 minuciu pradeda veikti ir palaipsniui prideda 20 gyvybiu.',
+        description: 'Po 2 minuciu pradeda veikti ir sukelia stipru haliucinacini efekta.',
         icon: 'lsd',
         usable: true,
         droppable: true,
@@ -358,16 +358,16 @@ const INVENTORY_ITEM_ALIASES = Object.freeze({
 });
 
 const DRUG_EFFECT_DEFS = Object.freeze({
-    weed: { heal: 15, effect: 'weed' },
-    cocaine: { heal: 50, effect: 'cocaine' },
-    meth: { heal: 30, effect: 'meth' },
-    crack: { heal: 25, effect: 'crack' },
-    shrooms: { heal: 20, effect: 'shrooms' },
-    codeine: { heal: 30, effect: 'codeine' },
-    percocet: { heal: 30, effect: 'percocet' },
-    heroin: { heal: 30, effect: 'heroin' },
-    ecstasy: { heal: 20, effect: 'ecstasy' },
-    lsd: { heal: 20, effect: 'lsd' },
+    weed: { effect: 'weed' },
+    cocaine: { effect: 'cocaine' },
+    meth: { effect: 'meth' },
+    crack: { effect: 'crack' },
+    shrooms: { effect: 'shrooms' },
+    codeine: { effect: 'codeine' },
+    percocet: { effect: 'percocet' },
+    heroin: { effect: 'heroin' },
+    ecstasy: { effect: 'ecstasy' },
+    lsd: { effect: 'lsd' },
 });
 
 const TWITTER_COOLDOWN = 3600000; // 1 hour between posts
@@ -396,6 +396,49 @@ const DOWNED_ACCEPTDEATH_DELAY_MS = 120000;
 const DEATH_RESPAWN_PENALTY_CASH = 500;
 const HOSPITAL_RESPAWN_POS = new mp.Vector3(361.69, -583.99, 28.83);
 const HOSPITAL_RESPAWN_HEADING = 70.0;
+const DOWNED_RESPAWN_Z_OFFSET = 0.08;
+const LOS_SANTOS_SAFE_TELEPORT_POS = new mp.Vector3(215.76, -810.12, 30.73);
+const LOS_SANTOS_SAFE_TELEPORT_HEADING = 157.0;
+const FACTION_DEFS = Object.freeze({
+    pd: Object.freeze({
+        key: 'pd',
+        label: 'Police Department',
+        shortLabel: 'PD',
+        leaderRank: 5,
+        ranks: Object.freeze([
+            null,
+            Object.freeze({ defaultName: 'Cadet', salary: 300 }),
+            Object.freeze({ defaultName: 'Officer', salary: 450 }),
+            Object.freeze({ defaultName: 'Senior Officer', salary: 650 }),
+            Object.freeze({ defaultName: 'Sergeant', salary: 850 }),
+            Object.freeze({ defaultName: 'Chief', salary: 1100 }),
+        ]),
+    }),
+    md: Object.freeze({
+        key: 'md',
+        label: 'Medical Department',
+        shortLabel: 'MD',
+        leaderRank: 5,
+        ranks: Object.freeze([
+            null,
+            Object.freeze({ defaultName: 'Trainee', salary: 280 }),
+            Object.freeze({ defaultName: 'Paramedic', salary: 420 }),
+            Object.freeze({ defaultName: 'Doctor', salary: 600 }),
+            Object.freeze({ defaultName: 'Surgeon', salary: 800 }),
+            Object.freeze({ defaultName: 'Director', salary: 1000 }),
+        ]),
+    }),
+});
+const factionRankNames = new Map();
+const FACTION_INTERACT_RADIUS = 5.0;
+const PD_JAIL_POS = new mp.Vector3(458.65, -997.99, 24.91);
+const PD_JAIL_HEADING = 90.0;
+const PD_JAIL_COMMAND_RADIUS = 10.0;
+const PD_JAIL_CELL_RADIUS = 5.5;
+const PD_RELEASE_POS = new mp.Vector3(441.13, -981.92, 30.69);
+const PD_RELEASE_HEADING = 90.0;
+const MD_REVIVE_HEALTH = 60;
+const MD_TREAT_AMOUNT = 25;
 const STATIC_247_SHOP_REGISTERS = Object.freeze([
     { x: 24.47, y: -1347.35, z: 29.5 },
     { x: -46.62, y: -1757.93, z: 29.42 },
@@ -500,36 +543,6 @@ const BUSINESS_TYPE_ALIASES = Object.freeze({
     lombardas: 'pawn_shop',
 });
 
-const PROPERTY_CATALOG = Object.freeze([
-    {
-        key: 'alta-apt-1',
-        name: 'Alta Street Apartment 1',
-        price: 85000,
-        entry: { x: -270.07, y: -957.11, z: 31.22, h: 208.0 },
-        interior: { x: 266.08, y: -1007.13, z: -101.01, h: 358.0 },
-        exit: { x: 266.02, y: -1007.32, z: -101.01, h: 179.0 },
-        dimension: 7101,
-    },
-    {
-        key: 'south-rockford-apt-7',
-        name: 'South Rockford Apartment 7',
-        price: 125000,
-        entry: { x: -912.54, y: -365.24, z: 114.28, h: 296.0 },
-        interior: { x: 346.52, y: -1012.45, z: -99.2, h: 5.0 },
-        exit: { x: 346.52, y: -1012.45, z: -99.2, h: 181.0 },
-        dimension: 7102,
-    },
-    {
-        key: 'milton-rd-penthouse',
-        name: 'Milton Road Penthouse',
-        price: 220000,
-        entry: { x: -1451.01, y: -523.09, z: 56.93, h: 36.0 },
-        interior: { x: -786.87, y: 315.73, z: 217.64, h: 268.0 },
-        exit: { x: -786.87, y: 315.73, z: 217.64, h: 90.0 },
-        dimension: 7103,
-    },
-]);
-
 const APROP_INTERIOR_PRESETS = Object.freeze({
     low_end_apartment: { label: 'Low End Apartment', pos: new mp.Vector3(261.4586, -998.8196, -99.00863) },
     medium_end_apartment: { label: 'Medium End Apartment', pos: new mp.Vector3(347.2686, -999.2955, -99.19622) },
@@ -590,14 +603,21 @@ const businessVisualsById = new Map();
 let businessesLoaded = false;
 
 const VEHICLE_CATALOG = Object.freeze([
-    { key: 'sultan', name: 'Karin Sultan', model: 'sultan', price: 28000 },
-    { key: 'blista', name: 'Dinka Blista', model: 'blista', price: 16000 },
-    { key: 'prairie', name: 'Bollokan Prairie', model: 'prairie', price: 21000 },
-    { key: 'premier', name: 'Declasse Premier', model: 'premier', price: 19000 },
-    { key: 'dominator', name: 'Vapid Dominator', model: 'dominator', price: 42000 },
-    { key: 'buffalo', name: 'Bravado Buffalo', model: 'buffalo', price: 39000 },
-    { key: 'tailgater', name: 'Obey Tailgater', model: 'tailgater', price: 33000 },
     { key: 'asea', name: 'Declasse Asea', model: 'asea', price: 14500 },
+    { key: 'blista', name: 'Dinka Blista', model: 'blista', price: 16000 },
+    { key: 'dilettante', name: 'Karin Dilettante', model: 'dilettante', hash: 0xBC993509, price: 17000 },
+    { key: 'premier', name: 'Declasse Premier', model: 'premier', price: 19000 },
+    { key: 'prairie', name: 'Bollokan Prairie', model: 'prairie', price: 21000 },
+    { key: 'jackal', name: 'Ocelot Jackal', model: 'jackal', hash: 0xDAC67112, price: 26000 },
+    { key: 'sultan', name: 'Karin Sultan', model: 'sultan', price: 28000 },
+    { key: 'tailgater', name: 'Obey Tailgater', model: 'tailgater', price: 33000 },
+    { key: 'oracle', name: 'Ubermacht Oracle', model: 'oracle', hash: 0x506434F6, price: 35000 },
+    { key: 'buffalo', name: 'Bravado Buffalo', model: 'buffalo', price: 39000 },
+    { key: 'dominator', name: 'Vapid Dominator', model: 'dominator', price: 42000 },
+    { key: 'tailgater2', name: 'Obey Tailgater S', model: 'tailgater2', hash: 0xB5D306A4, price: 55000, dlc: 'Los Santos Tuners' },
+    { key: 'novak', name: 'Lampadati Novak', model: 'novak', hash: 0x92F5024E, price: 80000 },
+    { key: 'baller7', name: 'Gallivanter Baller ST', model: 'baller7', hash: 0x1573422D, price: 95000 },
+    { key: 'astron', name: 'Pfister Astron', model: 'astron', hash: 0x258C9364, price: 120000 },
 ]);
 
 const vehicleCatalogByKey = new Map(VEHICLE_CATALOG.map(item => [item.key, item]));
@@ -656,6 +676,218 @@ function getDistanceBetweenPositions(a, b) {
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+function normalizeFactionKey(value) {
+    const key = String(value || '').trim().toLowerCase();
+    if (key === 'police' || key === 'lspd') return 'pd';
+    if (key === 'medical' || key === 'ems') return 'md';
+    return FACTION_DEFS[key] ? key : null;
+}
+
+function getFactionDef(factionKey) {
+    const key = normalizeFactionKey(factionKey);
+    return key ? FACTION_DEFS[key] : null;
+}
+
+function getFactionRankConfig(factionKey, rank) {
+    const def = getFactionDef(factionKey);
+    const level = parseInt(rank, 10);
+    if (!def || !Number.isInteger(level) || level < 1 || level >= def.ranks.length) return null;
+    return def.ranks[level];
+}
+
+function getFactionRankName(factionKey, rank) {
+    const key = normalizeFactionKey(factionKey);
+    const level = parseInt(rank, 10);
+    const config = getFactionRankConfig(key, level);
+    if (!key || !config) return 'Civilian';
+    return factionRankNames.get(`${key}:${level}`) || config.defaultName;
+}
+
+function getFactionSalary(factionKey, rank) {
+    const config = getFactionRankConfig(factionKey, rank);
+    return config ? Math.max(0, parseInt(config.salary, 10) || 0) : 0;
+}
+
+function applyFactionData(player, factionKey, rank, isLeader) {
+    const key = normalizeFactionKey(factionKey);
+    const def = getFactionDef(key);
+    if (!player || !def) {
+        if (player) {
+            player.factionKey = null;
+            player.factionRank = 0;
+            player.factionLeader = false;
+            player.factionDuty = false;
+        }
+        return;
+    }
+
+    const parsedRank = parseInt(rank, 10);
+    const safeRank = Number.isInteger(parsedRank) && parsedRank >= 1 && parsedRank < def.ranks.length ? parsedRank : 1;
+    player.factionKey = key;
+    player.factionRank = isLeader ? def.leaderRank : safeRank;
+    player.factionLeader = Boolean(isLeader);
+    player.factionDuty = false;
+}
+
+function getPlayerFactionDef(player) {
+    return player && player.factionKey ? getFactionDef(player.factionKey) : null;
+}
+
+function requireFactionMember(player, factionKey, dutyRequired = false) {
+    const def = getFactionDef(factionKey);
+    if (!player.charName) {
+        player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+        return false;
+    }
+    if (!def || player.factionKey !== def.key || !player.factionRank) {
+        player.outputChatBox(`!{#e74c3c}Turite buti ${def ? def.label : 'faction'} narys.`);
+        return false;
+    }
+    if (dutyRequired && !player.factionDuty) {
+        player.outputChatBox('!{#f7dc6f}Pirma turite pradeti darba su /duty.');
+        return false;
+    }
+    return true;
+}
+
+function requireFactionLeader(player) {
+    if (!player.charName) {
+        player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+        return null;
+    }
+
+    const def = getPlayerFactionDef(player);
+    if (!def || !player.factionLeader) {
+        player.outputChatBox('!{#e74c3c}Tik faction leader gali naudoti sia komanda.');
+        return null;
+    }
+    return def;
+}
+
+function setFactionRankName(factionKey, rank, rankName, callback) {
+    const key = normalizeFactionKey(factionKey);
+    const level = parseInt(rank, 10);
+    const name = String(rankName || '').trim().replace(/\s+/g, ' ').slice(0, 64);
+    if (!key || !getFactionRankConfig(key, level) || name.length < 2) {
+        callback(new Error('invalid rank name'));
+        return;
+    }
+
+    factionRankNames.set(`${key}:${level}`, name);
+    db.query(
+        'INSERT INTO faction_rank_names (faction_key, rank_level, rank_name) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE rank_name = VALUES(rank_name)',
+        [key, level, name],
+        callback
+    );
+}
+
+function loadFactionRankNames() {
+    db.query('SELECT faction_key, rank_level, rank_name FROM faction_rank_names', (err, rows) => {
+        if (err) {
+            console.error('[FACTIONS] Failed to load faction rank names:', err.message);
+            return;
+        }
+
+        factionRankNames.clear();
+        (rows || []).forEach((row) => {
+            const key = normalizeFactionKey(row.faction_key);
+            const level = parseInt(row.rank_level, 10);
+            const name = String(row.rank_name || '').trim();
+            if (key && getFactionRankConfig(key, level) && name) {
+                factionRankNames.set(`${key}:${level}`, name);
+            }
+        });
+        console.log(`[FACTIONS] Loaded ${factionRankNames.size} rank names.`);
+    });
+}
+
+function seedFactionRankNames() {
+    Object.values(FACTION_DEFS).forEach((def) => {
+        def.ranks.forEach((rank, level) => {
+            if (!rank) return;
+            db.query(
+                'INSERT IGNORE INTO faction_rank_names (faction_key, rank_level, rank_name) VALUES (?, ?, ?)',
+                [def.key, level, rank.defaultName],
+                (err) => {
+                    if (err) console.error('[FACTIONS] Failed to seed rank name:', err.message);
+                }
+            );
+        });
+    });
+    setTimeout(loadFactionRankNames, 750);
+}
+
+function updateCharacterFaction(charId, factionKey, rank, isLeader, callback) {
+    db.query(
+        'UPDATE characters SET faction_key = ?, faction_rank = ?, faction_leader = ? WHERE id = ?',
+        [factionKey, rank, isLeader ? 1 : 0, charId],
+        callback
+    );
+}
+
+function sendFactionMessage(factionKey, message) {
+    const key = normalizeFactionKey(factionKey);
+    if (!key) return 0;
+    let count = 0;
+    mp.players.toArray().forEach((p) => {
+        if (p.charName && p.factionKey === key) {
+            p.outputChatBox(message);
+            count += 1;
+        }
+    });
+    return count;
+}
+
+function sendEmergencyMessage(message) {
+    let count = 0;
+    mp.players.toArray().forEach((p) => {
+        if (p.charName && (p.factionKey === 'pd' || p.factionKey === 'md')) {
+            p.outputChatBox(message);
+            count += 1;
+        }
+    });
+    return count;
+}
+
+function setPlayerCuffed(target, state, officer = null) {
+    if (!target) return;
+    target.isCuffed = Boolean(state);
+    target.cuffedBy = state && officer ? officer.charName : null;
+    target.call('setCuffedState', [Boolean(state)]);
+}
+
+function releasePlayerFromJail(target, notify = true) {
+    if (!target) return;
+    if (target.jailTimer) {
+        clearTimeout(target.jailTimer);
+        delete target.jailTimer;
+    }
+    target.isJailed = false;
+    target.jailedUntil = null;
+    target.position = PD_RELEASE_POS;
+    target.heading = PD_RELEASE_HEADING;
+    target.dimension = 0;
+    setPlayerCuffed(target, false);
+    if (notify) {
+        target.outputChatBox('!{#7aa164}Jus paleistas is sulaikymo kameros.');
+    }
+}
+
+function isNearPdJailCells(player, radius = PD_JAIL_COMMAND_RADIUS) {
+    return player && player.position && getDistanceBetweenPositions(player.position, PD_JAIL_POS) <= radius;
+}
+
+function splitCommandText(fullText) {
+    return String(fullText || '').trim().split(/\s+/).filter(Boolean);
+}
+
+function getFactionOnlineList(factionKey) {
+    const key = normalizeFactionKey(factionKey);
+    return mp.players.toArray()
+        .filter(p => p.charName && p.factionKey === key)
+        .map(p => `${p.charName} (${getFactionRankName(p.factionKey, p.factionRank)}${p.factionDuty ? ', duty' : ''})`);
+}
+
 function clearDeathState(player, unfreeze = true) {
     if (!player) return;
 
@@ -670,6 +902,7 @@ function clearDeathState(player, unfreeze = true) {
 
     if (unfreeze && player.deathFreezeApplied) {
         player.call('freezePlayer', [false]);
+        player.call('setDownedRagdoll', [false]);
         player.frozen = false;
     }
 
@@ -684,7 +917,11 @@ function enterDownedState(player) {
 
     const now = Date.now();
     const downedPos = player.position
-        ? new mp.Vector3(Number(player.position.x) || 0, Number(player.position.y) || 0, Number(player.position.z) || 0)
+        ? new mp.Vector3(
+            Number(player.position.x) || 0,
+            Number(player.position.y) || 0,
+            (Number(player.position.z) || 0) + DOWNED_RESPAWN_Z_OFFSET
+        )
         : null;
     const downedHeading = Number.isFinite(Number(player.heading)) ? Number(player.heading) : 0;
 
@@ -701,6 +938,7 @@ function enterDownedState(player) {
     player.acceptDeathAvailableAt = now + DOWNED_ACCEPTDEATH_DELAY_MS;
     player.deathFreezeApplied = true;
     player.call('freezePlayer', [true]);
+    player.call('setDownedRagdoll', [true]);
     player.frozen = true;
 
     player.outputChatBox('!{#e74c3c}Esate be samones. Po 2 minuciu galesite naudoti /acceptdeath ir atgimti ligonineje.');
@@ -2645,7 +2883,6 @@ function startDrugInventoryEffect(player, item) {
     const drugDef = DRUG_EFFECT_DEFS[item.type];
     if (!player || !player.charName || !drugDef) return false;
 
-    const healTotal = Math.max(1, parseInt(drugDef.heal, 10) || 1);
     const itemName = item.name || INVENTORY_ITEM_DEFS[item.type].name;
 
     const delayTimer = setTimeout(() => {
@@ -2653,39 +2890,8 @@ function startDrugInventoryEffect(player, item) {
 
         if (!player || !player.charName || player.isDowned) return;
 
-        player.outputChatBox(`!{#b58cff}${itemName} pradeda veikti. Sveikata atsistatys palaipsniui.`);
-        player.call('setDrugHealthCapacity', [DRUG_MAX_HEALTH]);
+        player.outputChatBox(`!{#b58cff}${itemName} pradeda veikti.`);
         player.call('playDrugVisualEffect', [drugDef.effect, itemName, DRUG_VISUAL_EFFECT_DURATION_MS]);
-
-        let remainingHeal = healTotal;
-        const tickMs = Math.max(750, Math.floor(DRUG_EFFECT_HEAL_DURATION_MS / healTotal));
-        const healTimer = setInterval(() => {
-            if (!player || !player.charName || player.isDowned || remainingHeal <= 0) {
-                clearInterval(healTimer);
-                untrackDrugEffectTimer(player, healTimer);
-                return;
-            }
-
-            const currentHealth = Math.max(1, Math.ceil(Number(player.health) || 100));
-            if (currentHealth >= DRUG_MAX_HEALTH) {
-                clearInterval(healTimer);
-                untrackDrugEffectTimer(player, healTimer);
-                return;
-            }
-
-            const nextHealth = Math.min(DRUG_MAX_HEALTH, currentHealth + 1);
-            const addedHealth = nextHealth - currentHealth;
-
-            player.health = nextHealth;
-            remainingHeal -= addedHealth;
-
-            if (remainingHeal <= 0) {
-                clearInterval(healTimer);
-                untrackDrugEffectTimer(player, healTimer);
-            }
-        }, tickMs);
-
-        trackDrugEffectTimer(player, healTimer, 'interval');
     }, DRUG_EFFECT_DELAY_MS);
 
     trackDrugEffectTimer(player, delayTimer, 'timeout');
@@ -3091,6 +3297,44 @@ function bootstrapDatabase() {
         } else {
             console.log('[DMV] drivers_license column ready.');
         }
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN faction_key VARCHAR(16) NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[FACTIONS] Failed to add faction_key column:', err.message);
+        } else {
+            console.log('[FACTIONS] faction_key column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN faction_rank INT NOT NULL DEFAULT 0', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[FACTIONS] Failed to add faction_rank column:', err.message);
+        } else {
+            console.log('[FACTIONS] faction_rank column ready.');
+        }
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN faction_leader TINYINT(1) NOT NULL DEFAULT 0', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') {
+            console.error('[FACTIONS] Failed to add faction_leader column:', err.message);
+        } else {
+            console.log('[FACTIONS] faction_leader column ready.');
+        }
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS faction_rank_names (
+        faction_key VARCHAR(16) NOT NULL,
+        rank_level INT NOT NULL,
+        rank_name VARCHAR(64) NOT NULL,
+        PRIMARY KEY (faction_key, rank_level)
+    )`, (err) => {
+        if (err) {
+            console.error('[FACTIONS] Failed to create faction_rank_names table:', err.message);
+            return;
+        }
+        console.log('[FACTIONS] faction_rank_names table ready.');
+        seedFactionRankNames();
     });
 
     db.query('ALTER TABLE bans ADD COLUMN ucp_name VARCHAR(64) NULL', (err) => {
@@ -3770,6 +4014,7 @@ mp.events.add('selectCharacter', (player, charId) => {
         player.isPMEnabled = charData.is_pm_enabled;
         player.adminLevel = charData.admin_level;
         player.hasDriversLicense = Number(charData.drivers_license || 0) === 1;
+        applyFactionData(player, charData.faction_key, charData.faction_rank, Number(charData.faction_leader || 0) === 1);
         const normalizedPhoneNumber = String(charData.phone_number || '').trim();
         player.phoneNumber = /^\d{6,15}$/.test(normalizedPhoneNumber) ? normalizedPhoneNumber : null;
         player.inventory = loadInventory(charData.inventory);
@@ -3864,7 +4109,9 @@ mp.events.add('selectCharacter', (player, charId) => {
             player.timer = setInterval(() => {
                 player.playtime += 1;
                 if (player.playtime % 30 === 0) {
-                    const paycheckAmount = 1000;
+                    const basePaycheckAmount = 1000;
+                    const factionPaycheckAmount = player.factionDuty ? getFactionSalary(player.factionKey, player.factionRank) : 0;
+                    const paycheckAmount = basePaycheckAmount + factionPaycheckAmount;
                     player.bankBalance += paycheckAmount;
                     let totalChargedRent = 0;
                     const tenantRentLines = getPropertyRentChargeLinesForTenant(player.charId);
@@ -3894,6 +4141,10 @@ mp.events.add('selectCharacter', (player, charId) => {
                     db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance, player.charName]);
                     db.query('UPDATE characters SET playtime = ? WHERE id = ?', [player.playtime, player.charId]);
                     player.outputChatBox(`!{#229954}Jusu atlyginimas ($${paycheckAmount}) pervestas i banko saskaita.`);
+                    if (factionPaycheckAmount > 0) {
+                        const factionDef = getPlayerFactionDef(player);
+                        player.outputChatBox(`!{#5dade2}${factionDef.shortLabel} duty priedas: $${factionPaycheckAmount} (${getFactionRankName(player.factionKey, player.factionRank)}).`);
+                    }
 
                     if (tenantRentLines.length > 0) {
                         const totalExpectedRent = tenantRentLines.reduce((sum, line) => sum + (Math.max(0, parseInt(line.rent, 10) || 0)), 0);
@@ -4039,8 +4290,17 @@ setInterval(() => {
     mp.players.forEach((player) => {
         if (!player || !player.charId) return;
 
-        if (player.isDowned && Number(player.health) > 0) {
-            clearDeathState(player, true);
+        if (player.isDowned) {
+            if (Number(player.health) !== 1) {
+                player.health = 1;
+            }
+
+            if (!player.deathFreezeApplied) {
+                player.deathFreezeApplied = true;
+                player.call('freezePlayer', [true]);
+                player.call('setDownedRagdoll', [true]);
+                player.frozen = true;
+            }
             return;
         }
 
@@ -4049,6 +4309,30 @@ setInterval(() => {
         }
     });
 }, 500);
+
+// Keep jailed players inside the MRPD holding cell.
+setInterval(() => {
+    mp.players.forEach((player) => {
+        if (!player || !player.charId || !player.isJailed) return;
+
+        const jailExpired = player.jailedUntil && Date.now() >= Number(player.jailedUntil);
+        if (jailExpired) {
+            releasePlayerFromJail(player, true);
+            return;
+        }
+
+        const outsideCell = player.dimension !== 0
+            || !player.position
+            || getDistanceBetweenPositions(player.position, PD_JAIL_POS) > PD_JAIL_CELL_RADIUS;
+
+        if (outsideCell) {
+            player.dimension = 0;
+            player.position = PD_JAIL_POS;
+            player.heading = PD_JAIL_HEADING;
+            player.outputChatBox('!{#e74c3c}Negalite pabegti is sulaikymo kameros.');
+        }
+    });
+}, 1000);
 
 // Show property address once when player approaches an entry door.
 setInterval(() => {
@@ -4395,10 +4679,12 @@ mp.events.addCommand('time', (player) => {
 const knownCommands = new Set([
     'me', 'do', 's', 'low', 'b', 'help', 'id', 'pm', 'stats', 'try', 'time',
     'bank', 'withdraw', 'deposit', 'transfer', 'openbank', 'inventory', 'inv',
-    'kick', 'freeze', 'goto', 'bring', 'ban', 'heal', 'giveitem', 'giveweapon', 'dropweapon', 'stashweapon', 'takeweapon', 'buildpackage', 'putpackage', 'viewpackage', 'admingiveweapon',
+    'kick', 'freeze', 'goto', 'bring', 'tpls', 'ban', 'heal', 'giveitem', 'giveweapon', 'dropweapon', 'stashweapon', 'takeweapon', 'buildpackage', 'putpackage', 'viewpackage', 'admingiveweapon',
     'helpme', 'accepthelp', 'declinehelp',
     'report', 'acceptreport', 'declinereport',
     'admins', 'setaname', 'changechar', 'coords', 'createtwittertables', 'dmv',
+    'setfactionleader', 'faction', 'finvite', 'funinvite', 'frank', 'frankname', 'duty', 'badge', 'panic',
+    'cuf', 'cuff', 'uncuff', 'jail', 'unjail', 'revive', 'treat', '911', 'respond',
     'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'buy', 'pawnstock', 'pawnsell', 'pawnbuy', 'pawnprice', 'pawnrename', 'pawnstockrename', 'bizbank', 'bizbankdeposit', 'bizbankwithdraw', 'setbizname', 'sellbiz', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'aprop', 'abiz', 'tpinterior',
     'ph', 'phone', 'acceptdrive',
     'call', 'answer', 'decline', 'hangup', 'acceptdeath',
@@ -4412,6 +4698,322 @@ mp.events.add('playerCommand', (player, command) => {
     if (!knownCommands.has(cmd)) {
         player.outputChatBox('!{#e74c3c}Si komanda neegzistuoja. Naudokite /help arba /helpme');
     }
+});
+
+mp.events.addCommand('setfactionleader', (player, fullText, targetNameOrID, factionArg) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    if (!targetNameOrID || !factionArg) return sendUsageInstructions(player, 'setfactionleader');
+
+    isAdmin(player, 1, (err, allowed) => {
+        if (err || !allowed) return player.outputChatBox('!{#e74c3c}Neturite teisiu naudoti sia komanda.');
+
+        const target = getPlayerByIDOrName(targetNameOrID);
+        if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+
+        const requested = String(factionArg || '').trim().toLowerCase();
+        if (requested === 'none' || requested === 'civilian' || requested === 'off') {
+            updateCharacterFaction(target.charId, null, 0, false, (updateErr) => {
+                if (updateErr) return player.outputChatBox('!{#e74c3c}Nepavyko nuimti leader statuso.');
+                applyFactionData(target, null, 0, false);
+                player.outputChatBox(`!{#7aa164}${target.charName} nebera faction leader.`);
+                target.outputChatBox('!{#f7dc6f}Jus nebesate faction leader.');
+            });
+            return;
+        }
+
+        const def = getFactionDef(requested);
+        if (!def) return player.outputChatBox('!{#f7dc6f}Faction: pd arba md.');
+
+        db.query('UPDATE characters SET faction_leader = 0 WHERE faction_key = ?', [def.key], (clearErr) => {
+            if (clearErr) return player.outputChatBox('!{#e74c3c}Nepavyko atlaisvinti seno leader.');
+
+            mp.players.toArray().forEach((p) => {
+                if (p.charName && p.factionKey === def.key) p.factionLeader = false;
+            });
+
+            updateCharacterFaction(target.charId, def.key, def.leaderRank, true, (updateErr) => {
+                if (updateErr) return player.outputChatBox('!{#e74c3c}Nepavyko paskirti leader.');
+                applyFactionData(target, def.key, def.leaderRank, true);
+                player.outputChatBox(`!{#7aa164}${target.charName} paskirtas ${def.label} leader.`);
+                target.outputChatBox(`!{#5dade2}Jus paskirtas ${def.label} leader.`);
+            });
+        });
+    });
+});
+
+mp.events.addCommand('faction', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const def = getPlayerFactionDef(player);
+    if (!def) return player.outputChatBox('!{#f7dc6f}Jus nesate faction narys.');
+
+    const rankName = getFactionRankName(player.factionKey, player.factionRank);
+    const salary = getFactionSalary(player.factionKey, player.factionRank);
+    player.outputChatBox(`!{#5dade2}${def.label}: ${rankName} (rank ${player.factionRank}) | salary $${salary}/paycheck | duty: ${player.factionDuty ? 'on' : 'off'}`);
+    player.outputChatBox('!{#d6eaf8}Komandos: /duty, /badge, /panic. Leader: /finvite /funinvite /frank /frankname');
+    if (def.key === 'pd') player.outputChatBox('!{#d6eaf8}PD: /cuf /uncuff /jail /unjail /respond');
+    if (def.key === 'md') player.outputChatBox('!{#d6eaf8}MD: /revive /treat /respond');
+
+    const online = getFactionOnlineList(def.key);
+    player.outputChatBox(`!{#d6eaf8}Online ${def.shortLabel}: ${online.length ? online.join(', ') : 'nieko'}`);
+});
+
+mp.events.addCommand('finvite', (player, fullText, targetNameOrID) => {
+    const def = requireFactionLeader(player);
+    if (!def) return;
+    if (!targetNameOrID) return sendUsageInstructions(player, 'finvite');
+
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (target.factionKey) return player.outputChatBox('!{#f7dc6f}Zaidejas jau yra faction narys.');
+
+    updateCharacterFaction(target.charId, def.key, 1, false, (err) => {
+        if (err) return player.outputChatBox('!{#e74c3c}Nepavyko pakviesti zaidejo.');
+        applyFactionData(target, def.key, 1, false);
+        player.outputChatBox(`!{#7aa164}${target.charName} priimtas i ${def.label}.`);
+        target.outputChatBox(`!{#5dade2}Jus priimtas i ${def.label}. Rank: ${getFactionRankName(def.key, 1)}.`);
+    });
+});
+
+mp.events.addCommand('funinvite', (player, fullText, targetNameOrID) => {
+    const def = requireFactionLeader(player);
+    if (!def) return;
+    if (!targetNameOrID) return sendUsageInstructions(player, 'funinvite');
+
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (target.factionKey !== def.key) return player.outputChatBox('!{#f7dc6f}Zaidejas nera jusu faction narys.');
+    if (target.factionLeader) return player.outputChatBox('!{#e74c3c}Negalite ismesti leader.');
+
+    updateCharacterFaction(target.charId, null, 0, false, (err) => {
+        if (err) return player.outputChatBox('!{#e74c3c}Nepavyko ismesti zaidejo.');
+        applyFactionData(target, null, 0, false);
+        setPlayerCuffed(target, false);
+        player.outputChatBox(`!{#7aa164}${target.charName} ismestas is ${def.label}.`);
+        target.outputChatBox(`!{#f7dc6f}Jus ismestas is ${def.label}.`);
+    });
+});
+
+mp.events.addCommand('frank', (player, fullText, targetNameOrID, rankArg) => {
+    const def = requireFactionLeader(player);
+    if (!def) return;
+    if (!targetNameOrID || !rankArg) return sendUsageInstructions(player, 'frank');
+
+    const rank = parseInt(rankArg, 10);
+    if (!Number.isInteger(rank) || rank < 1 || rank > def.leaderRank) {
+        return player.outputChatBox(`!{#f7dc6f}Rank turi buti nuo 1 iki ${def.leaderRank}.`);
+    }
+
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (target.factionKey !== def.key) return player.outputChatBox('!{#f7dc6f}Zaidejas nera jusu faction narys.');
+    if (target.factionLeader && target !== player) return player.outputChatBox('!{#e74c3c}Kito leader rank nekeiciamas.');
+
+    updateCharacterFaction(target.charId, def.key, rank, target.factionLeader, (err) => {
+        if (err) return player.outputChatBox('!{#e74c3c}Nepavyko pakeisti rank.');
+        applyFactionData(target, def.key, rank, target.factionLeader);
+        player.outputChatBox(`!{#7aa164}${target.charName} rank pakeistas i ${rank} (${getFactionRankName(def.key, rank)}).`);
+        target.outputChatBox(`!{#5dade2}Jusu ${def.shortLabel} rank: ${getFactionRankName(def.key, rank)}.`);
+    });
+});
+
+mp.events.addCommand('frankname', (player, fullText, rankArg, ...nameParts) => {
+    const def = requireFactionLeader(player);
+    if (!def) return;
+    if (!rankArg || nameParts.length === 0) return sendUsageInstructions(player, 'frankname');
+
+    const rank = parseInt(rankArg, 10);
+    const rankName = nameParts.join(' ');
+    setFactionRankName(def.key, rank, rankName, (err) => {
+        if (err) return player.outputChatBox('!{#e74c3c}Nepavyko pakeisti rank pavadinimo.');
+        sendFactionMessage(def.key, `!{#5dade2}${def.shortLabel} rank ${rank} dabar vadinasi: ${getFactionRankName(def.key, rank)}.`);
+    });
+});
+
+mp.events.addCommand('duty', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const def = getPlayerFactionDef(player);
+    if (!def) return player.outputChatBox('!{#f7dc6f}Jus nesate faction narys.');
+
+    player.factionDuty = !player.factionDuty;
+    player.outputChatBox(`!{#5dade2}${def.shortLabel} duty: ${player.factionDuty ? 'ON' : 'OFF'}.`);
+    sendFactionMessage(def.key, `!{#d6eaf8}${player.charName} ${player.factionDuty ? 'pradejo' : 'baige'} darba.`);
+});
+
+mp.events.addCommand('badge', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const def = getPlayerFactionDef(player);
+    if (!def) return player.outputChatBox('!{#f7dc6f}Jus neturite badge.');
+    const text = `${def.label} | ${getFactionRankName(player.factionKey, player.factionRank)} | ${player.charName}`;
+    player.outputChatBox(`!{#5dade2}Parodete badge: ${text}`);
+    mp.players.toArray().forEach((target) => {
+        if (target !== player && target.charName && getDistanceBetweenPositions(player.position, target.position) <= FACTION_INTERACT_RADIUS) {
+            target.outputChatBox(`!{#5dade2}${player.charName} parodo badge: ${text}`);
+        }
+    });
+});
+
+mp.events.addCommand('panic', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const def = getPlayerFactionDef(player);
+    if (!def) return player.outputChatBox('!{#f7dc6f}Tik PD/MD gali naudoti panic.');
+    const pos = player.position || { x: 0, y: 0, z: 0 };
+    sendEmergencyMessage(`!{#e74c3c}[PANIC] ${def.shortLabel} ${player.charName}: X ${pos.x.toFixed(1)}, Y ${pos.y.toFixed(1)}, Z ${pos.z.toFixed(1)}.`);
+});
+
+function handleCuffCommand(player, fullText, targetNameOrID, forceState = null) {
+    if (!requireFactionMember(player, 'pd', true)) return;
+    if (!targetNameOrID) return sendUsageInstructions(player, 'cuf');
+
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (target === player) return player.outputChatBox('!{#f7dc6f}Negalite surakinti saves.');
+    if (getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Turite buti salia zaidejo.');
+    }
+
+    const newState = forceState === null ? !target.isCuffed : Boolean(forceState);
+    setPlayerCuffed(target, newState, player);
+    player.outputChatBox(`!{#5dade2}${newState ? 'Surakinote' : 'Atrakinote'} ${target.charName}.`);
+    target.outputChatBox(`!{#f7dc6f}${player.charName} jus ${newState ? 'surakino' : 'atrakino'}.`);
+}
+
+mp.events.addCommand('cuf', (player, fullText, targetNameOrID) => handleCuffCommand(player, fullText, targetNameOrID));
+mp.events.addCommand('cuff', (player, fullText, targetNameOrID) => handleCuffCommand(player, fullText, targetNameOrID, true));
+mp.events.addCommand('uncuff', (player, fullText, targetNameOrID) => handleCuffCommand(player, fullText, targetNameOrID, false));
+
+mp.events.addCommand('jail', (player, fullText, targetNameOrID, minutesArg, ...reasonParts) => {
+    if (!requireFactionMember(player, 'pd', true)) return;
+    if (!targetNameOrID || !minutesArg) return sendUsageInstructions(player, 'jail');
+
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (!isNearPdJailCells(player)) {
+        return player.outputChatBox('!{#f7dc6f}/jail galima naudoti tik prie PD kameru.');
+    }
+    if (!isNearPdJailCells(target)) {
+        return player.outputChatBox('!{#f7dc6f}Atveskite zaideja prie PD kameru pries /jail.');
+    }
+    if (getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Turite buti salia zaidejo.');
+    }
+    const minutes = Math.max(1, Math.min(60, parseInt(minutesArg, 10) || 0));
+    const reason = reasonParts.join(' ').trim() || 'No reason';
+
+    clearDeathState(target, true);
+    setPlayerCuffed(target, false);
+    target.isJailed = true;
+    target.jailedUntil = Date.now() + minutes * 60000;
+    target.dimension = 0;
+    target.position = PD_JAIL_POS;
+    target.heading = PD_JAIL_HEADING;
+    if (target.jailTimer) clearTimeout(target.jailTimer);
+    target.jailTimer = setTimeout(() => releasePlayerFromJail(target, true), minutes * 60000);
+
+    player.outputChatBox(`!{#5dade2}${target.charName} uzdarytas ${minutes} min. Priezastis: ${reason}`);
+    target.outputChatBox(`!{#e74c3c}Jus uzdarytas i PD kamera ${minutes} min. Priezastis: ${reason}`);
+});
+
+mp.events.addCommand('unjail', (player, fullText, targetNameOrID) => {
+    if (!requireFactionMember(player, 'pd', true)) return;
+    if (!targetNameOrID) return player.outputChatBox('!{#f7dc6f}Naudojimas: /unjail [ID arba vardas]');
+
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (!target.isJailed) return player.outputChatBox('!{#f7dc6f}Zaidejas nera PD kameroje.');
+    releasePlayerFromJail(target, true);
+    player.outputChatBox(`!{#7aa164}${target.charName} paleistas.`);
+});
+
+mp.events.addCommand('revive', (player, fullText, targetNameOrID) => {
+    if (!requireFactionMember(player, 'md', true)) return;
+    if (!targetNameOrID) return sendUsageInstructions(player, 'revive');
+
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (!target.isDowned) return player.outputChatBox('!{#f7dc6f}Zaidejas nera deathstate. Jei naudojo /acceptdeath, revive nebegalimas.');
+    if (getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Turite buti salia paciento.');
+    }
+
+    clearDeathState(target, true);
+    target.health = MD_REVIVE_HEALTH;
+    target.outputChatBox(`!{#7aa164}${player.charName} jus atgaivino. Sveikata: ${MD_REVIVE_HEALTH}.`);
+    player.outputChatBox(`!{#7aa164}Atgaivinote ${target.charName}.`);
+    db.query('UPDATE characters SET health = ? WHERE id = ?', [target.health, target.charId]);
+});
+
+mp.events.addCommand('treat', (player, fullText, targetNameOrID) => {
+    if (!requireFactionMember(player, 'md', true)) return;
+    if (!targetNameOrID) return player.outputChatBox('!{#f7dc6f}Naudojimas: /treat [ID arba vardas]');
+
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (target.isDowned) return player.outputChatBox('!{#f7dc6f}Downed zaidejui naudokite /revive.');
+    if (getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Turite buti salia paciento.');
+    }
+
+    target.health = Math.min(100, Math.max(1, parseInt(target.health, 10) || 1) + MD_TREAT_AMOUNT);
+    player.outputChatBox(`!{#7aa164}Pagydete ${target.charName}. Sveikata: ${target.health}.`);
+    target.outputChatBox(`!{#7aa164}${player.charName} jus pagyde. Sveikata: ${target.health}.`);
+    db.query('UPDATE characters SET health = ? WHERE id = ?', [target.health, target.charId]);
+});
+
+mp.events.addCommand('911', (player, fullText) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const args = splitCommandText(fullText);
+    const type = String(args.shift() || '').toLowerCase();
+    const message = args.join(' ').trim();
+    if (!['pd', 'md', 'both'].includes(type) || message.length < 3) return sendUsageInstructions(player, '911');
+
+    const reportId = nextEmergencyReportId++;
+    const pos = player.position || { x: 0, y: 0, z: 0 };
+    const report = {
+        id: reportId,
+        type,
+        caller: player,
+        callerCharId: player.charId,
+        callerName: player.charName,
+        message,
+        position: { x: pos.x, y: pos.y, z: pos.z },
+        createdAt: Date.now(),
+        responder: null,
+    };
+    activeEmergencyReports.set(reportId, report);
+
+    const formatted = `!{#e74c3c}[911 #${reportId}] ${type.toUpperCase()} | ${player.charName}: ${message} | X ${pos.x.toFixed(1)}, Y ${pos.y.toFixed(1)}, Z ${pos.z.toFixed(1)} | /respond ${reportId}`;
+    let sent = 0;
+    mp.players.toArray().forEach((target) => {
+        if (!target.charName) return;
+        const matches = type === 'both' || target.factionKey === type;
+        if (matches && (target.factionKey === 'pd' || target.factionKey === 'md')) {
+            target.outputChatBox(formatted);
+            sent += 1;
+        }
+    });
+
+    player.outputChatBox(`!{#7aa164}911 pranesimas #${reportId} issiustas. Online tarnybos: ${sent}.`);
+});
+
+mp.events.addCommand('respond', (player, fullText, reportIdArg) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    if (!player.factionDuty || (player.factionKey !== 'pd' && player.factionKey !== 'md')) {
+        return player.outputChatBox('!{#f7dc6f}Tik on-duty PD/MD gali priimti 911.');
+    }
+
+    const reportId = parseInt(reportIdArg, 10);
+    const report = activeEmergencyReports.get(reportId);
+    if (!report) return player.outputChatBox('!{#f7dc6f}911 pranesimas nerastas.');
+    if (report.type !== 'both' && report.type !== player.factionKey) return player.outputChatBox('!{#f7dc6f}Sis iskvietimas skirtas kitai tarnybai.');
+    if (report.responder) return player.outputChatBox(`!{#f7dc6f}911 #${reportId} jau prieme ${report.responder}.`);
+
+    report.responder = player.charName;
+    player.outputChatBox(`!{#7aa164}Priemete 911 #${reportId}: ${report.message}. Vieta X ${report.position.x.toFixed(1)}, Y ${report.position.y.toFixed(1)}.`);
+    if (report.caller && report.caller.charName && report.caller.charId === report.callerCharId) {
+        report.caller.outputChatBox(`!{#5dade2}911 #${reportId}: ${player.charName} prieme jusu iskvietima.`);
+    }
+
+    setTimeout(() => activeEmergencyReports.delete(reportId), 600000);
 });
 
 mp.events.addCommand('pay', (player, fullText, targetNameOrID, amountStr) => {
@@ -4509,6 +5111,7 @@ function openDealershipUI(player) {
         name: entry.name,
         model: entry.model,
         price: entry.price,
+        dlc: entry.dlc || null,
     }));
 
     player.call('openDealershipUI', [JSON.stringify(catalogPayload), player.money || 0, player.bankBalance || 0]);
@@ -4546,7 +5149,9 @@ function purchaseVehicleForPlayer(player, selected, primaryColorRaw = '0', secon
 
     const primaryColor = parseVehicleColorIndex(primaryColorRaw);
     const secondaryColor = parseVehicleColorIndex(secondaryColorRaw);
-    const modelHash = typeof mp.joaat === 'function' ? mp.joaat(selected.model) : selected.model;
+    const modelHash = Number.isFinite(Number(selected.hash))
+        ? Number(selected.hash)
+        : (typeof mp.joaat === 'function' ? mp.joaat(selected.model) : selected.model);
 
     if (paymentMethod === 'bank') {
         player.bankBalance -= selected.price;
@@ -7190,6 +7795,7 @@ function sendUsageInstructions(player, command) {
         'heal': "[HEAL] Naudojimas: /heal [ID arba vardas] - Pagydyti zaideja.",
         'goto': "[GOTO] Naudojimas: /goto [ID arba vardas] - Eiti pas zaideja.",
         'bring': "[BRING] Naudojimas: /bring [ID arba vardas] - Atnesti zaideja pas tave.",
+        'tpls': "[TPLS] Naudojimas: /tpls - Teleportuotis i Los Santos saugia vieta.",
         'ban': "[BAN] Naudojimas: /ban [ID arba vardas] [Priezastis] - Uzblokuoti zaideja.",
         'buy': "[BUY] Naudojimas: /buy [item] [kiekis] - Pirkti daiktus versle.",
         'pawnstock': "[PAWNSTOCK] Naudojimas: /pawnstock - Parodo lombardo parduodamus daiktus.",
@@ -7212,6 +7818,16 @@ function sendUsageInstructions(player, command) {
         'putpackage': "[PUTPACKAGE] Naudojimas: /putpackage - perkelia visa paketa i jusu masina.",
         'viewpackage': "[VIEWPACKAGE] Naudojimas: /viewpackage - parodo jusu ginklu paketo turini.",
         'admingiveweapon': "[ADMINGIVEWEAPON] Naudojimas: /admingiveweapon [ID arba vardas] [weapon] [ammo]",
+        'setfactionleader': "[SETFACTIONLEADER] Naudojimas: /setfactionleader [ID arba vardas] [pd|md|none]",
+        'finvite': "[FINVITE] Naudojimas: /finvite [ID arba vardas] - Pakviesti i jusu faction.",
+        'funinvite': "[FUNINVITE] Naudojimas: /funinvite [ID arba vardas] - Ismesti is jusu faction.",
+        'frank': "[FRANK] Naudojimas: /frank [ID arba vardas] [rank] - Pakeisti nario rank.",
+        'frankname': "[FRANKNAME] Naudojimas: /frankname [rank] [pavadinimas] - Pervadinti rank.",
+        'cuf': "[CUF] Naudojimas: /cuf [ID arba vardas] - Surakinti arba atrakinti salia esanti zaideja.",
+        'jail': "[JAIL] Naudojimas: /jail [ID arba vardas] [minutes] [reason] - Uzdaryti i PD kamera.",
+        'revive': "[REVIVE] Naudojimas: /revive [ID arba vardas] - Atgaivinti downed zaideja.",
+        '911': "[911] Naudojimas: /911 [pd|md|both] [aprasymas] - Issiusti pagalbos pranesima.",
+        'respond': "[RESPOND] Naudojimas: /respond [911 ID] - Priimti pagalbos iskvietima.",
     };
     player.outputChatBox(instructions[command] || "Netinkamas komandos pavadinimas.");
 }
@@ -7587,6 +8203,21 @@ mp.events.addCommand('goto', (player, targetIdentifier) => {
         let target = getPlayerByIDOrName(targetIdentifier);
         if (!target) return player.outputChatBox("[KLAIDA] Zaidejas nerastas.");
         player.position = target.position;
+    });
+});
+
+mp.events.addCommand('tpls', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+
+    isAdmin(player, 1, (error, hasPermission) => {
+        if (error || !hasPermission) return player.outputChatBox("[KLAIDA] Neturi tam teisiu.");
+
+        clearDeathState(player, true);
+        player.dimension = 0;
+        player.position = LOS_SANTOS_SAFE_TELEPORT_POS;
+        player.heading = LOS_SANTOS_SAFE_TELEPORT_HEADING;
+
+        player.outputChatBox('!{#7aa164}Teleportavotes i Los Santos.');
     });
 });
 
@@ -8498,9 +9129,16 @@ mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
 // Tracks ongoing calls: { callerId: { caller, target, status } }
 
 // /call command
-mp.events.addCommand('call', (player, phoneNumber) => {
+mp.events.addCommand('call', (player, fullText) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const phoneNumber = splitCommandText(fullText)[0];
     if (!phoneNumber) return player.outputChatBox('Naudojimas: /call [telefono numeris]');
+    if (phoneNumber === '911') {
+        player.outputChatBox('!{#e74c3c}911 operatorius: Kokia pagalba reikalinga?');
+        player.outputChatBox('!{#f7dc6f}Naudokite: /911 [pd|md|both] [trumpas aprasymas]');
+        player.outputChatBox('!{#d6eaf8}Pvz: /911 pd Mane apiplese prie banko');
+        return;
+    }
     if (!requirePhoneSim(player)) return;
     if (activeCalls.has(player.id)) return player.outputChatBox('!{#e74c3c}Jus jau esate skambutyje arba laukiate atsakymo.');
 
@@ -8579,6 +9217,11 @@ mp.events.add('playerQuit', (player) => {
     if (player.vehicleMarkerTimer) {
         clearInterval(player.vehicleMarkerTimer);
         delete player.vehicleMarkerTimer;
+    }
+
+    if (player.jailTimer) {
+        clearTimeout(player.jailTimer);
+        delete player.jailTimer;
     }
 
     const isDownedOnQuit = Boolean(player.isDowned);

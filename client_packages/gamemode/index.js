@@ -48,29 +48,137 @@ let lastAmmoCheckAt = 0;
 let lastEmptyWeaponRequestHash = null;
 let fallbackChatInputActive = false;
 let activeDrugVisualTimeout = null;
+let serverFreezeActive = false;
+let downedRagdollActive = false;
+let cuffedActive = false;
+const SERVER_FREEZE_DISABLED_CONTROLS = [
+    21, 22, 23, 24, 25, 30, 31, 32, 33, 34, 35, 37, 44, 45, 59, 60, 63, 64,
+    69, 70, 71, 72, 75, 76, 92, 114, 140, 141, 142, 143, 257, 263, 264,
+];
+const CUFF_DISABLED_CONTROLS = [
+    21, 22, 23, 24, 25, 30, 31, 32, 33, 34, 35, 37, 44, 45, 59, 60, 63, 64,
+    69, 70, 71, 72, 75, 76, 92, 114, 140, 141, 142, 143, 257, 263, 264,
+];
+const MISSION_ROW_CELL_DOOR_HASHES = [
+    mp.game.joaat('v_ilev_ph_cellgate'),
+    mp.game.joaat('v_ilev_gtdoor'),
+    -1320876379,
+    631614199,
+];
+const MISSION_ROW_CELL_DOORS = [
+    { x: 461.8065, y: -994.4086, z: 25.0644 },
+    { x: 461.8065, y: -997.6583, z: 25.0644 },
+    { x: 461.8065, y: -1001.3020, z: 25.0644 },
+    { x: 464.5701, y: -992.6641, z: 25.0644 },
+    { x: 468.4872, y: -992.6641, z: 25.0644 },
+];
+let lastMissionRowDoorLockAt = 0;
+
+function applyServerFreezeLock() {
+    const localPlayer = mp.players.local;
+    if (!localPlayer) return;
+
+    try {
+        if (!downedRagdollActive) {
+            localPlayer.freezePosition(true);
+        }
+        if (!downedRagdollActive && localPlayer.handle && mp.game.entity && typeof mp.game.entity.setEntityVelocity === 'function') {
+            mp.game.entity.setEntityVelocity(localPlayer.handle, 0, 0, 0);
+        }
+    } catch (e) { }
+
+    try {
+        if (!mp.game || !mp.game.controls || typeof mp.game.controls.disableControlAction !== 'function') return;
+        SERVER_FREEZE_DISABLED_CONTROLS.forEach((control) => {
+            mp.game.controls.disableControlAction(0, control, true);
+        });
+    } catch (e) { }
+}
+
+function applyDownedRagdoll() {
+    const localPlayer = mp.players.local;
+    if (!localPlayer || !localPlayer.handle) return;
+    if (localPlayer.vehicle) return;
+
+    try {
+        localPlayer.freezePosition(false);
+        if (typeof localPlayer.setToRagdoll === 'function') {
+            localPlayer.setToRagdoll(1000, 1000, 0, false, false, false);
+        } else if (mp.game.ped && typeof mp.game.ped.setPedToRagdoll === 'function') {
+            mp.game.ped.setPedToRagdoll(localPlayer.handle, 1000, 1000, 0, false, false, false);
+        }
+    } catch (e) { }
+}
+
+function clearDownedRagdoll() {
+    downedRagdollActive = false;
+
+    const localPlayer = mp.players.local;
+    if (!localPlayer || !localPlayer.handle) return;
+
+    try {
+        if (typeof localPlayer.clearTasks === 'function') {
+            localPlayer.clearTasks();
+        } else if (mp.game.ai && typeof mp.game.ai.clearPedTasks === 'function') {
+            mp.game.ai.clearPedTasks(localPlayer.handle);
+        }
+    } catch (e) { }
+}
+
+function applyCuffedLock() {
+    const localPlayer = mp.players.local;
+    if (!localPlayer) return;
+
+    try {
+        localPlayer.freezePosition(true);
+        if (localPlayer.handle && mp.game.entity && typeof mp.game.entity.setEntityVelocity === 'function') {
+            mp.game.entity.setEntityVelocity(localPlayer.handle, 0, 0, 0);
+        }
+    } catch (e) { }
+
+    try {
+        if (!mp.game || !mp.game.controls || typeof mp.game.controls.disableControlAction !== 'function') return;
+        CUFF_DISABLED_CONTROLS.forEach((control) => {
+            mp.game.controls.disableControlAction(0, control, true);
+        });
+    } catch (e) { }
+}
+
+function lockMissionRowCellDoors() {
+    if (!mp.game || !mp.game.object) return;
+
+    MISSION_ROW_CELL_DOORS.forEach((door) => {
+        MISSION_ROW_CELL_DOOR_HASHES.forEach((hash) => {
+            try {
+                if (typeof mp.game.object.setStateOfClosestDoorOfType === 'function') {
+                    mp.game.object.setStateOfClosestDoorOfType(hash, door.x, door.y, door.z, true, 0.0, false);
+                }
+            } catch (e) { }
+
+            try {
+                if (typeof mp.game.object.doorControl === 'function') {
+                    mp.game.object.doorControl(hash, door.x, door.y, door.z, true, 0.0, 0.0, 0.0);
+                }
+            } catch (e) { }
+
+            try {
+                if (typeof mp.game.object.getClosestObjectOfType === 'function' && mp.game.entity && typeof mp.game.entity.freezeEntityPosition === 'function') {
+                    const objectHandle = mp.game.object.getClosestObjectOfType(door.x, door.y, door.z, 1.35, hash, false, false, false);
+                    if (objectHandle) {
+                        mp.game.entity.freezeEntityPosition(objectHandle, true);
+                    }
+                }
+            } catch (e) { }
+        });
+    });
+}
 
 mp.gui.chat.push('Hello World')
 
 globalThis.__isInventoryOpen = false;
 
-function setLocalDrugHealthCapacity(maxHealthRaw) {
-    const maxHealth = Math.max(100, Number(maxHealthRaw) || 200);
-    const localPlayer = mp.players.local;
-
-    try {
-        if (localPlayer && typeof localPlayer.setMaxHealth === 'function') {
-            localPlayer.setMaxHealth(maxHealth);
-        }
-        if (mp.game.entity && localPlayer && localPlayer.handle && typeof mp.game.entity.setEntityMaxHealth === 'function') {
-            mp.game.entity.setEntityMaxHealth(localPlayer.handle, maxHealth);
-        }
-        if (mp.game.player && typeof mp.game.player.setHealthRechargeMultiplier === 'function') {
-            mp.game.player.setHealthRechargeMultiplier(0.0);
-        }
-    } catch (e) {
-        // Server health remains authoritative; this only prevents local client clamping where supported.
-    }
-}
+setTimeout(lockMissionRowCellDoors, 3000);
+setInterval(lockMissionRowCellDoors, 5000);
 
 function playDrugScreenEffect(effectType, label, durationMs) {
     const effectMap = {
@@ -569,10 +677,52 @@ mp.events.add('clearOwnedPropertyBlip', (id) => {
 
 
 mp.events.add('freezePlayer', (freeze) => {
+    serverFreezeActive = Boolean(freeze);
     if (freeze) {
-        mp.players.local.freezePosition(true); // Freeze the player's position
+        if (!downedRagdollActive) {
+            mp.players.local.freezePosition(true); // Freeze the player's position
+        }
+        applyServerFreezeLock();
     } else {
         mp.players.local.freezePosition(false); // Unfreeze the player's position
+    }
+});
+
+mp.events.add('setDownedRagdoll', (active) => {
+    downedRagdollActive = Boolean(active);
+    if (downedRagdollActive) {
+        applyDownedRagdoll();
+    } else {
+        clearDownedRagdoll();
+    }
+});
+
+mp.events.add('setCuffedState', (active) => {
+    cuffedActive = Boolean(active);
+    if (cuffedActive) {
+        applyCuffedLock();
+    } else if (!serverFreezeActive) {
+        try {
+            mp.players.local.freezePosition(false);
+        } catch (e) { }
+    }
+});
+
+mp.events.add('render', () => {
+    const now = Date.now();
+    if (now - lastMissionRowDoorLockAt > 1500) {
+        lastMissionRowDoorLockAt = now;
+        lockMissionRowCellDoors();
+    }
+
+    if (serverFreezeActive) {
+        applyServerFreezeLock();
+        if (downedRagdollActive) {
+            applyDownedRagdoll();
+        }
+    }
+    if (cuffedActive) {
+        applyCuffedLock();
     }
 });
 
@@ -1169,10 +1319,6 @@ mp.events.add('inventoryGiveItem', (itemId, targetIdentifier, amount) => {
 
 mp.events.add('requestInventoryRefresh', () => {
     mp.events.callRemote('requestInventoryRefresh');
-});
-
-mp.events.add('setDrugHealthCapacity', (maxHealth) => {
-    setLocalDrugHealthCapacity(maxHealth);
 });
 
 mp.events.add('playDrugVisualEffect', (effectType, label, durationMs) => {
