@@ -2383,6 +2383,179 @@ function getBusinessProduct(business, productRaw) {
     return getBusinessProductList(business).find(product => product.key === normalizedType || product.itemType === normalizedType) || null;
 }
 
+function resolveShopBuyContext(player) {
+    const currentBusiness = getPlayerCurrentBusiness(player);
+    const nearbyBusiness = currentBusiness ? null : getNearbyBusinessByInteractRadius(player, BUSINESS_INTERACT_RADIUS_MAX);
+    const business = currentBusiness || nearbyBusiness;
+    const isAt247Register = Boolean(getNearbyStatic247ShopRegister(player));
+
+    if (business) {
+        const typeDef = getBusinessTypeDefinition(business.type);
+        if (!typeDef || !typeDef.buyEnabled) {
+            return { error: 'Siame versle pirkimas dar neijungtas.' };
+        }
+
+        const productList = getBusinessProductList(business);
+        if (!productList.length) {
+            return { error: 'Siame versle siuo metu nera parduodamu prekiu.' };
+        }
+
+        return {
+            business,
+            isAt247Register: false,
+            productList,
+            businessName: business.name || getDefaultBusinessName(business.type, business.id),
+        };
+    }
+
+    if (isAt247Register) {
+        const productList = Array.isArray(BUSINESS_TYPE_DEFS.shop.products) ? BUSINESS_TYPE_DEFS.shop.products : [];
+        if (!productList.length) {
+            return { error: '24/7 parduotuveje siuo metu nera parduodamu prekiu.' };
+        }
+
+        return {
+            business: null,
+            isAt247Register: true,
+            productList,
+            businessName: '24/7 Parduotuve',
+        };
+    }
+
+    return { error: 'Pirkti galite budami verslo viduje arba prie 24/7 kasos.' };
+}
+
+function buildShopBuyPayload(player, context) {
+    const products = (Array.isArray(context?.productList) ? context.productList : [])
+        .map((product) => {
+            const itemType = normalizeInventoryItemType(product.itemType || product.key) || String(product.itemType || product.key || '').trim().toLowerCase();
+            const itemDef = INVENTORY_ITEM_DEFS[itemType] || null;
+
+            return {
+                key: String(product.key || itemType || ''),
+                itemType: String(product.itemType || itemType || ''),
+                label: product.label || itemDef?.name || 'Preke',
+                icon: itemDef?.icon || itemType || 'BOX',
+                price: Math.max(1, parseInt(product.price, 10) || 1),
+            };
+        })
+        .filter(item => item.key);
+
+    return JSON.stringify({
+        businessName: context?.businessName || 'Parduotuve',
+        money: Math.max(0, parseInt(player?.money, 10) || 0),
+        products,
+    });
+}
+
+function openShopBuyForPlayer(player, context, statusText = '', success = true, updateOnly = false) {
+    if (!player || !context) return;
+    const eventName = updateOnly ? 'updateShopBuyUI' : 'openShopBuyUI';
+    player.call(eventName, [buildShopBuyPayload(player, context), statusText, Boolean(success)]);
+}
+
+function buyShopProductForPlayer(player, context, productRaw, amountRaw, updateUi = false) {
+    const productList = Array.isArray(context?.productList) ? context.productList : [];
+    if (!productList.length) {
+        const message = 'Sioje vietoje siuo metu nera parduodamu prekiu.';
+        if (updateUi) openShopBuyForPlayer(player, context, message, false, true);
+        return player.outputChatBox(`!{#e74c3c}${message}`);
+    }
+
+    const normalizedType = normalizeInventoryItemType(productRaw) || String(productRaw || '').trim().toLowerCase();
+    const product = productList.find(entry => entry.key === normalizedType || entry.itemType === normalizedType) || null;
+    if (!product) {
+        const offers = productList.map(entry => entry.key).join(', ');
+        const message = `Sioje vietoje neparduodamas sis daiktas. Galimi: ${offers}`;
+        if (updateUi) openShopBuyForPlayer(player, context, message, false, true);
+        return player.outputChatBox(`!{#e74c3c}${message}`);
+    }
+
+    const amount = Math.max(1, parseInt(amountRaw, 10) || 1);
+    const totalPrice = amount * Math.max(1, parseInt(product.price, 10) || 1);
+    if ((player.money || 0) < totalPrice) {
+        const message = `Nepakanka grynuju. Reikia $${totalPrice}, turite $${player.money || 0}.`;
+        if (updateUi) openShopBuyForPlayer(player, context, message, false, true);
+        return player.outputChatBox(`!{#e74c3c}${message}`);
+    }
+
+    if (product.itemType === 'simcard') {
+        if (hasPhoneSim(player)) {
+            const message = 'Jusu telefonas jau turi aktyvia SIM kortele.';
+            if (updateUi) openShopBuyForPlayer(player, context, message, false, true);
+            return player.outputChatBox(`!{#f7dc6f}${message}`);
+        }
+
+        generateUniquePhoneNumber((error, generatedPhoneNumber) => {
+            if (error || !generatedPhoneNumber) {
+                console.error('[PHONE] Failed to generate SIM phone number:', error ? error.message : 'unknown');
+                const message = 'Nepavyko aktyvuoti SIM korteles. Bandykite veliau.';
+                if (updateUi) openShopBuyForPlayer(player, context, message, false, true);
+                player.outputChatBox(`!{#e74c3c}${message}`);
+                return;
+            }
+
+            db.query('UPDATE characters SET phone_number = ? WHERE id = ?', [generatedPhoneNumber, player.charId], (updateErr) => {
+                if (updateErr) {
+                    console.error('[PHONE] Failed to persist phone number from SIM purchase:', updateErr.message);
+                    const message = 'Nepavyko issaugoti telefono numerio. Bandykite veliau.';
+                    if (updateUi) openShopBuyForPlayer(player, context, message, false, true);
+                    player.outputChatBox(`!{#e74c3c}${message}`);
+                    return;
+                }
+
+                player.phoneNumber = generatedPhoneNumber;
+                player.money -= totalPrice;
+                persistPlayerMoney(player);
+                player.call('updatePhoneNumber', [generatedPhoneNumber]);
+
+                if (context.business) {
+                    context.business.bankBalance = Math.max(0, parseInt(context.business.bankBalance, 10) || 0) + totalPrice;
+                    persistBusinessState(context.business);
+                    const message = `Nusipirkote SIM kortele uz $${totalPrice} versle ${context.business.name}. Jusu numeris: ${generatedPhoneNumber}.`;
+                    if (updateUi) openShopBuyForPlayer(player, context, message, true, true);
+                    player.outputChatBox(`!{#7aa164}${message}`);
+                } else {
+                    const message = `Nusipirkote SIM kortele uz $${totalPrice}. Jusu numeris: ${generatedPhoneNumber}.`;
+                    if (updateUi) openShopBuyForPlayer(player, context, message, true, true);
+                    player.outputChatBox(`!{#7aa164}${message}`);
+                }
+            });
+        });
+
+        return;
+    }
+
+    if (!Array.isArray(player.inventory)) {
+        player.inventory = [];
+    }
+
+    const item = addInventoryItem(player, product.itemType, amount);
+    if (!item) {
+        const message = 'Nepavyko prideti daikto i inventoriu.';
+        if (updateUi) openShopBuyForPlayer(player, context, message, false, true);
+        return player.outputChatBox(`!{#e74c3c}${message}`);
+    }
+
+    player.money -= totalPrice;
+    persistPlayerMoney(player);
+    persistInventory(player);
+    if (context.business) {
+        context.business.bankBalance = Math.max(0, parseInt(context.business.bankBalance, 10) || 0) + totalPrice;
+        persistBusinessState(context.business);
+    }
+
+    if (context.business) {
+        const message = `Nusipirkote ${amount}x ${product.label} uz $${totalPrice} versle ${context.business.name}.`;
+        if (updateUi) openShopBuyForPlayer(player, context, message, true, true);
+        player.outputChatBox(`!{#7aa164}${message}`);
+    } else {
+        const message = `Nusipirkote ${amount}x ${product.label} uz $${totalPrice} prie 24/7 kasos.`;
+        if (updateUi) openShopBuyForPlayer(player, context, message, true, true);
+        player.outputChatBox(`!{#7aa164}${message}`);
+    }
+}
+
 function getPawnShopBusinessForPlayer(player) {
     const currentBusiness = getPlayerCurrentBusiness(player);
     if (isPawnShopBusiness(currentBusiness)) return currentBusiness;
@@ -6448,108 +6621,31 @@ mp.events.addCommand('buy', (player, fullText) => {
         return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
     }
 
-    const currentBusiness = getPlayerCurrentBusiness(player);
-    const nearbyBusiness = currentBusiness ? null : getNearbyBusinessByInteractRadius(player, BUSINESS_INTERACT_RADIUS_MAX);
-    const business = currentBusiness || nearbyBusiness;
-    const isAt247Register = Boolean(getNearbyStatic247ShopRegister(player));
-
-    let productList = [];
-    if (business) {
-        const typeDef = getBusinessTypeDefinition(business.type);
-        if (!typeDef || !typeDef.buyEnabled) {
-            return player.outputChatBox('!{#f7dc6f}Siame versle pirkimas dar neijungtas.');
-        }
-        productList = getBusinessProductList(business);
-    } else if (isAt247Register) {
-        productList = Array.isArray(BUSINESS_TYPE_DEFS.shop.products) ? BUSINESS_TYPE_DEFS.shop.products : [];
-    } else {
-        return player.outputChatBox('!{#f7dc6f}Pirkti galite budami verslo viduje arba prie 24/7 kasos.');
-    }
-
     const args = String(fullText || '').trim().split(/\s+/).filter(Boolean);
     const productRaw = args[0];
-    const amount = Math.max(1, parseInt(args[1], 10) || 1);
+    const context = resolveShopBuyContext(player);
+    if (context.error) {
+        return player.outputChatBox(`!{#f7dc6f}${context.error}`);
+    }
 
     if (!productRaw) {
-        const offers = productList
-            .map(product => `${product.key} ($${product.price})`)
-            .join(', ');
-        return player.outputChatBox(`!{#f7dc6f}Naudojimas: /buy [item] [kiekis]. Galite pirkti: ${offers}`);
+        return openShopBuyForPlayer(player, context, 'Pasirinkite prekę, kurią norite pirkti.', true, false);
     }
 
-    const normalizedType = normalizeInventoryItemType(productRaw) || String(productRaw || '').trim().toLowerCase();
-    const product = productList.find(entry => entry.key === normalizedType || entry.itemType === normalizedType) || null;
-    if (!product) {
-        const offers = productList
-            .map(entry => entry.key)
-            .join(', ');
-        return player.outputChatBox(`!{#e74c3c}Sioje vietoje neparduodamas sis daiktas. Galimi: ${offers}`);
+    buyShopProductForPlayer(player, context, productRaw, args[1], false);
+});
+
+mp.events.add('shopBuyItem', (player, productKeyRaw, amountRaw = '1') => {
+    if (!player.charId || !player.charName) {
+        return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
     }
 
-    const totalPrice = Math.max(1, amount) * product.price;
-    if ((player.money || 0) < totalPrice) {
-        return player.outputChatBox(`!{#e74c3c}Nepakanka grynuju. Reikia $${totalPrice}, turite $${player.money || 0}.`);
+    const context = resolveShopBuyContext(player);
+    if (context.error) {
+        return player.outputChatBox(`!{#f7dc6f}${context.error}`);
     }
 
-    if (product.itemType === 'simcard') {
-        if (hasPhoneSim(player)) {
-            return player.outputChatBox('!{#f7dc6f}Jusu telefonas jau turi aktyvia SIM kortele.');
-        }
-
-        generateUniquePhoneNumber((error, generatedPhoneNumber) => {
-            if (error || !generatedPhoneNumber) {
-                console.error('[PHONE] Failed to generate SIM phone number:', error ? error.message : 'unknown');
-                player.outputChatBox('!{#e74c3c}Nepavyko aktyvuoti SIM korteles. Bandykite veliau.');
-                return;
-            }
-
-            db.query('UPDATE characters SET phone_number = ? WHERE id = ?', [generatedPhoneNumber, player.charId], (updateErr) => {
-                if (updateErr) {
-                    console.error('[PHONE] Failed to persist phone number from SIM purchase:', updateErr.message);
-                    player.outputChatBox('!{#e74c3c}Nepavyko issaugoti telefono numerio. Bandykite veliau.');
-                    return;
-                }
-
-                player.phoneNumber = generatedPhoneNumber;
-                player.money -= totalPrice;
-                persistPlayerMoney(player);
-                player.call('updatePhoneNumber', [generatedPhoneNumber]);
-
-                if (business) {
-                    business.bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0) + totalPrice;
-                    persistBusinessState(business);
-                    player.outputChatBox(`!{#7aa164}Nusipirkote SIM kortele uz $${totalPrice} versle ${business.name}. Jusu numeris: ${generatedPhoneNumber}.`);
-                } else {
-                    player.outputChatBox(`!{#7aa164}Nusipirkote SIM kortele uz $${totalPrice}. Jusu numeris: ${generatedPhoneNumber}.`);
-                }
-            });
-        });
-
-        return;
-    }
-
-    if (!Array.isArray(player.inventory)) {
-        player.inventory = [];
-    }
-
-    const item = addInventoryItem(player, product.itemType, amount);
-    if (!item) {
-        return player.outputChatBox('!{#e74c3c}Nepavyko prideti daikto i inventoriu.');
-    }
-
-    player.money -= totalPrice;
-    persistPlayerMoney(player);
-    persistInventory(player);
-    if (business) {
-        business.bankBalance = Math.max(0, parseInt(business.bankBalance, 10) || 0) + totalPrice;
-        persistBusinessState(business);
-    }
-
-    if (business) {
-        player.outputChatBox(`!{#7aa164}Nusipirkote ${amount}x ${product.label} uz $${totalPrice} versle ${business.name}.`);
-    } else {
-        player.outputChatBox(`!{#7aa164}Nusipirkote ${amount}x ${product.label} uz $${totalPrice} prie 24/7 kasos.`);
-    }
+    buyShopProductForPlayer(player, context, productKeyRaw, amountRaw, true);
 });
 
 mp.events.addCommand('pawnstock', (player) => {
@@ -8217,7 +8313,7 @@ function sendUsageInstructions(player, command) {
         'bring': "[BRING] Naudojimas: /bring [ID arba vardas] - Atnesti zaideja pas tave.",
         'tpls': "[TPLS] Naudojimas: /tpls - Teleportuotis i Los Santos saugia vieta.",
         'ban': "[BAN] Naudojimas: /ban [ID arba vardas] [Priezastis] - Uzblokuoti zaideja.",
-        'buy': "[BUY] Naudojimas: /buy [item] [kiekis] - Pirkti daiktus versle.",
+        'buy': "[BUY] Naudojimas: /buy [item] [kiekis] arba /buy - atidaryti pirkimo UI versle.",
         'pawnstock': "[PAWNSTOCK] Naudojimas: /pawnstock - Parodo lombardo parduodamus daiktus.",
         'pawnsell': "[PAWNSELL] Naudojimas: /pawnsell [inventory ID/type] - Parduoti pawn daikta lombardui uz 30%.",
         'pawnbuy': "[PAWNBUY] Naudojimas: /pawnbuy [stockId] - Pirkti daikta is lombardo.",

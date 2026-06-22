@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="lt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parduotuvė</title>
+    <style>
+        :root {
+            --panel: rgba(255, 255, 255, 0.94);
+            --soft: #eef8fb;
+            --line: rgba(35, 93, 128, 0.16);
+            --text: #173044;
+            --muted: #657b8d;
+            --accent: #16c4cf;
+            --accent-2: #3b8cff;
+            --good: #1f9d61;
+            --bad: #d94b61;
+            --shadow: 0 22px 70px rgba(34, 78, 120, 0.23);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            background: transparent !important;
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 32px;
+        }
+
+        .app {
+            width: min(740px, calc(100vw - 64px));
+            max-height: min(780px, calc(100vh - 64px));
+            display: grid;
+            grid-template-rows: auto auto minmax(0, 1fr) auto;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(235, 249, 255, 0.96));
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .header,
+        .summary,
+        .footer {
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 22px;
+            line-height: 1.1;
+        }
+
+        .sub {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .close {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--text);
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .summary {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            background: rgba(22, 196, 207, 0.08);
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .summary strong {
+            color: var(--text);
+        }
+
+        .grid {
+            min-height: 260px;
+            overflow-y: auto;
+            padding: 12px;
+            display: grid;
+            gap: 10px;
+            align-content: start;
+        }
+
+        .grid::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .grid::-webkit-scrollbar-thumb {
+            border-radius: 999px;
+            background: rgba(59, 140, 255, 0.28);
+        }
+
+        .item {
+            display: grid;
+            grid-template-columns: 54px minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.76);
+        }
+
+        .badge {
+            width: 54px;
+            height: 54px;
+            display: grid;
+            place-items: center;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #071014;
+            font-weight: 900;
+            letter-spacing: 0.02em;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .badge img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+        }
+
+        .badge.fallback {
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        .name {
+            font-weight: 800;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        .meta {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .qty {
+            width: 74px;
+            height: 38px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--text);
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .buy {
+            min-width: 132px;
+            height: 38px;
+            border: 0;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            color: #061014;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .buy:disabled,
+        .qty:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .empty {
+            min-height: 230px;
+            display: grid;
+            place-items: center;
+            text-align: center;
+            color: var(--muted);
+            border: 1px dashed var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.48);
+        }
+
+        .footer {
+            border-bottom: 0;
+            border-top: 1px solid var(--line);
+            color: var(--muted);
+            font-size: 13px;
+            min-height: 48px;
+        }
+
+        .footer.good {
+            color: var(--good);
+        }
+
+        .footer.bad {
+            color: var(--bad);
+        }
+    </style>
+</head>
+
+<body>
+    <main class="app">
+        <div class="header">
+            <div>
+                <h1 id="storeName">Parduotuvė</h1>
+                <div class="sub">Pirkimas su /buy</div>
+            </div>
+            <button class="close" onclick="closeShopBuy()">X</button>
+        </div>
+        <div class="summary">
+            <span>Jūsų grynieji: <strong id="money">$0</strong></span>
+            <span>Prekių: <strong id="count">0</strong></span>
+        </div>
+        <section class="grid" id="catalog"></section>
+        <div class="footer" id="status">Pasirinkite prekę, kurią norite pirkti.</div>
+    </main>
+
+    <script>
+        let catalogItems = [];
+        const iconImageMap = {
+            cigarettes: './assets/inventory-icons/cigarettes.png',
+            beer: './assets/inventory-icons/beer.jpg',
+            water: './assets/inventory-icons/water.png',
+            medkit: './assets/inventory-icons/medkit.png',
+            weed: './assets/inventory-icons/weed.png',
+            cocaine: './assets/inventory-icons/cocaine.png',
+            meth: './assets/inventory-icons/meth.png',
+            crack: './assets/inventory-icons/crack.png',
+            shrooms: './assets/inventory-icons/shrooms.png',
+            codeine: './assets/inventory-icons/codeine.png',
+            percocet: './assets/inventory-icons/percocet.png',
+            heroin: './assets/inventory-icons/heroin.png',
+            ecstasy: './assets/inventory-icons/ecstasy.png',
+            lsd: './assets/inventory-icons/lsd.png'
+        };
+        const iconLabelMap = {
+            water: 'H2O',
+            burger: 'BGR',
+            bandage: 'BND',
+            medkit: 'MED',
+            cigarettes: 'CIG',
+            beer: 'ALU',
+            weed: 'ZOL',
+            cocaine: 'KOK',
+            meth: 'MET',
+            crack: 'KRK',
+            shrooms: 'GRY',
+            codeine: 'KOD',
+            percocet: 'PER',
+            heroin: 'HER',
+            ecstasy: 'EKS',
+            lsd: 'LSD',
+            simcard: 'SIM'
+        };
+
+        function escapeHtml(value) {
+            return String(value || '').replace(/[&<>"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            }[char]));
+        }
+
+        function setStatus(text, success = null) {
+            const status = document.getElementById('status');
+            status.textContent = text || '';
+            status.classList.remove('good', 'bad');
+            if (success === true) status.classList.add('good');
+            if (success === false) status.classList.add('bad');
+        }
+
+        function parseAmount(raw) {
+            return Math.max(1, parseInt(raw, 10) || 1);
+        }
+
+        function buyShopItem(productKey, amountInputId) {
+            const amountInput = document.getElementById(amountInputId);
+            const amount = parseAmount(amountInput ? amountInput.value : 1);
+            if (amountInput) amountInput.value = amount;
+            try {
+                mp.trigger('shopBuyItem', String(productKey || ''), String(amount));
+            } catch (e) {}
+        }
+
+        function renderShopBuy(payloadJson, statusText, success) {
+            let payload = {};
+            try {
+                payload = typeof payloadJson === 'string' ? JSON.parse(payloadJson || '{}') : (payloadJson || {});
+            } catch (e) {
+                payload = {};
+            }
+
+            catalogItems = Array.isArray(payload.products) ? payload.products : [];
+            document.getElementById('storeName').textContent = payload.businessName || 'Parduotuvė';
+            document.getElementById('money').textContent = `$${Number(payload.money || 0).toLocaleString()}`;
+            document.getElementById('count').textContent = String(catalogItems.length);
+
+            const catalog = document.getElementById('catalog');
+            if (!catalogItems.length) {
+                catalog.innerHTML = '<div class="empty">Šiuo metu nėra parduodamų prekių.</div>';
+                setStatus(statusText || 'Prekių sąrašas tuščias.', success ?? true);
+                return;
+            }
+
+            const currentMoney = Math.max(0, Number(payload.money || 0));
+            catalog.innerHTML = catalogItems.map((item, index) => {
+                const key = String(item.key || item.itemType || '');
+                const keyEscaped = escapeHtml(key);
+                const name = escapeHtml(item.label || item.name || 'Prekė');
+                const itemType = escapeHtml(item.itemType || key || '');
+                const price = Math.max(1, Number(item.price || 1));
+                const iconKey = String(item.icon || item.itemType || item.key || '').toLowerCase();
+                const iconPath = iconImageMap[iconKey] || '';
+                const iconLabel = escapeHtml(iconLabelMap[iconKey] || 'BOX');
+                const badgeClass = iconPath ? 'badge' : 'badge fallback';
+                const badgeContent = iconPath
+                    ? `<img src="${iconPath}" alt="${name}">`
+                    : iconLabel;
+                const amountInputId = `amount-${index}`;
+                const canAffordOne = currentMoney >= price;
+
+                return `
+                    <article class="item">
+                        <div class="${badgeClass}">${badgeContent}</div>
+                        <div>
+                            <div class="name" title="${name}">${name}</div>
+                            <div class="meta">${itemType} · $${price.toLocaleString()} / vnt.</div>
+                        </div>
+                        <div class="controls">
+                            <input id="${amountInputId}" class="qty" type="number" min="1" step="1" value="1" ${canAffordOne ? '' : 'disabled'}>
+                            <button class="buy" ${canAffordOne ? '' : 'disabled'} onclick="buyShopItem('${keyEscaped}', '${amountInputId}')">Pirkti</button>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+
+            setStatus(statusText || 'Pasirinkite prekę, kurią norite pirkti.', success);
+        }
+
+        function closeShopBuy() {
+            try {
+                mp.trigger('closeShopBuyUI');
+            } catch (e) {}
+        }
+
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeShopBuy();
+        });
+    </script>
+</body>
+
+</html>
