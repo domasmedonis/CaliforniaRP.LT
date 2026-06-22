@@ -142,6 +142,21 @@
             color: #071014;
             font-weight: 900;
             letter-spacing: 0.02em;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .badge img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .badge.fallback {
+            font-size: 12px;
+            text-transform: uppercase;
         }
 
         .name {
@@ -221,6 +236,45 @@
 
     <script>
         let stockItems = [];
+        const pawnIconImageMap = {
+            cigarettes: './assets/inventory-icons/cigarettes.png',
+            beer: './assets/inventory-icons/beer.jpg',
+            water: './assets/inventory-icons/water.png',
+            medkit: './assets/inventory-icons/medkit.png',
+            weed: './assets/inventory-icons/weed.png',
+            cocaine: './assets/inventory-icons/cocaine.png',
+            meth: './assets/inventory-icons/meth.png',
+            crack: './assets/inventory-icons/crack.png',
+            shrooms: './assets/inventory-icons/shrooms.png',
+            codeine: './assets/inventory-icons/codeine.png',
+            percocet: './assets/inventory-icons/percocet.png',
+            heroin: './assets/inventory-icons/heroin.png',
+            ecstasy: './assets/inventory-icons/ecstasy.png',
+            lsd: './assets/inventory-icons/lsd.png'
+        };
+        const pawnIconLabelMap = {
+            water: 'H2O',
+            burger: 'BGR',
+            bandage: 'BND',
+            medkit: 'MED',
+            cigarettes: 'CIG',
+            beer: 'ALU',
+            weed: 'ZOL',
+            cocaine: 'KOK',
+            meth: 'MET',
+            crack: 'KRK',
+            shrooms: 'GRY',
+            codeine: 'KOD',
+            percocet: 'PER',
+            heroin: 'HER',
+            ecstasy: 'EKS',
+            lsd: 'LSD',
+            watch: 'WCH',
+            laptop: 'LPT',
+            necklace: 'NCK',
+            ring: 'RNG',
+            camera: 'CAM'
+        };
 
         function escapeHtml(value) {
             return String(value || '').replace(/[&<>"']/g, (char) => ({
@@ -264,13 +318,20 @@
                 const name = escapeHtml(item.name || 'Daiktas');
                 const type = escapeHtml(item.type || '');
                 const stockId = escapeHtml(item.stockId || '');
-                const label = escapeHtml((item.icon || item.type || 'BOX').slice(0, 3).toUpperCase());
+                const iconKey = String(item.icon || '').toLowerCase();
+                const typeKey = String(item.type || '').toLowerCase();
+                const iconPath = pawnIconImageMap[iconKey] || pawnIconImageMap[typeKey] || '';
+                const label = escapeHtml((pawnIconLabelMap[iconKey] || pawnIconLabelMap[typeKey] || 'BOX').slice(0, 3).toUpperCase());
+                const badgeClass = iconPath ? 'badge' : 'badge fallback';
+                const badgeContent = iconPath
+                    ? `<img src="${iconPath}" alt="${name}">`
+                    : label;
                 const price = Math.max(1, Number(item.price || 1));
                 const canAfford = Number(payload.money || 0) >= price;
 
                 return `
                     <article class="item">
-                        <div class="badge">${label}</div>
+                        <div class="${badgeClass}">${badgeContent}</div>
                         <div>
                             <div class="name" title="${name}">${name}</div>
                             <div class="meta">${type} · ID ${stockId.slice(-6)}</div>
