@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lombardas</title>
+    <title>Parduotuvė</title>
     <style>
         :root {
             --panel: rgba(255, 255, 255, 0.94);
@@ -42,8 +42,8 @@
         }
 
         .app {
-            width: min(720px, calc(100vw - 64px));
-            max-height: min(760px, calc(100vh - 64px));
+            width: min(740px, calc(100vw - 64px));
+            max-height: min(780px, calc(100vh - 64px));
             display: grid;
             grid-template-rows: auto auto minmax(0, 1fr) auto;
             border: 1px solid var(--line);
@@ -104,7 +104,7 @@
         }
 
         .grid {
-            min-height: 240px;
+            min-height: 260px;
             overflow-y: auto;
             padding: 12px;
             display: grid;
@@ -171,8 +171,25 @@
             font-size: 12px;
         }
 
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .qty {
+            width: 74px;
+            height: 38px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--text);
+            text-align: center;
+            font-weight: 700;
+        }
+
         .buy {
-            min-width: 118px;
+            min-width: 132px;
             height: 38px;
             border: 0;
             border-radius: 8px;
@@ -182,7 +199,8 @@
             cursor: pointer;
         }
 
-        .buy:disabled {
+        .buy:disabled,
+        .qty:disabled {
             opacity: 0.45;
             cursor: not-allowed;
         }
@@ -220,22 +238,22 @@
     <main class="app">
         <div class="header">
             <div>
-                <h1 id="businessName">Lombardas</h1>
-                <div class="sub">Unikalūs žaidėjų parduoti daiktai</div>
+                <h1 id="storeName">Parduotuvė</h1>
+                <div class="sub">Pirkimas su /buy</div>
             </div>
-            <button class="close" onclick="closePawnShop()">X</button>
+            <button class="close" onclick="closeShopBuy()">X</button>
         </div>
         <div class="summary">
             <span>Jūsų grynieji: <strong id="money">$0</strong></span>
             <span>Prekių: <strong id="count">0</strong></span>
         </div>
-        <section class="grid" id="stock"></section>
+        <section class="grid" id="catalog"></section>
         <div class="footer" id="status">Pasirinkite prekę, kurią norite pirkti.</div>
     </main>
 
     <script>
-        let stockItems = [];
-        const pawnIconImageMap = {
+        let catalogItems = [];
+        const iconImageMap = {
             cigarettes: './assets/inventory-icons/cigarettes.png',
             beer: './assets/inventory-icons/beer.jpg',
             water: './assets/inventory-icons/water.png',
@@ -251,7 +269,7 @@
             ecstasy: './assets/inventory-icons/ecstasy.png',
             lsd: './assets/inventory-icons/lsd.png'
         };
-        const pawnIconLabelMap = {
+        const iconLabelMap = {
             water: 'H2O',
             burger: 'BGR',
             bandage: 'BND',
@@ -268,11 +286,7 @@
             heroin: 'HER',
             ecstasy: 'EKS',
             lsd: 'LSD',
-            watch: 'WCH',
-            laptop: 'LPT',
-            necklace: 'NCK',
-            ring: 'RNG',
-            camera: 'CAM'
+            simcard: 'SIM'
         };
 
         function escapeHtml(value) {
@@ -293,7 +307,20 @@
             if (success === false) status.classList.add('bad');
         }
 
-        function renderPawnShop(payloadJson, statusText, success) {
+        function parseAmount(raw) {
+            return Math.max(1, parseInt(raw, 10) || 1);
+        }
+
+        function buyShopItem(productKey, amountInputId) {
+            const amountInput = document.getElementById(amountInputId);
+            const amount = parseAmount(amountInput ? amountInput.value : 1);
+            if (amountInput) amountInput.value = amount;
+            try {
+                mp.trigger('shopBuyItem', String(productKey || ''), String(amount));
+            } catch (e) {}
+        }
+
+        function renderShopBuy(payloadJson, statusText, success) {
             let payload = {};
             try {
                 payload = typeof payloadJson === 'string' ? JSON.parse(payloadJson || '{}') : (payloadJson || {});
@@ -301,41 +328,46 @@
                 payload = {};
             }
 
-            stockItems = Array.isArray(payload.stock) ? payload.stock : [];
-            document.getElementById('businessName').textContent = payload.businessName || 'Lombardas';
+            catalogItems = Array.isArray(payload.products) ? payload.products : [];
+            document.getElementById('storeName').textContent = payload.businessName || 'Parduotuvė';
             document.getElementById('money').textContent = `$${Number(payload.money || 0).toLocaleString()}`;
-            document.getElementById('count').textContent = String(stockItems.length);
+            document.getElementById('count').textContent = String(catalogItems.length);
 
-            const stock = document.getElementById('stock');
-            if (!stockItems.length) {
-                stock.innerHTML = '<div class="empty">Šiuo metu lombarde nėra parduodamų daiktų.</div>';
-                setStatus(statusText || 'Stock tuščias.', success ?? true);
+            const catalog = document.getElementById('catalog');
+            if (!catalogItems.length) {
+                catalog.innerHTML = '<div class="empty">Šiuo metu nėra parduodamų prekių.</div>';
+                setStatus(statusText || 'Prekių sąrašas tuščias.', success ?? true);
                 return;
             }
 
-            stock.innerHTML = stockItems.map((item) => {
-                const name = escapeHtml(item.name || 'Daiktas');
-                const type = escapeHtml(item.type || '');
-                const stockId = escapeHtml(item.stockId || '');
-                const iconKey = String(item.icon || '').toLowerCase();
-                const typeKey = String(item.type || '').toLowerCase();
-                const iconPath = pawnIconImageMap[iconKey] || pawnIconImageMap[typeKey] || '';
-                const label = escapeHtml(pawnIconLabelMap[iconKey] || pawnIconLabelMap[typeKey] || 'BOX');
+            const currentMoney = Math.max(0, Number(payload.money || 0));
+            catalog.innerHTML = catalogItems.map((item, index) => {
+                const key = String(item.key || item.itemType || '');
+                const keyEscaped = escapeHtml(key);
+                const name = escapeHtml(item.label || item.name || 'Prekė');
+                const itemType = escapeHtml(item.itemType || key || '');
+                const price = Math.max(1, Number(item.price || 1));
+                const iconKey = String(item.icon || item.itemType || item.key || '').toLowerCase();
+                const iconPath = iconImageMap[iconKey] || '';
+                const iconLabel = escapeHtml(iconLabelMap[iconKey] || 'BOX');
                 const badgeClass = iconPath ? 'badge' : 'badge fallback';
                 const badgeContent = iconPath
                     ? `<img src="${iconPath}" alt="${name}">`
-                    : label;
-                const price = Math.max(1, Number(item.price || 1));
-                const canAfford = Number(payload.money || 0) >= price;
+                    : iconLabel;
+                const amountInputId = `amount-${index}`;
+                const canAffordOne = currentMoney >= price;
 
                 return `
                     <article class="item">
                         <div class="${badgeClass}">${badgeContent}</div>
                         <div>
                             <div class="name" title="${name}">${name}</div>
-                            <div class="meta">${type} · ID ${stockId.slice(-6)}</div>
+                            <div class="meta">${itemType} · $${price.toLocaleString()} / vnt.</div>
                         </div>
-                        <button class="buy" ${canAfford ? '' : 'disabled'} onclick="buyPawnItem('${stockId}')">$${price.toLocaleString()}</button>
+                        <div class="controls">
+                            <input id="${amountInputId}" class="qty" type="number" min="1" step="1" value="1" ${canAffordOne ? '' : 'disabled'}>
+                            <button class="buy" ${canAffordOne ? '' : 'disabled'} onclick="buyShopItem('${keyEscaped}', '${amountInputId}')">Pirkti</button>
+                        </div>
                     </article>
                 `;
             }).join('');
@@ -343,20 +375,14 @@
             setStatus(statusText || 'Pasirinkite prekę, kurią norite pirkti.', success);
         }
 
-        function buyPawnItem(stockId) {
+        function closeShopBuy() {
             try {
-                mp.trigger('pawnShopBuy', stockId);
-            } catch (e) {}
-        }
-
-        function closePawnShop() {
-            try {
-                mp.trigger('closePawnShopUI');
+                mp.trigger('closeShopBuyUI');
             } catch (e) {}
         }
 
         window.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') closePawnShop();
+            if (event.key === 'Escape') closeShopBuy();
         });
     </script>
 </body>

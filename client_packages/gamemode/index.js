@@ -16,6 +16,8 @@ let isInventoryOpen = false;
 let lastInventoryRequestAt = 0;
 let pawnShopBrowser = null;
 let isPawnShopOpen = false;
+let shopBuyBrowser = null;
+let isShopBuyOpen = false;
 let dmvStartBrowser = null;
 let dmvQuizBrowser = null;
 let dmvRouteActive = false;
@@ -262,6 +264,7 @@ function canToggleInventory() {
         && !browser
         && !paycheckBrowser
         && !isPawnShopOpen
+        && !isShopBuyOpen
         && !dmvStartBrowser
         && !dmvQuizBrowser
         && !isOnlineCharactersOpen
@@ -280,6 +283,7 @@ function canToggleOnlineCharacters() {
         && !browser
         && !paycheckBrowser
         && !isPawnShopOpen
+        && !isShopBuyOpen
         && !dmvStartBrowser
         && !dmvQuizBrowser
         && !isInventoryOpen
@@ -306,6 +310,38 @@ function closePawnShopBrowser() {
     }
 
     isPawnShopOpen = false;
+    mp.gui.cursor.show(false, false);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(true);
+}
+
+function sendShopBuyStateToBrowser(payloadJson, statusText = '', success = true) {
+    if (!shopBuyBrowser) return;
+    shopBuyBrowser.execute(`renderShopBuy(${JSON.stringify(payloadJson || '{}')}, ${JSON.stringify(statusText || '')}, ${JSON.stringify(Boolean(success))});`);
+}
+
+function openShopBuyBrowser(payloadJson, statusText = '', success = true) {
+    if (!shopBuyBrowser) {
+        shopBuyBrowser = mp.browsers.new('package://cef/shopBuyUI.html');
+    }
+
+    isShopBuyOpen = true;
+    mp.gui.cursor.show(true, true);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(false);
+
+    setTimeout(() => {
+        sendShopBuyStateToBrowser(payloadJson, statusText, success);
+    }, 80);
+}
+
+function closeShopBuyBrowser() {
+    if (shopBuyBrowser) {
+        try { shopBuyBrowser.destroy(); } catch (e) { }
+        shopBuyBrowser = null;
+    }
+
+    isShopBuyOpen = false;
     mp.gui.cursor.show(false, false);
     mp.gui.chat.show(true);
     mp.gui.chat.activate(true);
@@ -1336,6 +1372,27 @@ mp.events.add('updatePawnShopUI', (payloadJson, statusText = '', success = true)
     }
 
     sendPawnShopStateToBrowser(payloadJson, statusText, success);
+});
+
+mp.events.add('openShopBuyUI', (payloadJson, statusText = '', success = true) => {
+    openShopBuyBrowser(payloadJson, statusText, success);
+});
+
+mp.events.add('updateShopBuyUI', (payloadJson, statusText = '', success = true) => {
+    if (!isShopBuyOpen) {
+        openShopBuyBrowser(payloadJson, statusText, success);
+        return;
+    }
+
+    sendShopBuyStateToBrowser(payloadJson, statusText, success);
+});
+
+mp.events.add('shopBuyItem', (productKey, amount) => {
+    mp.events.callRemote('shopBuyItem', String(productKey || ''), String(amount || '1'));
+});
+
+mp.events.add('closeShopBuyUI', () => {
+    closeShopBuyBrowser();
 });
 
 mp.events.add('pawnShopBuy', (stockId) => {
@@ -2369,6 +2426,7 @@ mp.events.add('playerQuit', () => {
     if (browser) browser.destroy();
     if (dealershipBrowser) dealershipBrowser.destroy();
     closePawnShopBrowser();
+    closeShopBuyBrowser();
     closeDMVStartBrowser();
     closeDMVQuizBrowser();
     stopDMVRoute();
@@ -2400,6 +2458,8 @@ mp.events.add('playerQuit', () => {
     inventoryBrowser = null;
     pawnShopBrowser = null;
     isPawnShopOpen = false;
+    shopBuyBrowser = null;
+    isShopBuyOpen = false;
     dmvStartBrowser = null;
     dmvQuizBrowser = null;
     stopDMVRoute();
@@ -2590,6 +2650,10 @@ mp.keys.bind(0x1B, true, () => {
         closePawnShopBrowser();
     }
 
+    if (isShopBuyOpen) {
+        closeShopBuyBrowser();
+    }
+
     if (dmvStartBrowser) {
         closeDMVStartBrowser();
     }
@@ -2602,4 +2666,3 @@ mp.keys.bind(0x1B, true, () => {
         closeOnlineCharactersBrowser();
     }
 });
-
