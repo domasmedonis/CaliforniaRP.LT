@@ -321,7 +321,7 @@
                 const iconKey = String(item.icon || '').toLowerCase();
                 const typeKey = String(item.type || '').toLowerCase();
                 const iconPath = pawnIconImageMap[iconKey] || pawnIconImageMap[typeKey] || '';
-                const label = escapeHtml((pawnIconLabelMap[iconKey] || pawnIconLabelMap[typeKey] || 'BOX').slice(0, 3).toUpperCase());
+                const label = escapeHtml(pawnIconLabelMap[iconKey] || pawnIconLabelMap[typeKey] || 'BOX');
                 const badgeClass = iconPath ? 'badge' : 'badge fallback';
                 const badgeContent = iconPath
                     ? `<img src="${iconPath}" alt="${name}">`
