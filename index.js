@@ -12,6 +12,8 @@ const vehicleFuelRuntimeState = new Map();
 const activeDMVTests = new Map();
 const activeEmergencyReports = new Map();
 let nextEmergencyReportId = 1;
+const POLICE_MDC_WARRANT_STATUS_OPEN = 'open';
+const POLICE_MDC_WARRANT_STATUS_CLEARED = 'cleared';
 
 const INVENTORY_GIVE_RADIUS = 5.0;
 const DRUG_EFFECT_DELAY_MS = 120000;
@@ -439,6 +441,9 @@ const PD_RELEASE_POS = new mp.Vector3(441.13, -981.92, 30.69);
 const PD_RELEASE_HEADING = 90.0;
 const MD_REVIVE_HEALTH = 60;
 const MD_TREAT_AMOUNT = 25;
+const POLICE_FINE_MIN_AMOUNT = 1;
+const POLICE_FINE_MAX_AMOUNT = 25000;
+const POLICE_MDC_HISTORY_LIMIT = 5;
 const STATIC_247_SHOP_REGISTERS = Object.freeze([
     { x: 24.47, y: -1347.35, z: 29.5 },
     { x: -46.62, y: -1757.93, z: 29.42 },
@@ -881,6 +886,237 @@ function splitCommandText(fullText) {
     return String(fullText || '').trim().split(/\s+/).filter(Boolean);
 }
 
+function persistPlayerBankBalance(player) {
+    if (!player || !player.charName) return;
+
+    player.call('updateBankHUD', [player.bankBalance || 0]);
+    db.query('UPDATE bank_accounts SET balance = ? WHERE char_name = ?', [player.bankBalance || 0, player.charName], (err) => {
+        if (err) {
+            console.error('[BANK] Failed to save bank balance:', err.message);
+        }
+    });
+}
+
+function requirePoliceMdcAccess(player) {
+    if (!requireFactionMember(player, 'pd', true)) return false;
+    if (!player.vehicle) {
+        player.outputChatBox('!{#f7dc6f}MDC galite naudoti tik budedami ir sededami automobilyje.');
+        return false;
+    }
+    return true;
+}
+
+function formatFactionRoleLabel(factionKey, factionRank) {
+    const def = getFactionDef(factionKey);
+    if (!def || !factionRank) return 'Civilian';
+    return `${def.shortLabel} ${getFactionRankName(def.key, factionRank)}`;
+}
+
+function formatMdcTimestamp(value) {
+    const stamp = moment(value);
+    return stamp.isValid() ? stamp.format('YYYY-MM-DD HH:mm') : 'unknown';
+}
+
+function resolveCharacterRecordForPolice(identifier, callback) {
+    const trimmed = String(identifier || '').trim();
+    if (!trimmed) {
+        callback(null, null, null);
+        return;
+    }
+
+    const onlinePlayer = getPlayerByIDOrName(trimmed);
+    if (onlinePlayer && onlinePlayer.charId) {
+        callback(null, {
+            id: onlinePlayer.charId,
+            char_name: onlinePlayer.charName,
+            drivers_license: onlinePlayer.hasDriversLicense ? 1 : 0,
+            faction_key: onlinePlayer.factionKey || null,
+            faction_rank: onlinePlayer.factionRank || 0,
+        }, onlinePlayer);
+        return;
+    }
+
+    const handleRows = (rows) => {
+        if (!rows || rows.length === 0) {
+            callback(null, null, null);
+            return;
+        }
+        if (rows.length > 1) {
+            callback(new Error('ambiguous'));
+            return;
+        }
+        callback(null, rows[0], null);
+    };
+
+    if (/^\d+$/.test(trimmed)) {
+        db.query('SELECT id, char_name, drivers_license, faction_key, faction_rank FROM characters WHERE id = ? LIMIT 2', [parseInt(trimmed, 10)], (err, rows) => {
+            if (err) return callback(err);
+            handleRows(rows);
+        });
+        return;
+    }
+
+    db.query('SELECT id, char_name, drivers_license, faction_key, faction_rank FROM characters WHERE LOWER(char_name) = LOWER(?) LIMIT 1', [trimmed], (exactErr, exactRows) => {
+        if (exactErr) return callback(exactErr);
+        if (exactRows && exactRows.length === 1) {
+            handleRows(exactRows);
+            return;
+        }
+
+        db.query('SELECT id, char_name, drivers_license, faction_key, faction_rank FROM characters WHERE LOWER(char_name) LIKE LOWER(?) ORDER BY char_name ASC LIMIT 2', [`${trimmed}%`], (likeErr, likeRows) => {
+            if (likeErr) return callback(likeErr);
+            handleRows(likeRows);
+        });
+    });
+}
+
+function showPoliceMdcHelp(player) {
+    player.outputChatBox('!{#5dade2}[MDC] /mdc person [ID/vardas], /mdc plate [numeriai]');
+    player.outputChatBox('!{#5dade2}[MDC] /mdc warrant [ID/vardas] [priezastis], /mdc warrants [ID/vardas], /mdc clear [warrant ID]');
+}
+
+function handlePoliceMdcPersonLookup(player, identifier) {
+    resolveCharacterRecordForPolice(identifier, (err, record, onlinePlayer) => {
+        if (err) {
+            if (err.message === 'ambiguous') return player.outputChatBox('!{#f7dc6f}Rasti keli panasus irasai. Naudokite tikslu ID arba pilna varda.');
+            console.error('[MDC] person lookup failed:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko gauti MDC iraso.');
+        }
+        if (!record) return player.outputChatBox('!{#f7dc6f}Asmuo nerastas.');
+
+        db.query('SELECT COUNT(*) AS totalCount, COALESCE(SUM(amount), 0) AS totalAmount FROM police_fines WHERE char_id = ?', [record.id], (fineErr, fineRows) => {
+            if (fineErr) {
+                console.error('[MDC] fine summary failed:', fineErr.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko gauti baudu istorijos.');
+            }
+
+            db.query('SELECT id, reason, issued_by_name, created_at FROM police_mdc_warrants WHERE char_id = ? AND status = ? ORDER BY created_at DESC LIMIT 5', [record.id, POLICE_MDC_WARRANT_STATUS_OPEN], (warrantErr, warrantRows) => {
+                if (warrantErr) {
+                    console.error('[MDC] warrant lookup failed:', warrantErr.message);
+                    return player.outputChatBox('!{#e74c3c}Nepavyko gauti ieskomumo informacijos.');
+                }
+
+                const fineSummary = (fineRows && fineRows[0]) || { totalCount: 0, totalAmount: 0 };
+                const statusParts = [onlinePlayer ? 'online' : 'offline'];
+                if (onlinePlayer && onlinePlayer.isCuffed) statusParts.push('cuffed');
+                if (onlinePlayer && onlinePlayer.isJailed) statusParts.push('jailed');
+                const roleLabel = formatFactionRoleLabel(record.faction_key, record.faction_rank);
+                const licenseLabel = Number(record.drivers_license || 0) === 1 ? 'yes' : 'no';
+
+                player.outputChatBox(`!{#5dade2}[MDC] ${record.char_name} (ID ${record.id}) | ${statusParts.join(', ')} | license: ${licenseLabel}`);
+                player.outputChatBox(`!{#d6eaf8}[MDC] Role: ${roleLabel} | fines: ${fineSummary.totalCount} / $${fineSummary.totalAmount || 0} | open warrants: ${warrantRows.length}`);
+                if (!warrantRows || warrantRows.length === 0) {
+                    player.outputChatBox('!{#d5f5e3}[MDC] Open warrants: none.');
+                    return;
+                }
+
+                warrantRows.forEach((row) => {
+                    player.outputChatBox(`!{#f9e79f}[MDC] W#${row.id} | ${formatMdcTimestamp(row.created_at)} | ${row.issued_by_name}: ${row.reason}`);
+                });
+            });
+        });
+    });
+}
+
+function handlePoliceMdcPlateLookup(player, plateInput) {
+    const normalizedPlate = normalizeVehiclePlateInput(plateInput);
+    if (normalizedPlate.length < 3) {
+        player.outputChatBox('!{#f7dc6f}Iveskite bent 3 numeriu simbolius.');
+        return;
+    }
+
+    db.query(`SELECT pv.id, pv.display_name, pv.plate, pv.parked, pv.locked, c.char_name
+        FROM player_vehicles pv
+        INNER JOIN characters c ON c.id = pv.char_id
+        WHERE REPLACE(REPLACE(UPPER(pv.plate), ' ', ''), '-', '') = ?
+        LIMIT 1`, [normalizedPlate], (err, rows) => {
+        if (err) {
+            console.error('[MDC] plate lookup failed:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko gauti transporto iraso.');
+        }
+        if (!rows || rows.length === 0) return player.outputChatBox('!{#f7dc6f}Transporto priemone nerasta.');
+
+        const row = rows[0];
+        const parked = Number(row.parked) === 1 ? 'parked' : 'active';
+        const locked = Number(row.locked) === 1 ? 'locked' : 'unlocked';
+        player.outputChatBox(`!{#5dade2}[MDC] Plate ${row.plate} | ${row.display_name} | owner: ${row.char_name}`);
+        player.outputChatBox(`!{#d6eaf8}[MDC] Vehicle ID ${row.id} | ${parked} | ${locked}`);
+    });
+}
+
+function handlePoliceMdcWarrantCreate(player, identifier, reasonText) {
+    const reason = String(reasonText || '').trim().replace(/\s+/g, ' ').slice(0, 128);
+    if (reason.length < 3) {
+        player.outputChatBox('!{#f7dc6f}Irasykite warrant priezasti.');
+        return;
+    }
+
+    resolveCharacterRecordForPolice(identifier, (err, record) => {
+        if (err) {
+            if (err.message === 'ambiguous') return player.outputChatBox('!{#f7dc6f}Rasti keli panasus irasai. Naudokite tikslu ID arba pilna varda.');
+            console.error('[MDC] warrant create failed:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko sukurti warrant.');
+        }
+        if (!record) return player.outputChatBox('!{#f7dc6f}Asmuo nerastas.');
+
+        db.query('INSERT INTO police_mdc_warrants (char_id, suspect_name, issued_by_char_id, issued_by_name, reason, status) VALUES (?, ?, ?, ?, ?, ?)', [record.id, record.char_name, player.charId || null, player.charName, reason, POLICE_MDC_WARRANT_STATUS_OPEN], (insertErr, result) => {
+            if (insertErr) {
+                console.error('[MDC] warrant insert failed:', insertErr.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko issaugoti warrant.');
+            }
+            player.outputChatBox(`!{#7aa164}[MDC] Sukurtas warrant #${result.insertId} asmeniui ${record.char_name}.`);
+        });
+    });
+}
+
+function handlePoliceMdcWarrantList(player, identifier) {
+    resolveCharacterRecordForPolice(identifier, (err, record) => {
+        if (err) {
+            if (err.message === 'ambiguous') return player.outputChatBox('!{#f7dc6f}Rasti keli panasus irasai. Naudokite tikslu ID arba pilna varda.');
+            console.error('[MDC] warrant list failed:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko gauti warrant saraso.');
+        }
+        if (!record) return player.outputChatBox('!{#f7dc6f}Asmuo nerastas.');
+
+        db.query('SELECT id, reason, issued_by_name, created_at FROM police_mdc_warrants WHERE char_id = ? AND status = ? ORDER BY created_at DESC LIMIT 10', [record.id, POLICE_MDC_WARRANT_STATUS_OPEN], (listErr, rows) => {
+            if (listErr) {
+                console.error('[MDC] warrant list query failed:', listErr.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko gauti warrant saraso.');
+            }
+            if (!rows || rows.length === 0) return player.outputChatBox(`!{#d5f5e3}[MDC] ${record.char_name} neturi atviru warrant.`);
+
+            player.outputChatBox(`!{#5dade2}[MDC] ${record.char_name} open warrants (${rows.length}):`);
+            rows.forEach((row) => {
+                player.outputChatBox(`!{#f9e79f}[MDC] W#${row.id} | ${formatMdcTimestamp(row.created_at)} | ${row.issued_by_name}: ${row.reason}`);
+            });
+        });
+    });
+}
+
+function handlePoliceMdcWarrantClear(player, warrantIdArg) {
+    const warrantId = parseInt(warrantIdArg, 10);
+    if (!Number.isInteger(warrantId) || warrantId <= 0) {
+        player.outputChatBox('!{#f7dc6f}Naudojimas: /mdc clear [warrant ID]');
+        return;
+    }
+
+    db.query('SELECT id, suspect_name FROM police_mdc_warrants WHERE id = ? AND status = ? LIMIT 1', [warrantId, POLICE_MDC_WARRANT_STATUS_OPEN], (selectErr, rows) => {
+        if (selectErr) {
+            console.error('[MDC] warrant select failed:', selectErr.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko rasti warrant.');
+        }
+        if (!rows || rows.length === 0) return player.outputChatBox('!{#f7dc6f}Atviras warrant nerastas.');
+
+        db.query('UPDATE police_mdc_warrants SET status = ?, cleared_at = NOW(), cleared_by_name = ? WHERE id = ?', [POLICE_MDC_WARRANT_STATUS_CLEARED, player.charName, warrantId], (updateErr) => {
+            if (updateErr) {
+                console.error('[MDC] warrant clear failed:', updateErr.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko uzdaryti warrant.');
+            }
+            player.outputChatBox(`!{#7aa164}[MDC] Warrant #${warrantId} uzdarytas (${rows[0].suspect_name}).`);
+        });
+    });
+}
+
 function getFactionOnlineList(factionKey) {
     const key = normalizeFactionKey(factionKey);
     return mp.players.toArray()
@@ -1044,6 +1280,10 @@ function makeVehiclePlate(charId, vehicleDbId) {
     const safeChar = Math.max(0, parseInt(charId, 10) || 0).toString().slice(-3);
     const safeVehicle = Math.max(0, parseInt(vehicleDbId, 10) || 0).toString().slice(-3);
     return `CRP${safeChar}${safeVehicle}`.slice(0, 8);
+}
+
+function normalizeVehiclePlateInput(value) {
+    return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 function getDefaultPropertySettings() {
@@ -3337,6 +3577,44 @@ function bootstrapDatabase() {
         seedFactionRankNames();
     });
 
+    db.query(`CREATE TABLE IF NOT EXISTS police_fines (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        char_id INT NOT NULL,
+        suspect_name VARCHAR(64) NOT NULL,
+        officer_char_id INT NULL,
+        officer_name VARCHAR(64) NOT NULL,
+        amount INT NOT NULL DEFAULT 0,
+        reason VARCHAR(128) NOT NULL,
+        paid_from_cash INT NOT NULL DEFAULT 0,
+        paid_from_bank INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_police_fines_char_id (char_id),
+        CONSTRAINT fk_police_fines_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE
+    )`, (err) => {
+        if (err) {
+            console.error('[PD] Failed to create police_fines table:', err.message);
+        }
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS police_mdc_warrants (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        char_id INT NOT NULL,
+        suspect_name VARCHAR(64) NOT NULL,
+        issued_by_char_id INT NULL,
+        issued_by_name VARCHAR(64) NOT NULL,
+        reason VARCHAR(128) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'open',
+        cleared_at TIMESTAMP NULL DEFAULT NULL,
+        cleared_by_name VARCHAR(64) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_police_mdc_warrants_char_status (char_id, status),
+        CONSTRAINT fk_police_mdc_warrants_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE
+    )`, (err) => {
+        if (err) {
+            console.error('[PD] Failed to create police_mdc_warrants table:', err.message);
+        }
+    });
+
     db.query('ALTER TABLE bans ADD COLUMN ucp_name VARCHAR(64) NULL', (err) => {
         if (err && err.code !== 'ER_DUP_FIELDNAME') {
             console.error('[BANS] Failed to add ucp_name column:', err.message);
@@ -4684,7 +4962,7 @@ const knownCommands = new Set([
     'report', 'acceptreport', 'declinereport',
     'admins', 'setaname', 'changechar', 'coords', 'createtwittertables', 'dmv',
     'setfactionleader', 'faction', 'finvite', 'funinvite', 'frank', 'frankname', 'duty', 'badge', 'panic',
-    'cuf', 'cuff', 'uncuff', 'jail', 'unjail', 'revive', 'treat', '911', 'respond',
+    'cuf', 'cuff', 'uncuff', 'jail', 'unjail', 'fine', 'mdc', 'revive', 'treat', '911', 'respond',
     'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'buy', 'pawnstock', 'pawnsell', 'pawnbuy', 'pawnprice', 'pawnrename', 'pawnstockrename', 'bizbank', 'bizbankdeposit', 'bizbankwithdraw', 'setbizname', 'sellbiz', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'aprop', 'abiz', 'tpinterior',
     'ph', 'phone', 'acceptdrive',
     'call', 'answer', 'decline', 'hangup', 'acceptdeath',
@@ -4750,7 +5028,7 @@ mp.events.addCommand('faction', (player) => {
     const salary = getFactionSalary(player.factionKey, player.factionRank);
     player.outputChatBox(`!{#5dade2}${def.label}: ${rankName} (rank ${player.factionRank}) | salary $${salary}/paycheck | duty: ${player.factionDuty ? 'on' : 'off'}`);
     player.outputChatBox('!{#d6eaf8}Komandos: /duty, /badge, /panic. Leader: /finvite /funinvite /frank /frankname');
-    if (def.key === 'pd') player.outputChatBox('!{#d6eaf8}PD: /cuf /uncuff /jail /unjail /respond');
+    if (def.key === 'pd') player.outputChatBox('!{#d6eaf8}PD: /cuf /uncuff /jail /unjail /fine /mdc /respond');
     if (def.key === 'md') player.outputChatBox('!{#d6eaf8}MD: /revive /treat /respond');
 
     const online = getFactionOnlineList(def.key);
@@ -4922,6 +5200,80 @@ mp.events.addCommand('unjail', (player, fullText, targetNameOrID) => {
     if (!target.isJailed) return player.outputChatBox('!{#f7dc6f}Zaidejas nera PD kameroje.');
     releasePlayerFromJail(target, true);
     player.outputChatBox(`!{#7aa164}${target.charName} paleistas.`);
+});
+
+mp.events.addCommand('fine', (player, fullText, targetNameOrID, amountArg, ...reasonParts) => {
+    if (!requireFactionMember(player, 'pd', true)) return;
+    if (!targetNameOrID || !amountArg || reasonParts.length === 0) return sendUsageInstructions(player, 'fine');
+
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (target === player) return player.outputChatBox('!{#f7dc6f}Negalite israsyti baudos sau.');
+    if (getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Turite buti salia zaidejo.');
+    }
+
+    const parsedAmount = parseInt(amountArg, 10);
+    if (!Number.isInteger(parsedAmount) || parsedAmount < POLICE_FINE_MIN_AMOUNT || parsedAmount > POLICE_FINE_MAX_AMOUNT) {
+        return player.outputChatBox(`!{#f7dc6f}Baudos suma turi buti nuo $${POLICE_FINE_MIN_AMOUNT} iki $${POLICE_FINE_MAX_AMOUNT}.`);
+    }
+
+    const reason = reasonParts.join(' ').trim().replace(/\s+/g, ' ').slice(0, 128);
+    if (reason.length < 3) return player.outputChatBox('!{#f7dc6f}Irasykite baudos priezasti.');
+
+    const currentMoney = Math.max(0, parseInt(target.money, 10) || 0);
+    const currentBank = Math.max(0, parseInt(target.bankBalance, 10) || 0);
+    if ((currentMoney + currentBank) < parsedAmount) {
+        return player.outputChatBox('!{#f7dc6f}Zaidejas neturi pakankamai lesu sios baudos apmokejimui.');
+    }
+
+    const paidFromCash = Math.min(currentMoney, parsedAmount);
+    const paidFromBank = parsedAmount - paidFromCash;
+    target.money = currentMoney - paidFromCash;
+    target.bankBalance = currentBank - paidFromBank;
+    persistPlayerMoney(target);
+    persistPlayerBankBalance(target);
+
+    db.query('INSERT INTO police_fines (char_id, suspect_name, officer_char_id, officer_name, amount, reason, paid_from_cash, paid_from_bank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [target.charId, target.charName, player.charId || null, player.charName, parsedAmount, reason, paidFromCash, paidFromBank], (err) => {
+        if (err) {
+            console.error('[PD] Failed to save fine:', err.message);
+        }
+    });
+
+    player.outputChatBox(`!{#7aa164}Israsete ${target.charName} bauda $${parsedAmount}. Priezastis: ${reason}`);
+    target.outputChatBox(`!{#e67e22}${player.charName} israse jums bauda $${parsedAmount}. Priezastis: ${reason}`);
+    target.outputChatBox(`!{#f7dc6f}Nuskaityta: cash $${paidFromCash}, bank $${paidFromBank}.`);
+});
+
+mp.events.addCommand('mdc', (player, fullText) => {
+    if (!requirePoliceMdcAccess(player)) return;
+
+    const args = splitCommandText(fullText);
+    const subcommand = String(args.shift() || 'help').toLowerCase();
+
+    if (subcommand === 'help') return showPoliceMdcHelp(player);
+    if (subcommand === 'person') {
+        if (!args[0]) return showPoliceMdcHelp(player);
+        return handlePoliceMdcPersonLookup(player, args[0]);
+    }
+    if (subcommand === 'plate') {
+        if (!args[0]) return showPoliceMdcHelp(player);
+        return handlePoliceMdcPlateLookup(player, args[0]);
+    }
+    if (subcommand === 'warrant') {
+        if (args.length < 2) return showPoliceMdcHelp(player);
+        return handlePoliceMdcWarrantCreate(player, args.shift(), args.join(' '));
+    }
+    if (subcommand === 'warrants') {
+        if (!args[0]) return showPoliceMdcHelp(player);
+        return handlePoliceMdcWarrantList(player, args[0]);
+    }
+    if (subcommand === 'clear') {
+        if (!args[0]) return showPoliceMdcHelp(player);
+        return handlePoliceMdcWarrantClear(player, args[0]);
+    }
+
+    showPoliceMdcHelp(player);
 });
 
 mp.events.addCommand('revive', (player, fullText, targetNameOrID) => {
@@ -7825,6 +8177,8 @@ function sendUsageInstructions(player, command) {
         'frankname': "[FRANKNAME] Naudojimas: /frankname [rank] [pavadinimas] - Pervadinti rank.",
         'cuf': "[CUF] Naudojimas: /cuf [ID arba vardas] - Surakinti arba atrakinti salia esanti zaideja.",
         'jail': "[JAIL] Naudojimas: /jail [ID arba vardas] [minutes] [reason] - Uzdaryti i PD kamera.",
+        'fine': "[FINE] Naudojimas: /fine [ID arba vardas] [suma] [priezastis] - Israsyti bauda salia esanciam zaidejui.",
+        'mdc': "[MDC] Naudojimas: /mdc person|plate|warrant|warrants|clear ... - Policijos duomenu bazes komandos.",
         'revive': "[REVIVE] Naudojimas: /revive [ID arba vardas] - Atgaivinti downed zaideja.",
         '911': "[911] Naudojimas: /911 [pd|md|both] [aprasymas] - Issiusti pagalbos pranesima.",
         'respond': "[RESPOND] Naudojimas: /respond [911 ID] - Priimti pagalbos iskvietima.",
