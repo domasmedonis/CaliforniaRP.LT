@@ -990,7 +990,7 @@ function handlePoliceMdcPersonLookup(player, identifier) {
                 return player.outputChatBox('!{#e74c3c}Nepavyko gauti baudu istorijos.');
             }
 
-            db.query('SELECT id, reason, issued_by_name, created_at FROM police_mdc_warrants WHERE char_id = ? AND status = ? ORDER BY created_at DESC LIMIT 5', [record.id, POLICE_MDC_WARRANT_STATUS_OPEN], (warrantErr, warrantRows) => {
+            db.query(`SELECT id, reason, issued_by_name, created_at FROM police_mdc_warrants WHERE char_id = ? AND status = ? ORDER BY created_at DESC LIMIT ${POLICE_MDC_HISTORY_LIMIT}`, [record.id, POLICE_MDC_WARRANT_STATUS_OPEN], (warrantErr, warrantRows) => {
                 if (warrantErr) {
                     console.error('[MDC] warrant lookup failed:', warrantErr.message);
                     return player.outputChatBox('!{#e74c3c}Nepavyko gauti ieskomumo informacijos.');
