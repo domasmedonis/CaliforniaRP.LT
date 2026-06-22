@@ -384,6 +384,8 @@ const PROPERTY_INTERACT_RADIUS = 3.0;
 const PROPERTY_SELL_RADIUS = 10.0;
 const PROPERTY_ADDRESS_HINT_RADIUS = 4.0;
 const BUSINESS_INTERACT_RADIUS = 3.0;
+const BUSINESS_INTERACT_RADIUS_MIN = 1.5;
+const BUSINESS_INTERACT_RADIUS_MAX = 25.0;
 const BUSINESS_EXIT_RADIUS = 6.0;
 const SHOP_REGISTER_INTERACT_RADIUS = 2.5;
 const GAS_STATION_REFILL_RADIUS = 12.0;
@@ -1910,11 +1912,22 @@ function getBusinessAddressForDisplay(business) {
     return getAutoPropertyAddressFromPosition(business.entryPos || business.interiorPos || null);
 }
 
+function sanitizeBusinessInteractRadius(rawRadius) {
+    const parsed = Number(rawRadius);
+    if (!Number.isFinite(parsed)) return BUSINESS_INTERACT_RADIUS;
+    return Math.max(BUSINESS_INTERACT_RADIUS_MIN, Math.min(BUSINESS_INTERACT_RADIUS_MAX, Math.round(parsed * 100) / 100));
+}
+
+function getBusinessInteractRadius(business) {
+    if (!business) return BUSINESS_INTERACT_RADIUS;
+    return sanitizeBusinessInteractRadius(business.interactRadius);
+}
+
 function persistBusinessState(business) {
     if (!business || !business.id) return;
 
     db.query(
-        'UPDATE server_businesses SET name = ?, business_type = ?, address = ?, owner_char_id = ?, owner_char_name = ?, bank_balance = ?, entry_x = ?, entry_y = ?, entry_z = ?, entry_h = ?, interior_x = ?, interior_y = ?, interior_z = ?, interior_h = ?, exit_x = ?, exit_y = ?, exit_z = ?, exit_h = ?, dimension = ?, pawn_inventory = ? WHERE id = ?',
+        'UPDATE server_businesses SET name = ?, business_type = ?, address = ?, owner_char_id = ?, owner_char_name = ?, bank_balance = ?, entry_x = ?, entry_y = ?, entry_z = ?, entry_h = ?, interior_x = ?, interior_y = ?, interior_z = ?, interior_h = ?, exit_x = ?, exit_y = ?, exit_z = ?, exit_h = ?, dimension = ?, pawn_inventory = ?, interact_radius = ? WHERE id = ?',
         [
             business.name,
             business.type,
@@ -1936,6 +1949,7 @@ function persistBusinessState(business) {
             Number.isFinite(business.exitHeading) ? business.exitHeading : 0,
             business.dimension,
             getBusinessPawnInventoryJson(business),
+            getBusinessInteractRadius(business),
             business.id,
         ],
         (err) => {
@@ -1982,6 +1996,7 @@ function loadBusinessesFromDatabase() {
                 exitHeading: Number.isFinite(Number(row.exit_h)) ? Number(row.exit_h) : 0,
                 dimension: Math.max(1, parseInt(row.dimension, 10) || getUniqueBusinessDimension(businessId)),
                 pawnInventory: parseBusinessPawnInventory(row.pawn_inventory),
+                interactRadius: sanitizeBusinessInteractRadius(row.interact_radius),
             };
 
             businessesById.set(business.id, business);
@@ -2022,6 +2037,26 @@ function getNearbyBusiness(player, radius = BUSINESS_INTERACT_RADIUS) {
         if (distance <= closestDistance) {
             closestDistance = distance;
             closest = business;
+        }
+
+        function getNearbyBusinessByInteractRadius(player, maxRadius = BUSINESS_INTERACT_RADIUS_MAX) {
+            if (!player || !player.position || Number(player.dimension) !== 0) return null;
+
+            const searchRadius = sanitizeBusinessInteractRadius(maxRadius);
+            let closest = null;
+            let closestDistance = Number.POSITIVE_INFINITY;
+
+            businessesById.forEach((business) => {
+                const distance = getDistanceBetweenPositions(player.position, business.entryPos);
+                const businessRadius = getBusinessInteractRadius(business);
+                if (distance > searchRadius || distance > businessRadius) return;
+                if (distance <= closestDistance) {
+                    closestDistance = distance;
+                    closest = business;
+                }
+            });
+
+            return closest;
         }
     });
 
@@ -2346,6 +2381,16 @@ function getBusinessProductList(business) {
 function getBusinessProduct(business, productRaw) {
     const normalizedType = normalizeInventoryItemType(productRaw) || String(productRaw || '').trim().toLowerCase();
     return getBusinessProductList(business).find(product => product.key === normalizedType || product.itemType === normalizedType) || null;
+}
+
+function getPawnShopBusinessForPlayer(player) {
+    const currentBusiness = getPlayerCurrentBusiness(player);
+    if (isPawnShopBusiness(currentBusiness)) return currentBusiness;
+
+    const nearbyBusiness = getNearbyBusinessByInteractRadius(player, BUSINESS_INTERACT_RADIUS_MAX);
+    if (isPawnShopBusiness(nearbyBusiness)) return nearbyBusiness;
+
+    return null;
 }
 
 function isPawnShopBusiness(business) {
@@ -3795,6 +3840,7 @@ function bootstrapDatabase() {
         exit_h FLOAT NOT NULL DEFAULT 0,
         dimension INT NOT NULL,
         pawn_inventory TEXT NULL,
+        interact_radius FLOAT NOT NULL DEFAULT 3.0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )`, (createErr) => {
         if (createErr) {
@@ -3831,6 +3877,12 @@ function bootstrapDatabase() {
         db.query('ALTER TABLE server_businesses ADD COLUMN pawn_inventory TEXT NULL', (alterErr) => {
             if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
                 console.error('[BUSINESS] Failed to add pawn_inventory column:', alterErr.message);
+            }
+        });
+
+        db.query('ALTER TABLE server_businesses ADD COLUMN interact_radius FLOAT NOT NULL DEFAULT 3.0', (alterErr) => {
+            if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') {
+                console.error('[BUSINESS] Failed to add interact_radius column:', alterErr.message);
             }
         });
 
@@ -6396,7 +6448,9 @@ mp.events.addCommand('buy', (player, fullText) => {
         return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
     }
 
-    const business = getPlayerCurrentBusiness(player);
+    const currentBusiness = getPlayerCurrentBusiness(player);
+    const nearbyBusiness = currentBusiness ? null : getNearbyBusinessByInteractRadius(player, BUSINESS_INTERACT_RADIUS_MAX);
+    const business = currentBusiness || nearbyBusiness;
     const isAt247Register = Boolean(getNearbyStatic247ShopRegister(player));
 
     let productList = [];
@@ -6503,9 +6557,9 @@ mp.events.addCommand('pawnstock', (player) => {
         return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
     }
 
-    const business = getPlayerCurrentBusiness(player);
+    const business = getPawnShopBusinessForPlayer(player);
     if (!isPawnShopBusiness(business)) {
-        return player.outputChatBox('!{#f7dc6f}Pawn stock galite perziureti tik lombardo viduje.');
+        return player.outputChatBox('!{#f7dc6f}Pawn stock galite perziureti tik lombardo viduje arba prie jo iejimo zonos.');
     }
 
     openPawnShopForPlayer(player, business, '', true, false);
@@ -6520,9 +6574,9 @@ mp.events.addCommand('pawnsell', (player, _, itemId) => {
         return player.outputChatBox('!{#f7dc6f}Naudojimas: /pawnsell [inventory item ID]');
     }
 
-    const business = getPlayerCurrentBusiness(player);
+    const business = getPawnShopBusinessForPlayer(player);
     if (!isPawnShopBusiness(business)) {
-        return player.outputChatBox('!{#f7dc6f}Daiktus parduoti galite tik lombardo viduje.');
+        return player.outputChatBox('!{#f7dc6f}Daiktus parduoti galite tik lombardo viduje arba prie jo iejimo zonos.');
     }
 
     if (!business.ownerCharId) {
@@ -6581,9 +6635,9 @@ function buyPawnStockItem(player, stockId, updateUi = false) {
         return player.outputChatBox('!{#f7dc6f}Naudojimas: /pawnbuy [stockId]');
     }
 
-    const business = getPlayerCurrentBusiness(player);
+    const business = getPawnShopBusinessForPlayer(player);
     if (!isPawnShopBusiness(business)) {
-        return player.outputChatBox('!{#f7dc6f}Pawn daiktus pirkti galite tik lombardo viduje.');
+        return player.outputChatBox('!{#f7dc6f}Pawn daiktus pirkti galite tik lombardo viduje arba prie jo iejimo zonos.');
     }
 
     const stockEntry = findPawnStockItem(business, stockId);
@@ -7457,7 +7511,7 @@ mp.events.addCommand('abiz', (player, fullText) => {
         if (!action) {
             player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz list, /abiz reload, /abiz select');
             player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz create [shop|gasstation|restaurant|pawnshop] [pavadinimas(optional)]');
-            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz setentry [id], /abiz setinterior [interiorId|list], /abiz setexit [id(optional)]');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz setentry [id], /abiz setinterior [interiorId|list], /abiz setexit [id(optional)], /abiz setradius [id(optional)] [metrai]');
             player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz delete [id], /abiz tpentry [id], /abiz tpinterior [id]');
             return;
         }
@@ -7469,7 +7523,7 @@ mp.events.addCommand('abiz', (player, fullText) => {
 
             player.outputChatBox('!{#85c1e9}===== ADMIN BUSINESS LIST =====');
             businessesById.forEach((business) => {
-                player.outputChatBox(`!{#d6eaf8}#${business.id} ${business.name} | ${getBusinessTypeLabel(business.type)} | dim ${business.dimension} | ${getBusinessAddressForDisplay(business)}`);
+                player.outputChatBox(`!{#d6eaf8}#${business.id} ${business.name} | ${getBusinessTypeLabel(business.type)} | dim ${business.dimension} | r ${getBusinessInteractRadius(business)}m | ${getBusinessAddressForDisplay(business)}`);
             });
             return;
         }
@@ -7503,8 +7557,8 @@ mp.events.addCommand('abiz', (player, fullText) => {
             const address = getAutoPropertyAddressFromPosition(pos);
 
             db.query(
-                'INSERT INTO server_businesses (business_key, name, business_type, address, owner_char_id, owner_char_name, bank_balance, entry_x, entry_y, entry_z, entry_h, interior_x, interior_y, interior_z, interior_h, exit_x, exit_y, exit_z, exit_h, dimension) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                [key, initialName, type, address, player.charId, player.charName, 0, pos.x, pos.y, pos.z, heading, pos.x, pos.y, pos.z, heading, pos.x, pos.y, pos.z, heading, 0],
+                'INSERT INTO server_businesses (business_key, name, business_type, address, owner_char_id, owner_char_name, bank_balance, entry_x, entry_y, entry_z, entry_h, interior_x, interior_y, interior_z, interior_h, exit_x, exit_y, exit_z, exit_h, dimension, interact_radius) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [key, initialName, type, address, player.charId, player.charName, 0, pos.x, pos.y, pos.z, heading, pos.x, pos.y, pos.z, heading, pos.x, pos.y, pos.z, heading, 0, BUSINESS_INTERACT_RADIUS],
                 (insertErr, result) => {
                     if (insertErr) {
                         console.error('[BUSINESS] /abiz create failed:', insertErr.message);
@@ -7528,6 +7582,7 @@ mp.events.addCommand('abiz', (player, fullText) => {
                         exitHeading: heading,
                         dimension: getUniqueBusinessDimension(result.insertId),
                         pawnInventory: [],
+                        interactRadius: BUSINESS_INTERACT_RADIUS,
                     };
 
                     businessesById.set(business.id, business);
@@ -7597,9 +7652,10 @@ mp.events.addCommand('abiz', (player, fullText) => {
 
         const fallbackSelectedBusinessId = parseInt(player.abizSelectedBusinessId, 10);
         const businessIdArg = parseInt(args[1], 10);
+        const selectedAllowed = action === 'setexit' || action === 'setradius';
         const resolvedBusinessId = Number.isFinite(businessIdArg)
             ? businessIdArg
-            : ((action === 'setexit' && Number.isFinite(fallbackSelectedBusinessId)) ? fallbackSelectedBusinessId : NaN);
+            : ((selectedAllowed && Number.isFinite(fallbackSelectedBusinessId)) ? fallbackSelectedBusinessId : NaN);
         const business = getBusinessById(resolvedBusinessId);
 
         if (!business) {
@@ -7633,6 +7689,18 @@ mp.events.addCommand('abiz', (player, fullText) => {
             business.exitHeading = heading;
             db.query('UPDATE server_businesses SET exit_x = ?, exit_y = ?, exit_z = ?, exit_h = ? WHERE id = ?', [pos.x, pos.y, pos.z, heading, business.id]);
             return player.outputChatBox(`!{#7aa164}Verslo #${business.id} isejimo taskas nustatytas.`);
+        }
+
+        if (action === 'setradius') {
+            const radiusRaw = Number.isFinite(businessIdArg) ? args[2] : args[1];
+            const parsedRadius = Number(radiusRaw);
+            if (!Number.isFinite(parsedRadius)) {
+                return player.outputChatBox(`!{#e74c3c}Naudojimas: /abiz setradius [id(optional)] [metrai ${BUSINESS_INTERACT_RADIUS_MIN}-${BUSINESS_INTERACT_RADIUS_MAX}]`);
+            }
+
+            business.interactRadius = sanitizeBusinessInteractRadius(parsedRadius);
+            db.query('UPDATE server_businesses SET interact_radius = ? WHERE id = ?', [business.interactRadius, business.id]);
+            return player.outputChatBox(`!{#7aa164}Verslo #${business.id} pirkimo/pawn zona nustatyta i ${business.interactRadius}m.`);
         }
 
         if (action === 'tpentry') {
