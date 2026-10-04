@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casino Floor</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --surface: rgba(13, 18, 18, 0.97);
+            --line: #45504b;
+            --text: #f0ead8;
+            --muted: #a5aa9c;
+            --gold: #d8b45a;
+            --red: #a93e3e;
+            --green: #28744d;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: transparent;
+            color: var(--text);
+            font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+        }
+
+        body {
+            display: grid;
+            place-items: center;
+            background: rgba(2, 5, 5, 0.72);
+        }
+
+        .table {
+            width: min(520px, calc(100vw - 32px));
+            padding: 24px;
+            border: 1px solid #665936;
+            background: var(--surface);
+            box-shadow: 0 22px 70px rgba(0, 0, 0, 0.58);
+        }
+
+        .top, .wallet, .limits, .footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .eyebrow { color: var(--gold); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; }
+        h1 { margin: 16px 0 4px; font-size: 30px; }
+        .subtitle { margin: 0; color: var(--muted); font-size: 13px; }
+        .wallet { margin: 20px 0; padding: 12px 0; border-block: 1px solid var(--line); }
+        .wallet span:first-child, .limits { color: var(--muted); font-size: 12px; }
+        .wallet strong { color: var(--gold); font-size: 18px; }
+        .roulette {
+            width: 116px;
+            height: 116px;
+            margin: 0 auto 18px;
+            display: grid;
+            place-items: center;
+            border: 2px solid var(--gold);
+            border-radius: 50%;
+            background: radial-gradient(circle at center, #26392f 0 44%, #17231e 45% 65%, #0d1212 66%);
+            color: var(--gold);
+            font-size: 38px;
+            font-weight: 800;
+        }
+
+        .roulette.red { color: #f1c4bd; border-color: var(--red); }
+        .roulette.black { color: #e6e2d8; border-color: #8d928d; }
+        .roulette.green { color: #b9ebcb; border-color: var(--green); }
+        .amount-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+        .amount-row label { color: var(--muted); font-size: 12px; }
+        input {
+            width: 100%;
+            min-width: 0;
+            padding: 11px 12px;
+            border: 1px solid var(--line);
+            background: #101715;
+            color: var(--text);
+            font-size: 16px;
+        }
+        .choices { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 9px; }
+        .choice {
+            min-height: 46px;
+            border: 1px solid var(--line);
+            background: #1d2521;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .choice[data-choice="red"] { border-color: #763737; background: #3b2020; }
+        .choice[data-choice="black"] { background: #151a18; }
+        .choice[data-choice="green"] { border-color: #266241; background: #173225; }
+        .choice:disabled { opacity: 0.45; }
+        .status { min-height: 38px; margin: 15px 0 6px; text-align: center; color: var(--gold); font-size: 13px; line-height: 1.4; }
+        .limits { justify-content: center; margin-bottom: 18px; }
+        .footer { color: var(--muted); font-size: 11px; }
+        .close { border: 0; background: transparent; color: var(--muted); font-size: 12px; }
+
+        @media (max-width: 420px) {
+            .table { padding: 18px; }
+            h1 { font-size: 26px; }
+            .roulette { width: 96px; height: 96px; font-size: 32px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="table">
+        <div class="top"><span class="eyebrow">CASINO FLOOR / EUROPEAN WHEEL</span><button class="close" type="button" onclick="closeCasino()">ESC / CLOSE</button></div>
+        <h1 id="businessName">Casino</h1>
+        <p class="subtitle">Single-zero roulette · payouts include your stake</p>
+        <div class="wallet"><span>Your cash</span><strong id="money">$0</strong></div>
+        <div id="roulette" class="roulette">?</div>
+        <div class="amount-row"><label for="stake">Wager</label><input id="stake" type="number" min="10" max="100000" step="10" value="100"></div>
+        <div class="limits" id="limits">Min $10 · Max $100,000</div>
+        <div class="choices">
+            <button class="choice" data-choice="red" type="button" onclick="placeBet('red')">RED · 2×</button>
+            <button class="choice" data-choice="black" type="button" onclick="placeBet('black')">BLACK · 2×</button>
+            <button class="choice" data-choice="green" type="button" onclick="placeBet('green')">ZERO · 36×</button>
+        </div>
+        <div id="status" class="status" aria-live="polite">Choose a color and place your wager.</div>
+        <div class="footer"><span>All wagers are recorded by the venue.</span><span>0 is green</span></div>
+    </main>
+    <script>
+        let casinoData = { money: 0, minBet: 10, maxBet: 100000 };
+        let requestPending = false;
+
+        function renderCasino(payloadJson, statusText, success) {
+            try { casinoData = typeof payloadJson === 'string' ? JSON.parse(payloadJson || '{}') : (payloadJson || {}); }
+            catch (error) { casinoData = { money: 0, minBet: 10, maxBet: 100000 }; }
+            document.getElementById('businessName').textContent = casinoData.businessName || 'Casino';
+            document.getElementById('money').textContent = `$${Number(casinoData.money || 0).toLocaleString('en-US')}`;
+            document.getElementById('stake').min = String(casinoData.minBet || 10);
+            document.getElementById('stake').max = String(casinoData.maxBet || 100000);
+            document.getElementById('limits').textContent = `Min $${Number(casinoData.minBet || 10).toLocaleString()} · Max $${Number(casinoData.maxBet || 100000).toLocaleString()}`;
+            const result = casinoData.lastResult;
+            const wheel = document.getElementById('roulette');
+            wheel.className = `roulette ${result ? result.color : ''}`;
+            wheel.textContent = result ? String(result.number) : '?';
+            if (statusText) setStatus(statusText, success);
+            requestPending = false;
+            setButtonsDisabled(false);
+        }
+
+        function setStatus(text, success) {
+            const status = document.getElementById('status');
+            status.textContent = text || '';
+            status.style.color = success === false ? '#e27d72' : success === true ? '#a8d5b4' : '#d8b45a';
+        }
+
+        function setButtonsDisabled(disabled) {
+            document.querySelectorAll('.choice').forEach((button) => { button.disabled = disabled; });
+        }
+
+        function placeBet(choice) {
+            if (requestPending) return;
+            const stake = Number(document.getElementById('stake').value);
+            if (!Number.isSafeInteger(stake) || stake <= 0) {
+                setStatus('Enter a valid whole-number wager.', false);
+                return;
+            }
+            requestPending = true;
+            setButtonsDisabled(true);
+            setStatus('The wheel is turning...', null);
+            mp.trigger('submitCasinoBet', choice, stake);
+        }
+
+        function casinoBetResult(payloadJson, statusText, success) {
+            renderCasino(payloadJson, statusText, success);
+        }
+
+        function closeCasino() {
+            mp.trigger('closeCasinoUI');
+        }
+
+        window.initCasino = renderCasino;
+        window.casinoBetResult = casinoBetResult;
+        window.closeCasino = closeCasino;
+        window.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeCasino();
+        });
+    </script>
+</body>
+</html>

@@ -18,6 +18,8 @@ let pawnShopBrowser = null;
 let isPawnShopOpen = false;
 let shopBuyBrowser = null;
 let isShopBuyOpen = false;
+let casinoBrowser = null;
+let isCasinoOpen = false;
 let dmvStartBrowser = null;
 let dmvQuizBrowser = null;
 let dmvRouteActive = false;
@@ -53,11 +55,7 @@ let activeDrugVisualTimeout = null;
 let serverFreezeActive = false;
 let downedRagdollActive = false;
 let cuffedActive = false;
-const SERVER_FREEZE_DISABLED_CONTROLS = [
-    21, 22, 23, 24, 25, 30, 31, 32, 33, 34, 35, 37, 44, 45, 59, 60, 63, 64,
-    69, 70, 71, 72, 75, 76, 92, 114, 140, 141, 142, 143, 257, 263, 264,
-];
-const CUFF_DISABLED_CONTROLS = [
+const PLAYER_LOCK_DISABLED_CONTROLS = [
     21, 22, 23, 24, 25, 30, 31, 32, 33, 34, 35, 37, 44, 45, 59, 60, 63, 64,
     69, 70, 71, 72, 75, 76, 92, 114, 140, 141, 142, 143, 257, 263, 264,
 ];
@@ -75,6 +73,56 @@ const MISSION_ROW_CELL_DOORS = [
     { x: 468.4872, y: -992.6641, z: 25.0644 },
 ];
 let lastMissionRowDoorLockAt = 0;
+let vehicleSecurityBrowser = null;
+let vehicleSecurityPayload = null;
+let vehicleSecurityBrowserReady = false;
+
+function sendVehicleSecurityPayload() {
+    if (!vehicleSecurityBrowser || !vehicleSecurityBrowserReady || !vehicleSecurityPayload) return;
+    vehicleSecurityBrowser.execute(`startSecurityGame(${JSON.stringify(vehicleSecurityPayload)});`);
+}
+
+function setVehicleSecurityUiOpenState(isOpen) {
+    globalThis.__isVehicleSecurityOpen = isOpen;
+    mp.gui.cursor.show(isOpen, isOpen);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(!isOpen);
+    if (mp.game && mp.game.controls && typeof mp.game.controls.disableAllControls === 'function') {
+        mp.game.controls.disableAllControls(isOpen);
+    }
+}
+
+function closeVehicleSecurityBrowser() {
+    const wasOpen = Boolean(vehicleSecurityBrowser || globalThis.__isVehicleSecurityOpen);
+    if (vehicleSecurityBrowser) {
+        try { vehicleSecurityBrowser.destroy(); } catch (error) { }
+        vehicleSecurityBrowser = null;
+    }
+    vehicleSecurityPayload = null;
+    vehicleSecurityBrowserReady = false;
+    if (wasOpen) setVehicleSecurityUiOpenState(false);
+}
+
+function openVehicleSecurityBrowser(payloadJson) {
+    closeVehicleSecurityBrowser();
+    if (globalThis.__isPhoneOpen || globalThis.__isInventoryOpen) {
+        try {
+            const payload = JSON.parse(payloadJson || '{}');
+            mp.events.callRemote('cancelVehicleSecurityAttempt', payload.attemptId || '');
+        } catch (error) { }
+        return;
+    }
+
+    vehicleSecurityPayload = String(payloadJson || '{}');
+    vehicleSecurityBrowser = mp.browsers.new('package://cef/vehicleSecurityUI.html');
+    vehicleSecurityBrowser.active = true;
+    setVehicleSecurityUiOpenState(true);
+    setTimeout(() => {
+        if (!vehicleSecurityBrowser || vehicleSecurityBrowserReady) return;
+        vehicleSecurityBrowserReady = true;
+        sendVehicleSecurityPayload();
+    }, 300);
+}
 
 function applyServerFreezeLock() {
     const localPlayer = mp.players.local;
@@ -91,7 +139,7 @@ function applyServerFreezeLock() {
 
     try {
         if (!mp.game || !mp.game.controls || typeof mp.game.controls.disableControlAction !== 'function') return;
-        SERVER_FREEZE_DISABLED_CONTROLS.forEach((control) => {
+        PLAYER_LOCK_DISABLED_CONTROLS.forEach((control) => {
             mp.game.controls.disableControlAction(0, control, true);
         });
     } catch (e) { }
@@ -140,7 +188,7 @@ function applyCuffedLock() {
 
     try {
         if (!mp.game || !mp.game.controls || typeof mp.game.controls.disableControlAction !== 'function') return;
-        CUFF_DISABLED_CONTROLS.forEach((control) => {
+        PLAYER_LOCK_DISABLED_CONTROLS.forEach((control) => {
             mp.game.controls.disableControlAction(0, control, true);
         });
     } catch (e) { }
@@ -174,8 +222,6 @@ function lockMissionRowCellDoors() {
         });
     });
 }
-
-mp.gui.chat.push('Hello World')
 
 globalThis.__isInventoryOpen = false;
 
@@ -265,6 +311,7 @@ function canToggleInventory() {
         && !paycheckBrowser
         && !isPawnShopOpen
         && !isShopBuyOpen
+        && !isCasinoOpen
         && !dmvStartBrowser
         && !dmvQuizBrowser
         && !isOnlineCharactersOpen
@@ -284,6 +331,7 @@ function canToggleOnlineCharacters() {
         && !paycheckBrowser
         && !isPawnShopOpen
         && !isShopBuyOpen
+        && !isCasinoOpen
         && !dmvStartBrowser
         && !dmvQuizBrowser
         && !isInventoryOpen
@@ -799,7 +847,6 @@ mp.events.add('updateServerTime', (serverTime) => {
     const hours = String(time.getHours()).padStart(2, '0'); // Format hours to 2 digits
     const minutes = String(time.getMinutes()).padStart(2, '0'); // Format minutes to 2 digits
     currentServerTime = `${hours}:${minutes}`;
-    console.log("Received server time:", currentServerTime); // Log to verify correct time format
 });
 
 // Render the time on the screen
@@ -1361,6 +1408,57 @@ mp.events.add('playDrugVisualEffect', (effectType, label, durationMs) => {
     playDrugScreenEffect(String(effectType || ''), String(label || ''), Number(durationMs) || 300000);
 });
 
+function openCasinoBrowser(payloadJson, statusText = '', success = true) {
+    if (casinoBrowser) {
+        try { casinoBrowser.destroy(); } catch (error) { }
+        casinoBrowser = null;
+    }
+    casinoBrowser = mp.browsers.new('package://cef/casinoUI.html');
+    casinoBrowser.active = true;
+    isCasinoOpen = true;
+    mp.gui.cursor.show(true, true);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(false);
+    if (mp.game && mp.game.controls && typeof mp.game.controls.disableAllControls === 'function') {
+        mp.game.controls.disableAllControls(true);
+    }
+    setTimeout(() => {
+        if (casinoBrowser) {
+            casinoBrowser.execute(`initCasino(${JSON.stringify(payloadJson || '{}')}, ${JSON.stringify(statusText || '')}, ${JSON.stringify(Boolean(success))});`);
+        }
+    }, 100);
+}
+
+function closeCasinoBrowser() {
+    if (casinoBrowser) {
+        try { casinoBrowser.destroy(); } catch (error) { }
+        casinoBrowser = null;
+    }
+    isCasinoOpen = false;
+    mp.gui.cursor.show(false, false);
+    mp.gui.chat.show(true);
+    mp.gui.chat.activate(true);
+    if (mp.game && mp.game.controls && typeof mp.game.controls.disableAllControls === 'function') {
+        mp.game.controls.disableAllControls(false);
+    }
+}
+
+mp.events.add('openCasinoUI', (payloadJson, statusText = '', success = true) => {
+    openCasinoBrowser(payloadJson, statusText, success);
+});
+
+mp.events.add('casinoBetResult', (payloadJson, statusText = '', success = true) => {
+    if (casinoBrowser) {
+        casinoBrowser.execute(`casinoBetResult(${JSON.stringify(payloadJson || '{}')}, ${JSON.stringify(statusText || '')}, ${JSON.stringify(Boolean(success))});`);
+    }
+});
+
+mp.events.add('submitCasinoBet', (choice, amount) => {
+    mp.events.callRemote('submitCasinoBet', String(choice || ''), Number(amount) || 0);
+});
+
+mp.events.add('closeCasinoUI', () => closeCasinoBrowser());
+
 mp.events.add('openPawnShopUI', (payloadJson, statusText = '', success = true) => {
     openPawnShopBrowser(payloadJson, statusText, success);
 });
@@ -1891,6 +1989,12 @@ mp.events.add('closeBarberUIBrowser', () => {
 });
 
 mp.events.add('browserDomReady', (browserInstance) => {
+    if (browserInstance === vehicleSecurityBrowser && vehicleSecurityPayload) {
+        vehicleSecurityBrowserReady = true;
+        sendVehicleSecurityPayload();
+        return;
+    }
+
     if (browserInstance === inventoryBrowser && pendingInventoryState) {
         isInventoryDomReady = true;
 
@@ -1918,6 +2022,24 @@ mp.events.add('browserDomReady', (browserInstance) => {
             pendingHouseState.success
         );
     }
+});
+
+mp.events.add('startVehicleSecurityMinigame', (payloadJson) => {
+    openVehicleSecurityBrowser(payloadJson);
+});
+
+mp.events.add('vehicleSecuritySubmit', (attemptId, keysJson) => {
+    mp.events.callRemote('submitVehicleSecurityMinigame', String(attemptId || ''), String(keysJson || '[]'));
+});
+
+mp.events.add('vehicleSecurityCancel', (attemptId) => {
+    mp.events.callRemote('cancelVehicleSecurityAttempt', String(attemptId || ''));
+    closeVehicleSecurityBrowser();
+});
+
+mp.events.add('vehicleSecurityResult', (success, message) => {
+    closeVehicleSecurityBrowser();
+    mp.gui.chat.push(`${success ? '!{#7aa164}' : '!{#e74c3c}'}${String(message || '')}`);
 });
 
 mp.events.add('requestBarberLimits', () => {

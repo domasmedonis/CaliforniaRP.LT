@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Security</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --panel: rgba(12, 18, 20, 0.97);
+            --line: #384448;
+            --muted: #a3b1b1;
+            --text: #eef2eb;
+            --signal: #e4b94f;
+            --success: #8fc5a0;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            background: transparent;
+            color: var(--text);
+            font-family: "Bahnschrift", "Arial Narrow", sans-serif;
+        }
+
+        body {
+            display: grid;
+            place-items: center;
+            background: rgba(3, 7, 8, 0.66);
+        }
+
+        .panel {
+            width: min(540px, calc(100vw - 36px));
+            padding: 24px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+            box-shadow: 0 18px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .topline, .footer, .meter-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .eyebrow, .meta, .instruction, .footer {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .eyebrow { letter-spacing: 1.4px; font-weight: 700; }
+
+        .phase {
+            padding: 5px 8px;
+            border: 1px solid #716039;
+            color: var(--signal);
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        h1 {
+            margin: 12px 0 4px;
+            font-size: 25px;
+            line-height: 1.1;
+            font-weight: 700;
+        }
+
+        .instruction { margin: 8px 0 18px; line-height: 1.5; }
+        .meter-label { margin: 0 0 7px; font-size: 11px; color: var(--muted); }
+        .meter { height: 5px; overflow: hidden; background: #2b3538; }
+        .meter-fill { width: 100%; height: 100%; background: var(--signal); transform-origin: left center; }
+
+        .sequence {
+            min-height: 108px;
+            margin: 18px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            border: 1px solid var(--line);
+            background: #101719;
+        }
+
+        .symbol {
+            width: 42px;
+            height: 42px;
+            display: grid;
+            place-items: center;
+            border: 1px solid #536165;
+            color: var(--text);
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .symbol.active { border-color: var(--signal); color: var(--signal); background: #352d19; }
+        .symbol.done { border-color: #477254; color: var(--success); }
+        .symbol.hidden { color: #4f5a5e; }
+
+        .keypad {
+            width: min(244px, 100%);
+            margin: 0 auto 14px;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        .key {
+            height: 52px;
+            border: 1px solid var(--line);
+            background: #172124;
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .key:active, .key.pressed { border-color: var(--signal); color: var(--signal); }
+        .status { min-height: 20px; margin-bottom: 18px; text-align: center; color: var(--signal); font-size: 12px; }
+        .cancel { border: 0; background: transparent; color: var(--muted); font-size: 12px; }
+        .footer strong { color: var(--text); font-weight: 600; }
+
+        @media (max-width: 420px) {
+            .panel { padding: 18px; }
+            h1 { font-size: 22px; }
+            .sequence { min-height: 92px; gap: 5px; }
+            .symbol { width: 36px; height: 36px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="panel" aria-live="polite">
+        <div class="topline">
+            <span class="eyebrow">VEHICLE SECURITY / FIELD KIT</span>
+            <span id="phase" class="phase">LOCKED</span>
+        </div>
+        <h1 id="title">Initializing</h1>
+        <p id="instruction" class="instruction">Prepare to reproduce the sequence.</p>
+        <div class="meter-label"><span id="roundLabel">SEQUENCE</span><span id="timer">--</span></div>
+        <div class="meter"><div id="meterFill" class="meter-fill"></div></div>
+        <div id="sequence" class="sequence"></div>
+        <div class="keypad" aria-label="Directional input">
+            <button class="key" data-key="w" type="button">W</button>
+            <button class="key" data-key="a" type="button">A</button>
+            <button class="key" data-key="s" type="button">S</button>
+            <button class="key" data-key="d" type="button">D</button>
+        </div>
+        <div id="status" class="status">Observe, memorize, then repeat exactly.</div>
+        <div class="footer"><span>INPUT: <strong>W A S D</strong></span><button class="cancel" type="button" onclick="cancelAttempt()">ESC / CANCEL</button></div>
+    </main>
+    <script>
+        const symbols = { w: '↑', a: '←', s: '↓', d: '→' };
+        let state = null;
+        let timerFrame = null;
+        let previewTimer = null;
+
+        function renderSequence(showPreview = false) {
+            const container = document.getElementById('sequence');
+            container.replaceChildren();
+            state.sequence.forEach((key, index) => {
+                const symbol = document.createElement('span');
+                symbol.className = 'symbol';
+                if (showPreview) {
+                    symbol.textContent = symbols[key];
+                } else if (index < state.entered.length) {
+                    symbol.classList.add('done');
+                    symbol.textContent = symbols[state.entered[index]];
+                } else {
+                    symbol.classList.add('hidden');
+                    symbol.textContent = '•';
+                }
+                container.appendChild(symbol);
+            });
+        }
+
+        function startSecurityGame(payloadJson) {
+            let payload;
+            try { payload = typeof payloadJson === 'string' ? JSON.parse(payloadJson) : payloadJson; }
+            catch (error) { return; }
+            if (!payload || !Array.isArray(payload.sequence) || !payload.attemptId) return;
+
+            if (timerFrame) cancelAnimationFrame(timerFrame);
+            if (previewTimer) clearTimeout(previewTimer);
+            state = {
+                attemptId: String(payload.attemptId),
+                mode: payload.mode === 'hotwire' ? 'hotwire' : 'breakin',
+                sequence: payload.sequence.map((key) => String(key).toLowerCase()),
+                entered: [],
+                startedAt: performance.now(),
+                timeLimitMs: Math.max(5000, Number(payload.timeLimitMs) || 18000),
+                previewMs: Math.max(700, Number(payload.previewMs) || 1400),
+                submitted: false,
+            };
+
+            document.getElementById('phase').textContent = state.mode === 'hotwire' ? 'IGNITION' : 'LOCK CYLINDER';
+            document.getElementById('title').textContent = state.mode === 'hotwire' ? 'Hotwire sequence' : 'Pick the lock';
+            document.getElementById('instruction').textContent = state.mode === 'hotwire'
+                ? 'Study the wire pulses. Repeat the sequence before the circuit resets.'
+                : 'Study the pin sequence. Repeat it exactly before the tension slips.';
+            document.getElementById('roundLabel').textContent = `${state.sequence.length} INPUTS / NO MISTAKES`;
+            document.getElementById('status').textContent = 'Memorize the sequence...';
+            document.querySelectorAll('.key').forEach((button) => { button.disabled = false; });
+            renderSequence(true);
+            updateTimer();
+            previewTimer = setTimeout(() => {
+                if (!state || state.submitted) return;
+                document.getElementById('status').textContent = 'Repeat the sequence now.';
+                renderSequence(false);
+            }, state.previewMs);
+        }
+
+        function updateTimer() {
+            if (!state || state.submitted) return;
+            const elapsed = performance.now() - state.startedAt;
+            const remaining = Math.max(0, state.timeLimitMs - elapsed);
+            document.getElementById('timer').textContent = `${(remaining / 1000).toFixed(1)}s`;
+            document.getElementById('meterFill').style.transform = `scaleX(${remaining / state.timeLimitMs})`;
+            if (remaining <= 0) return submitAttempt();
+            timerFrame = requestAnimationFrame(updateTimer);
+        }
+
+        function pressKey(key) {
+            if (!state || state.submitted || performance.now() - state.startedAt < state.previewMs) return;
+            if (!Object.prototype.hasOwnProperty.call(symbols, key)) return;
+            state.entered.push(key);
+            renderSequence(false);
+            const index = state.entered.length - 1;
+            if (state.entered[index] !== state.sequence[index]) {
+                document.getElementById('status').textContent = 'Wrong input. Checking lock integrity...';
+                return submitAttempt();
+            }
+            if (state.entered.length === state.sequence.length) {
+                document.getElementById('status').textContent = 'Sequence accepted. Checking vehicle...';
+                submitAttempt();
+            }
+        }
+
+        function submitAttempt() {
+            if (!state || state.submitted) return;
+            state.submitted = true;
+            if (timerFrame) cancelAnimationFrame(timerFrame);
+            if (previewTimer) clearTimeout(previewTimer);
+            document.querySelectorAll('.key').forEach((button) => { button.disabled = true; });
+            document.getElementById('status').textContent = 'Validating attempt...';
+            mp.trigger('vehicleSecuritySubmit', state.attemptId, JSON.stringify(state.entered));
+        }
+
+        function cancelAttempt() {
+            if (!state || state.submitted) return;
+            state.submitted = true;
+            mp.trigger('vehicleSecurityCancel', state.attemptId);
+        }
+
+        document.addEventListener('keydown', (event) => {
+            const key = event.key.toLowerCase();
+            if (key === 'escape') {
+                event.preventDefault();
+                cancelAttempt();
+                return;
+            }
+            if (Object.prototype.hasOwnProperty.call(symbols, key)) {
+                event.preventDefault();
+                pressKey(key);
+            }
+        });
+
+        document.querySelectorAll('.key').forEach((button) => {
+            button.addEventListener('click', () => pressKey(button.dataset.key));
+        });
+
+        window.startSecurityGame = startSecurityGame;
+        window.cancelAttempt = cancelAttempt;
+    </script>
+</body>
+</html>

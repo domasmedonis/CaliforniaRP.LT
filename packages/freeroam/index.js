@@ -1,6 +1,7 @@
 ﻿const bcrypt = require('bcrypt');
 const mysql = require('mysql');
 const moment = require('moment-timezone');
+const crypto = require('crypto');
 
 
 
@@ -11,9 +12,27 @@ const pendingRentOffers = new Map();
 const vehicleFuelRuntimeState = new Map();
 const activeDMVTests = new Map();
 const activeEmergencyReports = new Map();
-let nextEmergencyReportId = 1;
+const activeVehicleSecurityAttempts = new Map();
+const vehicleSecurityCooldowns = new Map();
+const vehicleSecurityFailures = new Map();
+const casinoBetCooldowns = new Map();
+const DRIVE_MAX_FARE = 50000;
+const CASINO_MIN_BET = 10;
+const CASINO_MAX_BET = 100000;
+const BETTING_MIN_STAKE = 10;
+const BETTING_MAX_STAKE = 250000;
+const BETTING_PAYOUT_NUMERATOR = 9;
+const BETTING_PAYOUT_DENOMINATOR = 5;
+const ROULETTE_RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
+const VEHICLE_BREAKIN_RADIUS = 2.8;
+const VEHICLE_SECURITY_COOLDOWN_MS = 12000;
+const VEHICLE_SECURITY_MODES = Object.freeze({
+    breakin: { sequenceLength: 6, previewMs: 1400, minInputMs: 190, timeLimitMs: 20000, label: 'LOCKPICK' },
+    hotwire: { sequenceLength: 8, previewMs: 1700, minInputMs: 210, timeLimitMs: 18000, label: 'HOTWIRE' },
+});
 const POLICE_MDC_WARRANT_STATUS_OPEN = 'open';
 const POLICE_MDC_WARRANT_STATUS_CLEARED = 'cleared';
+const POLICE_MDC_WARRANT_STATUS_SERVED = 'served';
 
 const INVENTORY_GIVE_RADIUS = 5.0;
 const DRUG_EFFECT_DELAY_MS = 120000;
@@ -97,6 +116,120 @@ const WEAPON_HASH_TO_LABEL = Object.freeze({
 });
 
 const INVENTORY_ITEM_DEFS = Object.freeze({
+    cannabis_seed: {
+        name: 'Marihuanos sekla',
+        description: 'Administratoriaus isduodama seklu pakuote auginimui.',
+        icon: 'weed',
+        usable: false,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: false,
+    },
+    cannabis_grams: {
+        name: 'Marihuana (g)',
+        description: 'Namuose uzauginta marihuana, matuojama gramais.',
+        icon: 'weed',
+        usable: false,
+        droppable: true,
+        giveable: true,
+        consumeOnUse: false,
+    },
+    lab_solvent: {
+        name: 'Laboratorinis tirpiklis',
+        description: 'Fiktyvus zaidimo laboratorijos reagentas.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    reagent_alpha: {
+        name: 'Reagentas Alfa',
+        description: 'Fiktyvus zaidimo laboratorijos reagentas.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    blotter_sheets: {
+        name: 'Popieriaus lapeliai',
+        description: 'Zaidimo gamybos medziaga.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    reagent_beta: {
+        name: 'Reagentas Beta',
+        description: 'Fiktyvus zaidimo laboratorijos reagentas.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    purification_filter: {
+        name: 'Valymo filtras',
+        description: 'Zaidimo gamybos medziaga.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    crystal_vial: {
+        name: 'Kristalu buteliukas',
+        description: 'Zaidimo gamybos medziaga.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    reagent_gamma: {
+        name: 'Reagentas Gama',
+        description: 'Fiktyvus zaidimo laboratorijos reagentas.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    reagent_delta: {
+        name: 'Reagentas Delta',
+        description: 'Fiktyvus zaidimo laboratorijos reagentas.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    cooling_pack: {
+        name: 'Ausinimo paketas',
+        description: 'Zaidimo gamybos medziaga.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    reagent_epsilon: {
+        name: 'Reagentas Epsilon',
+        description: 'Fiktyvus zaidimo laboratorijos reagentas.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    binding_agent: {
+        name: 'Saisancioji medziaga',
+        description: 'Fiktyvus zaidimo laboratorijos reagentas.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
+    tablet_matrix: {
+        name: 'Tableciu matrica',
+        description: 'Zaidimo gamybos medziaga.',
+        icon: 'BOX',
+        usable: false,
+        droppable: true,
+        giveable: true,
+    },
     water: {
         name: 'Vanduo',
         description: 'Atkuria 5 gyvybes.',
@@ -308,6 +441,23 @@ const INVENTORY_ITEM_DEFS = Object.freeze({
 });
 
 const INVENTORY_ITEM_ALIASES = Object.freeze({
+    cannabis_seed: 'cannabis_seed',
+    cannabis_seeds: 'cannabis_seed',
+    marihuanaseed: 'cannabis_seed',
+    marihuanaseeds: 'cannabis_seed',
+    cannabis_grams: 'cannabis_grams',
+    lab_solvent: 'lab_solvent',
+    reagent_alpha: 'reagent_alpha',
+    blotter_sheets: 'blotter_sheets',
+    reagent_beta: 'reagent_beta',
+    purification_filter: 'purification_filter',
+    crystal_vial: 'crystal_vial',
+    reagent_gamma: 'reagent_gamma',
+    reagent_delta: 'reagent_delta',
+    cooling_pack: 'cooling_pack',
+    reagent_epsilon: 'reagent_epsilon',
+    binding_agent: 'binding_agent',
+    tablet_matrix: 'tablet_matrix',
     water: 'water',
     vanduo: 'water',
     burger: 'burger',
@@ -370,6 +520,32 @@ const DRUG_EFFECT_DEFS = Object.freeze({
     heroin: { effect: 'heroin' },
     ecstasy: { effect: 'ecstasy' },
     lsd: { effect: 'lsd' },
+});
+
+const CANNABIS_GROW_DURATION_MS = 3 * 24 * 60 * 60 * 1000;
+const HOUSE_CANNABIS_PLANT_LIMIT = 10;
+const DRUG_SYNTHESIS_DURATION_MS = 5 * 60 * 1000;
+const DRUG_SYNTHESIS_RECIPES = Object.freeze({
+    lsd: {
+        label: 'LSD',
+        outputType: 'lsd',
+        ingredients: Object.freeze({ lab_solvent: 1, reagent_alpha: 1, blotter_sheets: 1 }),
+    },
+    cocaine: {
+        label: 'Kokainas',
+        outputType: 'cocaine',
+        ingredients: Object.freeze({ reagent_beta: 1, purification_filter: 1, crystal_vial: 1 }),
+    },
+    meth: {
+        label: 'Metamfetaminas',
+        outputType: 'meth',
+        ingredients: Object.freeze({ reagent_gamma: 1, reagent_delta: 1, cooling_pack: 1 }),
+    },
+    ecstasy: {
+        label: 'Ekstazis',
+        outputType: 'ecstasy',
+        ingredients: Object.freeze({ reagent_epsilon: 1, binding_agent: 1, tablet_matrix: 1 }),
+    },
 });
 
 const TWITTER_COOLDOWN = 3600000; // 1 hour between posts
@@ -532,6 +708,20 @@ const BUSINESS_TYPE_DEFS = Object.freeze({
         buyEnabled: false,
         products: [],
     },
+    casino: {
+        label: 'Kazino',
+        blipColor: 46,
+        markerColor: [212, 175, 55, 170],
+        buyEnabled: false,
+        products: [],
+    },
+    betting_house: {
+        label: 'Lažybų namai',
+        blipColor: 3,
+        markerColor: [52, 152, 219, 170],
+        buyEnabled: false,
+        products: [],
+    },
 });
 
 const BUSINESS_TYPE_ALIASES = Object.freeze({
@@ -548,6 +738,12 @@ const BUSINESS_TYPE_ALIASES = Object.freeze({
     pawnshop: 'pawn_shop',
     pawn_shop: 'pawn_shop',
     lombardas: 'pawn_shop',
+    casino: 'casino',
+    kasino: 'casino',
+    betting: 'betting_house',
+    bettinghouse: 'betting_house',
+    betting_house: 'betting_house',
+    lazymunamai: 'betting_house',
 });
 
 const APROP_INTERIOR_PRESETS = Object.freeze({
@@ -863,7 +1059,7 @@ function setPlayerCuffed(target, state, officer = null) {
     target.call('setCuffedState', [Boolean(state)]);
 }
 
-function releasePlayerFromJail(target, notify = true) {
+function releasePlayerFromJail(target, notify = true, releasedBy = null) {
     if (!target) return;
     if (target.jailTimer) {
         clearTimeout(target.jailTimer);
@@ -871,17 +1067,111 @@ function releasePlayerFromJail(target, notify = true) {
     }
     target.isJailed = false;
     target.jailedUntil = null;
+    target.jailReason = null;
+    target.jailedByCharId = null;
+    target.jailedByName = null;
     target.position = PD_RELEASE_POS;
     target.heading = PD_RELEASE_HEADING;
     target.dimension = 0;
     setPlayerCuffed(target, false);
+    if (target.charId) {
+        db.query('UPDATE characters SET jailed_until = NULL, jail_reason = NULL, jailed_by_char_id = NULL, jailed_by_name = NULL WHERE id = ?', [target.charId], (err) => {
+            if (err) console.error('[JAIL] Failed to clear persistent sentence:', err.message);
+        });
+        db.query(
+            "UPDATE police_arrests SET released_at = NOW(), released_by_char_id = ?, released_by_name = ? WHERE char_id = ? AND released_at IS NULL ORDER BY created_at DESC LIMIT 1",
+            [releasedBy && releasedBy.charId || null, releasedBy && releasedBy.charName || 'Sentence completed', target.charId],
+            (err) => {
+                if (err) console.error('[PD] Failed to close arrest record:', err.message);
+            }
+        );
+    }
     if (notify) {
         target.outputChatBox('!{#7aa164}Jus paleistas is sulaikymo kameros.');
     }
 }
 
+function startPlayerJailSentence(target, sentence) {
+    if (!target || !sentence) return;
+    if (target.jailTimer) clearTimeout(target.jailTimer);
+    target.isJailed = true;
+    target.jailedUntil = Number(sentence.until);
+    target.jailReason = sentence.reason;
+    target.jailedByCharId = sentence.officerCharId;
+    target.jailedByName = sentence.officerName;
+    target.dimension = 0;
+    target.position = PD_JAIL_POS;
+    target.heading = PD_JAIL_HEADING;
+    setPlayerCuffed(target, false);
+
+    const expectedUntil = target.jailedUntil;
+    target.jailTimer = setTimeout(() => {
+        if (Number(target.jailedUntil) !== expectedUntil) return;
+        delete target.jailTimer;
+        releasePlayerFromJail(target, true);
+    }, Math.max(0, expectedUntil - Date.now()));
+}
+
+function bookPlayerIntoJail(officer, target, options, callback) {
+    const sentenceMinutes = Math.max(1, Math.min(60, Number(options.minutes) || 1));
+    const reason = String(options.reason || '').trim().replace(/\s+/g, ' ').slice(0, 255);
+    const jailedUntil = Date.now() + sentenceMinutes * 60000;
+    const warrantId = Number(options.warrantId) || null;
+    const reportId = Number(officer.activeEmergencyReportId) || null;
+    if (!officer.charId || !target.charId || !reason) return callback(new Error('Missing arrest data.'));
+
+    db.getConnection((connectionErr, connection) => {
+        if (connectionErr) return callback(connectionErr);
+        connection.beginTransaction((transactionErr) => {
+            if (transactionErr) {
+                connection.release();
+                return callback(transactionErr);
+            }
+
+            const rollback = (err) => connection.rollback(() => {
+                connection.release();
+                callback(err);
+            });
+            const writeSentence = () => {
+                connection.query(
+                    'UPDATE characters SET jailed_until = ?, jail_reason = ?, jailed_by_char_id = ?, jailed_by_name = ? WHERE id = ?',
+                    [jailedUntil, reason, officer.charId, officer.charName, target.charId],
+                    (stateErr, stateResult) => {
+                        if (stateErr) return rollback(stateErr);
+                        if (!stateResult.affectedRows) return rollback(new Error('Arrestee character not found.'));
+                        connection.query(
+                            'INSERT INTO police_arrests (char_id, suspect_name, officer_char_id, officer_name, warrant_id, report_id, arrest_type, sentence_minutes, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                            [target.charId, target.charName, officer.charId, officer.charName, warrantId, reportId, warrantId ? 'warrant' : 'booking', sentenceMinutes, reason],
+                            (arrestErr, result) => {
+                                if (arrestErr) return rollback(arrestErr);
+                                connection.commit((commitErr) => {
+                                    if (commitErr) return rollback(commitErr);
+                                    connection.release();
+                                    callback(null, { id: Number(result.insertId), until: jailedUntil, minutes: sentenceMinutes, reason });
+                                });
+                            }
+                        );
+                    }
+                );
+            };
+
+            if (!warrantId) return writeSentence();
+            connection.query(
+                'UPDATE police_mdc_warrants SET status = ?, served_at = NOW(), served_by_char_id = ?, served_by_name = ?, report_id = COALESCE(report_id, ?) WHERE id = ? AND char_id = ? AND status = ?',
+                [POLICE_MDC_WARRANT_STATUS_SERVED, officer.charId, officer.charName, reportId, warrantId, target.charId, POLICE_MDC_WARRANT_STATUS_OPEN],
+                (warrantErr, warrantResult) => {
+                    if (warrantErr) return rollback(warrantErr);
+                    if (!warrantResult.affectedRows) return rollback(new Error('WARRANT_NOT_OPEN'));
+                    writeSentence();
+                }
+            );
+        });
+    });
+}
+
 function isNearPdJailCells(player, radius = PD_JAIL_COMMAND_RADIUS) {
-    return player && player.position && getDistanceBetweenPositions(player.position, PD_JAIL_POS) <= radius;
+    return Boolean(player && player.position && Number(player.dimension) === 0
+        && getDistanceBetweenPositions(player.position, PD_JAIL_POS) <= radius);
 }
 
 function splitCommandText(fullText) {
@@ -900,12 +1190,7 @@ function persistPlayerBankBalance(player) {
 }
 
 function requirePoliceMdcAccess(player) {
-    if (!requireFactionMember(player, 'pd', true)) return false;
-    if (!player.vehicle) {
-        player.outputChatBox('!{#f7dc6f}MDC galite naudoti tik budedami ir sededami automobilyje.');
-        return false;
-    }
-    return true;
+    return requireFactionMember(player, 'pd', true);
 }
 
 function formatFactionRoleLabel(factionKey, factionRank) {
@@ -934,6 +1219,9 @@ function resolveCharacterRecordForPolice(identifier, callback) {
             drivers_license: onlinePlayer.hasDriversLicense ? 1 : 0,
             faction_key: onlinePlayer.factionKey || null,
             faction_rank: onlinePlayer.factionRank || 0,
+            health: Number(onlinePlayer.health) || 0,
+            jailed_until: Number(onlinePlayer.jailedUntil) || null,
+            jail_reason: onlinePlayer.jailReason || null,
         }, onlinePlayer);
         return;
     }
@@ -951,21 +1239,21 @@ function resolveCharacterRecordForPolice(identifier, callback) {
     };
 
     if (/^\d+$/.test(trimmed)) {
-        db.query('SELECT id, char_name, drivers_license, faction_key, faction_rank FROM characters WHERE id = ? LIMIT 2', [parseInt(trimmed, 10)], (err, rows) => {
+        db.query('SELECT id, char_name, drivers_license, faction_key, faction_rank, health, jailed_until, jail_reason FROM characters WHERE id = ? LIMIT 2', [parseInt(trimmed, 10)], (err, rows) => {
             if (err) return callback(err);
             handleRows(rows);
         });
         return;
     }
 
-    db.query('SELECT id, char_name, drivers_license, faction_key, faction_rank FROM characters WHERE LOWER(char_name) = LOWER(?) LIMIT 1', [trimmed], (exactErr, exactRows) => {
+    db.query('SELECT id, char_name, drivers_license, faction_key, faction_rank, health, jailed_until, jail_reason FROM characters WHERE LOWER(char_name) = LOWER(?) LIMIT 1', [trimmed], (exactErr, exactRows) => {
         if (exactErr) return callback(exactErr);
         if (exactRows && exactRows.length === 1) {
             handleRows(exactRows);
             return;
         }
 
-        db.query('SELECT id, char_name, drivers_license, faction_key, faction_rank FROM characters WHERE LOWER(char_name) LIKE LOWER(?) ORDER BY char_name ASC LIMIT 2', [`${trimmed}%`], (likeErr, likeRows) => {
+        db.query('SELECT id, char_name, drivers_license, faction_key, faction_rank, health, jailed_until, jail_reason FROM characters WHERE LOWER(char_name) LIKE LOWER(?) ORDER BY char_name ASC LIMIT 2', [`${trimmed}%`], (likeErr, likeRows) => {
             if (likeErr) return callback(likeErr);
             handleRows(likeRows);
         });
@@ -974,7 +1262,8 @@ function resolveCharacterRecordForPolice(identifier, callback) {
 
 function showPoliceMdcHelp(player) {
     player.outputChatBox('!{#5dade2}[MDC] /mdc person [ID/vardas], /mdc plate [numeriai]');
-    player.outputChatBox('!{#5dade2}[MDC] /mdc warrant [ID/vardas] [priezastis], /mdc warrants [ID/vardas], /mdc clear [warrant ID]');
+    player.outputChatBox('!{#5dade2}[MDC] /mdc fines [ID/vardas], /mdc arrests [ID/vardas]');
+    player.outputChatBox('!{#5dade2}[MDC] /mdc warrant [ID/vardas] [priezastis], /mdc warrants [ID/vardas], /mdc clear [warrant ID] [priezastis]');
 }
 
 function handlePoliceMdcPersonLookup(player, identifier) {
@@ -997,23 +1286,35 @@ function handlePoliceMdcPersonLookup(player, identifier) {
                     console.error('[MDC] warrant lookup failed:', warrantErr.message);
                     return player.outputChatBox('!{#e74c3c}Nepavyko gauti ieskomumo informacijos.');
                 }
+                db.query(`SELECT id, arrest_type, sentence_minutes, reason, officer_name, created_at, released_at FROM police_arrests WHERE char_id = ? ORDER BY created_at DESC LIMIT ${POLICE_MDC_HISTORY_LIMIT}`, [record.id], (arrestErr, arrestRows) => {
+                    if (arrestErr) {
+                        console.error('[MDC] arrest history failed:', arrestErr.message);
+                        return player.outputChatBox('!{#e74c3c}Nepavyko gauti sulaikymu istorijos.');
+                    }
 
-                const fineSummary = (fineRows && fineRows[0]) || { totalCount: 0, totalAmount: 0 };
-                const statusParts = [onlinePlayer ? 'online' : 'offline'];
-                if (onlinePlayer && onlinePlayer.isCuffed) statusParts.push('cuffed');
-                if (onlinePlayer && onlinePlayer.isJailed) statusParts.push('jailed');
-                const roleLabel = formatFactionRoleLabel(record.faction_key, record.faction_rank);
-                const licenseLabel = Number(record.drivers_license || 0) === 1 ? 'yes' : 'no';
+                    const fineSummary = (fineRows && fineRows[0]) || { totalCount: 0, totalAmount: 0 };
+                    const statusParts = [onlinePlayer ? 'online' : 'offline'];
+                    const isJailed = onlinePlayer ? Boolean(onlinePlayer.isJailed) : Number(record.jailed_until) > Date.now();
+                    if (onlinePlayer && onlinePlayer.isCuffed) statusParts.push('cuffed');
+                    if (isJailed) statusParts.push('jailed');
+                    const roleLabel = formatFactionRoleLabel(record.faction_key, record.faction_rank);
+                    const licenseLabel = Number(record.drivers_license || 0) === 1 ? 'yes' : 'no';
 
-                player.outputChatBox(`!{#5dade2}[MDC] ${record.char_name} (ID ${record.id}) | ${statusParts.join(', ')} | license: ${licenseLabel}`);
-                player.outputChatBox(`!{#d6eaf8}[MDC] Role: ${roleLabel} | fines: ${fineSummary.totalCount} / $${fineSummary.totalAmount || 0} | open warrants: ${warrantRows.length}`);
-                if (!warrantRows || warrantRows.length === 0) {
-                    player.outputChatBox('!{#d5f5e3}[MDC] Open warrants: none.');
-                    return;
-                }
+                    player.outputChatBox(`!{#5dade2}[MDC] ${record.char_name} (ID ${record.id}) | ${statusParts.join(', ')} | license: ${licenseLabel} | health: ${record.health || 0}`);
+                    if (isJailed) player.outputChatBox(`!{#e74c3c}[MDC] Custody until ${formatMdcTimestamp(Number(record.jailed_until))} | ${record.jail_reason || 'no reason recorded'}`);
+                    player.outputChatBox(`!{#d6eaf8}[MDC] Role: ${roleLabel} | fines: ${fineSummary.totalCount} / $${fineSummary.totalAmount || 0} | open warrants: ${warrantRows.length} | recent arrests: ${arrestRows.length}`);
 
-                warrantRows.forEach((row) => {
-                    player.outputChatBox(`!{#f9e79f}[MDC] W#${row.id} | ${formatMdcTimestamp(row.created_at)} | ${row.issued_by_name}: ${row.reason}`);
+                    if (!warrantRows || warrantRows.length === 0) {
+                        player.outputChatBox('!{#d5f5e3}[MDC] Open warrants: none.');
+                    } else {
+                        warrantRows.forEach((row) => {
+                            player.outputChatBox(`!{#f9e79f}[MDC] W#${row.id} | ${formatMdcTimestamp(row.created_at)} | ${row.issued_by_name}: ${row.reason}`);
+                        });
+                    }
+                    arrestRows.forEach((row) => {
+                        const custodyStatus = row.released_at ? `released ${formatMdcTimestamp(row.released_at)}` : 'sentence active';
+                        player.outputChatBox(`!{#f5cba7}[MDC] A#${row.id} | ${formatMdcTimestamp(row.created_at)} | ${row.officer_name} | ${row.sentence_minutes} min | ${custodyStatus} | ${row.reason}`);
+                    });
                 });
             });
         });
@@ -1061,12 +1362,14 @@ function handlePoliceMdcWarrantCreate(player, identifier, reasonText) {
         }
         if (!record) return player.outputChatBox('!{#f7dc6f}Asmuo nerastas.');
 
-        db.query('INSERT INTO police_mdc_warrants (char_id, suspect_name, issued_by_char_id, issued_by_name, reason, status) VALUES (?, ?, ?, ?, ?, ?)', [record.id, record.char_name, player.charId || null, player.charName, reason, POLICE_MDC_WARRANT_STATUS_OPEN], (insertErr, result) => {
+        const reportId = Number(player.activeEmergencyReportId) || null;
+        db.query('INSERT INTO police_mdc_warrants (char_id, suspect_name, issued_by_char_id, issued_by_name, reason, status, report_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [record.id, record.char_name, player.charId || null, player.charName, reason, POLICE_MDC_WARRANT_STATUS_OPEN, reportId], (insertErr, result) => {
             if (insertErr) {
                 console.error('[MDC] warrant insert failed:', insertErr.message);
                 return player.outputChatBox('!{#e74c3c}Nepavyko issaugoti warrant.');
             }
             player.outputChatBox(`!{#7aa164}[MDC] Sukurtas warrant #${result.insertId} asmeniui ${record.char_name}.`);
+            if (reportId) addEmergencyReportNote(reportId, player, 'pd', `Warrant #${result.insertId} asmeniui ${record.char_name}: ${reason}`);
         });
     });
 }
@@ -1095,26 +1398,73 @@ function handlePoliceMdcWarrantList(player, identifier) {
     });
 }
 
-function handlePoliceMdcWarrantClear(player, warrantIdArg) {
+function handlePoliceMdcFineList(player, identifier) {
+    resolveCharacterRecordForPolice(identifier, (err, record) => {
+        if (err) {
+            if (err.message === 'ambiguous') return player.outputChatBox('!{#f7dc6f}Rasti keli panasus irasai. Naudokite tikslu ID arba pilna varda.');
+            console.error('[MDC] fine history lookup failed:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko gauti baudu istorijos.');
+        }
+        if (!record) return player.outputChatBox('!{#f7dc6f}Asmuo nerastas.');
+        db.query('SELECT id, amount, reason, officer_name, created_at FROM police_fines WHERE char_id = ? ORDER BY created_at DESC LIMIT 10', [record.id], (fineErr, rows) => {
+            if (fineErr) {
+                console.error('[MDC] fine history query failed:', fineErr.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko gauti baudu istorijos.');
+            }
+            if (!rows || rows.length === 0) return player.outputChatBox(`!{#d5f5e3}[MDC] ${record.char_name} baudu istorijos neturi.`);
+            player.outputChatBox(`!{#5dade2}[MDC] ${record.char_name} baudos:`);
+            rows.forEach((row) => player.outputChatBox(`F#${row.id} | ${formatMdcTimestamp(row.created_at)} | $${row.amount} | ${row.officer_name} | ${row.reason}`));
+        });
+    });
+}
+
+function handlePoliceMdcArrestList(player, identifier) {
+    resolveCharacterRecordForPolice(identifier, (err, record) => {
+        if (err) {
+            if (err.message === 'ambiguous') return player.outputChatBox('!{#f7dc6f}Rasti keli panasus irasai. Naudokite tikslu ID arba pilna varda.');
+            console.error('[MDC] arrest history lookup failed:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko gauti sulaikymu istorijos.');
+        }
+        if (!record) return player.outputChatBox('!{#f7dc6f}Asmuo nerastas.');
+        db.query('SELECT id, arrest_type, warrant_id, sentence_minutes, reason, officer_name, created_at, released_at FROM police_arrests WHERE char_id = ? ORDER BY created_at DESC LIMIT 10', [record.id], (arrestErr, rows) => {
+            if (arrestErr) {
+                console.error('[MDC] arrest history query failed:', arrestErr.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko gauti sulaikymu istorijos.');
+            }
+            if (!rows || rows.length === 0) return player.outputChatBox(`!{#d5f5e3}[MDC] ${record.char_name} sulaikymu istorijos neturi.`);
+            player.outputChatBox(`!{#5dade2}[MDC] ${record.char_name} sulaikymai:`);
+            rows.forEach((row) => {
+                const warrantLabel = row.warrant_id ? ` | W#${row.warrant_id}` : '';
+                const released = row.released_at ? `released ${formatMdcTimestamp(row.released_at)}` : 'sentence active';
+                player.outputChatBox(`A#${row.id}${warrantLabel} | ${formatMdcTimestamp(row.created_at)} | ${row.officer_name} | ${row.sentence_minutes} min | ${released} | ${row.reason}`);
+            });
+        });
+    });
+}
+
+function handlePoliceMdcWarrantClear(player, warrantIdArg, reasonText) {
     const warrantId = parseInt(warrantIdArg, 10);
-    if (!Number.isInteger(warrantId) || warrantId <= 0) {
-        player.outputChatBox('!{#f7dc6f}Naudojimas: /mdc clear [warrant ID]');
+    const clearReason = String(reasonText || '').trim().replace(/\s+/g, ' ').slice(0, 255);
+    if (!Number.isInteger(warrantId) || warrantId <= 0 || clearReason.length < 3) {
+        player.outputChatBox('!{#f7dc6f}Naudojimas: /mdc clear [warrant ID] [uzdarymo priezastis]');
         return;
     }
 
-    db.query('SELECT id, suspect_name FROM police_mdc_warrants WHERE id = ? AND status = ? LIMIT 1', [warrantId, POLICE_MDC_WARRANT_STATUS_OPEN], (selectErr, rows) => {
+    db.query('SELECT id, suspect_name, report_id FROM police_mdc_warrants WHERE id = ? AND status = ? LIMIT 1', [warrantId, POLICE_MDC_WARRANT_STATUS_OPEN], (selectErr, rows) => {
         if (selectErr) {
             console.error('[MDC] warrant select failed:', selectErr.message);
             return player.outputChatBox('!{#e74c3c}Nepavyko rasti warrant.');
         }
         if (!rows || rows.length === 0) return player.outputChatBox('!{#f7dc6f}Atviras warrant nerastas.');
 
-        db.query('UPDATE police_mdc_warrants SET status = ?, cleared_at = NOW(), cleared_by_name = ? WHERE id = ?', [POLICE_MDC_WARRANT_STATUS_CLEARED, player.charName, warrantId], (updateErr) => {
+        db.query('UPDATE police_mdc_warrants SET status = ?, cleared_at = NOW(), cleared_by_name = ?, cleared_reason = ? WHERE id = ? AND status = ?', [POLICE_MDC_WARRANT_STATUS_CLEARED, player.charName, clearReason, warrantId, POLICE_MDC_WARRANT_STATUS_OPEN], (updateErr, result) => {
             if (updateErr) {
                 console.error('[MDC] warrant clear failed:', updateErr.message);
                 return player.outputChatBox('!{#e74c3c}Nepavyko uzdaryti warrant.');
             }
-            player.outputChatBox(`!{#7aa164}[MDC] Warrant #${warrantId} uzdarytas (${rows[0].suspect_name}).`);
+            if (!result.affectedRows) return player.outputChatBox('!{#f7dc6f}Warrant jau pakeistas arba uzdarytas.');
+            player.outputChatBox(`!{#7aa164}[MDC] Warrant #${warrantId} uzdarytas (${rows[0].suspect_name}). Priezastis: ${clearReason}`);
+            if (rows[0].report_id) addEmergencyReportNote(rows[0].report_id, player, 'pd', `Warrant #${warrantId} uzdarytas: ${clearReason}`);
         });
     });
 }
@@ -1292,6 +1642,9 @@ function getDefaultPropertySettings() {
     return {
         locked: 1,
         rentPerPaycheck: 0,
+        drugLabEnabled: 0,
+        drugPlants: [],
+        drugBatch: null,
     };
 }
 
@@ -1406,9 +1759,32 @@ function parsePropertySettings(rawSettings) {
 
     try {
         const parsed = JSON.parse(rawSettings);
+        const drugPlants = Array.isArray(parsed.drugPlants)
+            ? parsed.drugPlants.slice(0, HOUSE_CANNABIS_PLANT_LIMIT).map((plant) => ({
+                plantedAt: Number(plant && plant.plantedAt),
+            })).filter((plant) => Number.isSafeInteger(plant.plantedAt) && plant.plantedAt > 0)
+            : [];
+        const rawBatch = parsed.drugBatch;
+        const batchType = String(rawBatch && rawBatch.drugType || '').toLowerCase();
+        const batchStartedAt = Number(rawBatch && rawBatch.startedAt);
+        const batchCompletesAt = Number(rawBatch && rawBatch.completesAt);
+        const drugBatch = DRUG_SYNTHESIS_RECIPES[batchType]
+            && Number.isSafeInteger(batchStartedAt)
+            && Number.isSafeInteger(batchCompletesAt)
+            && batchCompletesAt > batchStartedAt
+            ? {
+                drugType: batchType,
+                quantity: Math.max(1, Math.min(50, parseInt(rawBatch.quantity, 10) || 1)),
+                startedAt: batchStartedAt,
+                completesAt: batchCompletesAt,
+            }
+            : null;
         return {
             locked: Number(parsed.locked) ? 1 : 0,
             rentPerPaycheck: Math.max(0, parseInt(parsed.rentPerPaycheck, 10) || 0),
+            drugLabEnabled: Number(parsed.drugLabEnabled) === 1 ? 1 : 0,
+            drugPlants,
+            drugBatch,
         };
     } catch (error) {
         console.error('[HOUSING] Failed to parse property settings JSON:', error.message);
@@ -1440,6 +1816,13 @@ function getPropertySettingsJson(property) {
     return JSON.stringify({
         locked: Number(property.settings.locked) ? 1 : 0,
         rentPerPaycheck: Math.max(0, parseInt(property.settings.rentPerPaycheck, 10) || 0),
+        drugLabEnabled: Number(property.settings.drugLabEnabled) === 1 ? 1 : 0,
+        drugPlants: Array.isArray(property.settings.drugPlants)
+            ? property.settings.drugPlants.slice(0, HOUSE_CANNABIS_PLANT_LIMIT)
+                .map((plant) => ({ plantedAt: Number(plant && plant.plantedAt) }))
+                .filter((plant) => Number.isSafeInteger(plant.plantedAt) && plant.plantedAt > 0)
+            : [],
+        drugBatch: property.settings.drugBatch || null,
     });
 }
 
@@ -1752,6 +2135,85 @@ function removePropertyInventoryItemByType(property, type, amount) {
     }
 
     return entry;
+}
+
+function consumeHouseDrugIngredients(inventory, ingredients) {
+    const nextInventory = JSON.parse(JSON.stringify(Array.isArray(inventory) ? inventory : []));
+    for (const [type, requiredRaw] of Object.entries(ingredients || {})) {
+        let remaining = Math.max(0, parseInt(requiredRaw, 10) || 0);
+        for (let index = nextInventory.length - 1; index >= 0 && remaining > 0; index -= 1) {
+            const item = nextInventory[index];
+            if (!item || item.type !== type) continue;
+            const quantity = Math.max(0, parseInt(item.quantity, 10) || 0);
+            const consumed = Math.min(quantity, remaining);
+            item.quantity = quantity - consumed;
+            remaining -= consumed;
+            if (item.quantity <= 0) nextInventory.splice(index, 1);
+        }
+        if (remaining > 0) return null;
+    }
+    return nextInventory;
+}
+
+function persistHouseDrugMutation(player, property, nextInventory, nextSettings, callback = () => { }) {
+    if (!player || !player.charId || !property || !isPropertyOwner(player, property)) {
+        callback(new Error('Reikia tureti si nama.'));
+        return;
+    }
+    if (property.drugMutationPending) {
+        callback(new Error('Kita namo gamybos operacija dar issaugoma.'));
+        return;
+    }
+    property.drugMutationPending = true;
+    const finish = (err) => {
+        property.drugMutationPending = false;
+        callback(err || null);
+    };
+
+    const settingsJson = getPropertySettingsJson({ settings: nextSettings });
+    const inventoryJson = JSON.stringify(nextInventory);
+    db.getConnection((connectionErr, connection) => {
+        if (connectionErr) return finish(connectionErr);
+        connection.beginTransaction((transactionErr) => {
+            if (transactionErr) {
+                connection.release();
+                return finish(transactionErr);
+            }
+
+            const rollback = (err) => connection.rollback(() => {
+                connection.release();
+                finish(err);
+            });
+
+            connection.query('UPDATE characters SET inventory = ? WHERE id = ?', [inventoryJson, player.charId], (inventoryErr, inventoryResult) => {
+                if (inventoryErr) return rollback(inventoryErr);
+                if (!inventoryResult.affectedRows) return rollback(new Error('Veikejo inventorius nerastas.'));
+
+                connection.query('UPDATE server_properties SET settings = ? WHERE id = ? AND owner_char_id = ?', [settingsJson, property.id, player.charId], (propertyErr, propertyResult) => {
+                    if (propertyErr) return rollback(propertyErr);
+                    if (!propertyResult.affectedRows) return rollback(new Error('Namas nebepriklauso jums.'));
+
+                    connection.commit((commitErr) => {
+                        if (commitErr) return rollback(commitErr);
+                        connection.release();
+                        player.inventory = nextInventory;
+                        property.settings = nextSettings;
+                        finish(null);
+                    });
+                });
+            });
+        });
+    });
+}
+
+function formatDrugTimeRemaining(milliseconds) {
+    const totalMinutes = Math.max(0, Math.ceil(milliseconds / 60000));
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
+    if (days > 0) return `${days} d. ${hours} val.`;
+    if (hours > 0) return `${hours} val. ${minutes} min.`;
+    return `${minutes} min.`;
 }
 
 function getPropertyRentForOwner(charId) {
@@ -2425,6 +2887,99 @@ function resolveShopBuyContext(player) {
     return { error: 'Pirkti galite budami verslo viduje arba prie 24/7 kasos.' };
 }
 
+function getPlayerBusinessOfType(player, businessType) {
+    const currentBusiness = getPlayerCurrentBusiness(player);
+    if (currentBusiness && normalizeBusinessType(currentBusiness.type) === businessType) return currentBusiness;
+    const nearbyBusiness = getNearbyBusinessByInteractRadius(player, BUSINESS_INTERACT_RADIUS_MAX);
+    return nearbyBusiness && normalizeBusinessType(nearbyBusiness.type) === businessType ? nearbyBusiness : null;
+}
+
+function getRouletteOutcome(number) {
+    if (number === 0) return { number, color: 'green' };
+    return { number, color: ROULETTE_RED_NUMBERS.has(number) ? 'red' : 'black' };
+}
+
+function playCasinoRoulette(player, selectionRaw, stakeRaw, callback) {
+    const business = getPlayerBusinessOfType(player, 'casino');
+    if (!business) return callback(new Error('Enter a casino to place a roulette bet.'));
+    const selection = String(selectionRaw || '').trim().toLowerCase();
+    const stake = Number(stakeRaw);
+    if (!['red', 'black', 'green'].includes(selection)) return callback(new Error('Choose red, black, or green.'));
+    if (!Number.isInteger(stake) || stake < CASINO_MIN_BET || stake > CASINO_MAX_BET) {
+        return callback(new Error(`Bet must be between $${CASINO_MIN_BET} and $${CASINO_MAX_BET}.`));
+    }
+
+    const cooldownRemaining = (casinoBetCooldowns.get(player.id) || 0) - Date.now();
+    if (cooldownRemaining > 0) return callback(new Error(`Wait ${Math.ceil(cooldownRemaining / 1000)} seconds before betting again.`));
+    casinoBetCooldowns.set(player.id, Date.now() + 1800);
+
+    const outcome = getRouletteOutcome(crypto.randomInt(0, 37));
+    const won = outcome.color === selection;
+    const payout = won ? stake * (selection === 'green' ? 36 : 2) : 0;
+    const houseChange = stake - payout;
+
+    db.getConnection((connectionErr, connection) => {
+        if (connectionErr) return callback(connectionErr);
+        connection.beginTransaction((transactionErr) => {
+            if (transactionErr) {
+                connection.release();
+                return callback(transactionErr);
+            }
+            const rollback = (err) => connection.rollback(() => {
+                connection.release();
+                callback(err);
+            });
+
+            connection.query('SELECT money FROM characters WHERE id = ? FOR UPDATE', [player.charId], (moneyErr, moneyRows) => {
+                if (moneyErr) return rollback(moneyErr);
+                if (!moneyRows || !moneyRows.length) return rollback(new Error('Character wallet not found.'));
+                const money = Math.max(0, Number(moneyRows[0].money) || 0);
+                if (money < stake) return rollback(new Error(`Not enough cash. Bet is $${stake}.`));
+
+                connection.query('SELECT bank_balance FROM server_businesses WHERE id = ? FOR UPDATE', [business.id], (bankErr, bankRows) => {
+                    if (bankErr) return rollback(bankErr);
+                    if (!bankRows || !bankRows.length) return rollback(new Error('Casino account not found.'));
+                    const houseBalance = Math.max(0, Number(bankRows[0].bank_balance) || 0);
+                    if (houseBalance + houseChange < 0) return rollback(new Error('Casino reserve is too low for this payout.'));
+                    const newMoney = money - stake + payout;
+                    const newHouseBalance = houseBalance + houseChange;
+
+                    connection.query('UPDATE characters SET money = ? WHERE id = ?', [newMoney, player.charId], (walletErr) => {
+                        if (walletErr) return rollback(walletErr);
+                        connection.query('UPDATE server_businesses SET bank_balance = ? WHERE id = ?', [newHouseBalance, business.id], (businessErr) => {
+                            if (businessErr) return rollback(businessErr);
+                            connection.query(
+                                'INSERT INTO casino_wagers (business_id, player_char_id, player_name, selection, stake, outcome_number, outcome_color, payout) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                                [business.id, player.charId, player.charName, selection, stake, outcome.number, outcome.color, payout],
+                                (ledgerErr, result) => {
+                                    if (ledgerErr) return rollback(ledgerErr);
+                                    connection.commit((commitErr) => {
+                                        if (commitErr) return rollback(commitErr);
+                                        connection.release();
+                                        player.money = newMoney;
+                                        player.call('updateMoneyHUD', [newMoney]);
+                                        business.bankBalance = newHouseBalance;
+                                        callback(null, {
+                                            wagerId: Number(result.insertId),
+                                            businessName: business.name,
+                                            money: newMoney,
+                                            selection,
+                                            stake,
+                                            outcome,
+                                            payout,
+                                            won,
+                                        });
+                                    });
+                                }
+                            );
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
 function buildShopBuyPayload(player, context) {
     const products = (Array.isArray(context?.productList) ? context.productList : [])
         .map((product) => {
@@ -2598,9 +3153,13 @@ function parseBusinessPawnInventory(rawInventory) {
 
                 const originalPrice = Math.max(1, parseInt(rawItem.originalPrice ?? definition.originalPrice ?? 1, 10) || 1);
                 const defaultSalePrice = Math.max(1, Math.floor(originalPrice));
+                const rawStatus = String(rawItem.status || '').toLowerCase();
+                const status = ['pending', 'owned', 'listed'].includes(rawStatus) ? rawStatus : 'listed';
                 return {
                     stockId: String(rawItem.stockId || generateInventoryItemId()),
                     type,
+                    status,
+                    priceSetByOwner: typeof rawItem.priceSetByOwner === 'boolean' ? rawItem.priceSetByOwner : status === 'listed',
                     name: sanitizeInventoryItemName(rawItem.name, definition.name),
                     description: rawItem.description || definition.description,
                     icon: definition.icon || 'BOX',
@@ -2643,6 +3202,7 @@ function findPawnStockItem(business, stockIdRaw) {
 
 function buildPawnShopPayload(player, business) {
     const stock = (Array.isArray(business?.pawnInventory) ? business.pawnInventory : [])
+        .filter((item) => item && item.status === 'listed')
         .map((item) => ({
             stockId: item.stockId,
             type: item.type,
@@ -3757,6 +4317,35 @@ function bootstrapDatabase() {
         }
     });
 
+    db.query('ALTER TABLE characters ADD COLUMN jailed_until BIGINT UNSIGNED NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[JAIL] Failed to add jailed_until column:', err.message);
+    });
+    db.query('ALTER TABLE characters ADD COLUMN jail_reason VARCHAR(255) NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[JAIL] Failed to add jail_reason column:', err.message);
+    });
+    db.query('ALTER TABLE characters ADD COLUMN jailed_by_char_id INT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[JAIL] Failed to add jailed_by_char_id column:', err.message);
+    });
+    db.query('ALTER TABLE characters ADD COLUMN jailed_by_name VARCHAR(64) NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[JAIL] Failed to add jailed_by_name column:', err.message);
+    });
+
+    db.query('ALTER TABLE characters ADD COLUMN age TINYINT UNSIGNED NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[PROFILE] Failed to add age column:', err.message);
+    });
+    db.query('ALTER TABLE characters ADD COLUMN gender VARCHAR(16) NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[PROFILE] Failed to add gender column:', err.message);
+    });
+    db.query('ALTER TABLE characters ADD COLUMN bio TEXT NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[PROFILE] Failed to add bio column:', err.message);
+    });
+    db.query('ALTER TABLE characters ADD COLUMN height_cm SMALLINT UNSIGNED NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[PROFILE] Failed to add height column:', err.message);
+    });
+    db.query('ALTER TABLE characters ADD COLUMN appearance VARCHAR(512) NULL', (err) => {
+        if (err && err.code !== 'ER_DUP_FIELDNAME') console.error('[PROFILE] Failed to add appearance column:', err.message);
+    });
+
     db.query('ALTER TABLE characters ADD COLUMN faction_key VARCHAR(16) NULL', (err) => {
         if (err && err.code !== 'ER_DUP_FIELDNAME') {
             console.error('[FACTIONS] Failed to add faction_key column:', err.message);
@@ -3805,12 +4394,17 @@ function bootstrapDatabase() {
         reason VARCHAR(128) NOT NULL,
         paid_from_cash INT NOT NULL DEFAULT 0,
         paid_from_bank INT NOT NULL DEFAULT 0,
+        report_id BIGINT UNSIGNED NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_police_fines_char_id (char_id),
         CONSTRAINT fk_police_fines_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE
     )`, (err) => {
         if (err) {
             console.error('[PD] Failed to create police_fines table:', err.message);
+        } else {
+            db.query('ALTER TABLE police_fines ADD COLUMN report_id BIGINT UNSIGNED NULL', (alterErr) => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') console.error('[PD] Failed to add fine report link:', alterErr.message);
+            });
         }
     });
 
@@ -3822,15 +4416,136 @@ function bootstrapDatabase() {
         issued_by_name VARCHAR(64) NOT NULL,
         reason VARCHAR(128) NOT NULL,
         status VARCHAR(16) NOT NULL DEFAULT 'open',
+        report_id BIGINT UNSIGNED NULL,
         cleared_at TIMESTAMP NULL DEFAULT NULL,
         cleared_by_name VARCHAR(64) NULL,
+        cleared_reason VARCHAR(255) NULL,
+        served_at TIMESTAMP NULL DEFAULT NULL,
+        served_by_char_id INT NULL,
+        served_by_name VARCHAR(64) NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_police_mdc_warrants_char_status (char_id, status),
         CONSTRAINT fk_police_mdc_warrants_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE
     )`, (err) => {
         if (err) {
             console.error('[PD] Failed to create police_mdc_warrants table:', err.message);
+        } else {
+            db.query('ALTER TABLE police_mdc_warrants ADD COLUMN report_id BIGINT UNSIGNED NULL', (alterErr) => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') console.error('[PD] Failed to add warrant report link:', alterErr.message);
+            });
+            db.query('ALTER TABLE police_mdc_warrants ADD COLUMN cleared_reason VARCHAR(255) NULL', (alterErr) => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') console.error('[PD] Failed to add warrant clear reason:', alterErr.message);
+            });
+            db.query('ALTER TABLE police_mdc_warrants ADD COLUMN served_at TIMESTAMP NULL DEFAULT NULL', (alterErr) => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') console.error('[PD] Failed to add warrant served time:', alterErr.message);
+            });
+            db.query('ALTER TABLE police_mdc_warrants ADD COLUMN served_by_char_id INT NULL', (alterErr) => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') console.error('[PD] Failed to add warrant serving officer:', alterErr.message);
+            });
+            db.query('ALTER TABLE police_mdc_warrants ADD COLUMN served_by_name VARCHAR(64) NULL', (alterErr) => {
+                if (alterErr && alterErr.code !== 'ER_DUP_FIELDNAME') console.error('[PD] Failed to add serving officer name:', alterErr.message);
+            });
         }
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS police_arrests (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        char_id INT NOT NULL,
+        suspect_name VARCHAR(64) NOT NULL,
+        officer_char_id INT NULL,
+        officer_name VARCHAR(64) NOT NULL,
+        warrant_id INT NULL,
+        report_id BIGINT UNSIGNED NULL,
+        arrest_type VARCHAR(16) NOT NULL DEFAULT 'booking',
+        sentence_minutes INT NOT NULL,
+        reason VARCHAR(255) NOT NULL,
+        released_at TIMESTAMP NULL DEFAULT NULL,
+        released_by_char_id INT NULL,
+        released_by_name VARCHAR(64) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_police_arrests_char_created (char_id, created_at),
+        INDEX idx_police_arrests_warrant (warrant_id),
+        CONSTRAINT fk_police_arrests_char FOREIGN KEY (char_id) REFERENCES characters(id) ON DELETE CASCADE
+    )`, (err) => {
+        if (err) console.error('[PD] Failed to create police_arrests table:', err.message);
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS medical_treatments (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        patient_char_id INT NOT NULL,
+        patient_name VARCHAR(64) NOT NULL,
+        medic_char_id INT NULL,
+        medic_name VARCHAR(64) NOT NULL,
+        report_id BIGINT UNSIGNED NULL,
+        action VARCHAR(16) NOT NULL,
+        health_before INT NOT NULL,
+        health_after INT NOT NULL,
+        notes VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_medical_treatments_patient (patient_char_id, created_at),
+        CONSTRAINT fk_medical_treatments_patient FOREIGN KEY (patient_char_id) REFERENCES characters(id) ON DELETE CASCADE
+    )`, (err) => {
+        if (err) console.error('[MD] Failed to create medical_treatments table:', err.message);
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS emergency_reports (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        caller_char_id INT NULL,
+        caller_name VARCHAR(64) NOT NULL,
+        report_type VARCHAR(8) NOT NULL,
+        message TEXT NOT NULL,
+        position_x DOUBLE NOT NULL,
+        position_y DOUBLE NOT NULL,
+        position_z DOUBLE NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'open',
+        responder_char_id INT NULL,
+        responder_name VARCHAR(64) NULL,
+        responder_faction VARCHAR(16) NULL,
+        closure_note VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        closed_at TIMESTAMP NULL DEFAULT NULL,
+        INDEX idx_emergency_reports_status_created (status, created_at),
+        INDEX idx_emergency_reports_caller (caller_char_id)
+    )`, (err) => {
+        if (err) {
+            console.error('[911] Failed to create emergency_reports table:', err.message);
+            return;
+        }
+        db.query(`CREATE TABLE IF NOT EXISTS emergency_report_notes (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            report_id BIGINT UNSIGNED NOT NULL,
+            author_char_id INT NULL,
+            author_name VARCHAR(64) NOT NULL,
+            agency VARCHAR(8) NOT NULL,
+            note TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_emergency_report_notes_report (report_id, created_at),
+            CONSTRAINT fk_emergency_report_notes_report FOREIGN KEY (report_id) REFERENCES emergency_reports(id) ON DELETE CASCADE
+        )`, (notesErr) => {
+            if (notesErr) console.error('[911] Failed to create emergency_report_notes table:', notesErr.message);
+        });
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS drive_trips (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        driver_char_id INT NULL,
+        requester_char_id INT NULL,
+        driver_name VARCHAR(64) NOT NULL,
+        requester_name VARCHAR(64) NOT NULL,
+        fare INT UNSIGNED NOT NULL DEFAULT 0,
+        pickup_x DOUBLE NOT NULL,
+        pickup_y DOUBLE NOT NULL,
+        pickup_z DOUBLE NOT NULL,
+        dropoff_x DOUBLE NOT NULL,
+        dropoff_y DOUBLE NOT NULL,
+        dropoff_z DOUBLE NOT NULL,
+        started_at DATETIME NOT NULL,
+        completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_drive_trips_driver (driver_char_id, completed_at),
+        INDEX idx_drive_trips_requester (requester_char_id, completed_at)
+    )`, (err) => {
+        if (err) console.error('[DRIVE] Failed to create drive_trips table:', err.message);
     });
 
     db.query('ALTER TABLE bans ADD COLUMN ucp_name VARCHAR(64) NULL', (err) => {
@@ -4060,6 +4775,62 @@ function bootstrapDatabase() {
         });
 
         loadBusinessesFromDatabase();
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS casino_wagers (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        business_id INT NOT NULL,
+        player_char_id INT NOT NULL,
+        player_name VARCHAR(64) NOT NULL,
+        selection VARCHAR(8) NOT NULL,
+        stake INT UNSIGNED NOT NULL,
+        outcome_number TINYINT UNSIGNED NOT NULL,
+        outcome_color VARCHAR(8) NOT NULL,
+        payout INT UNSIGNED NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_casino_wagers_business (business_id, created_at),
+        INDEX idx_casino_wagers_player (player_char_id, created_at)
+    )`, (err) => {
+        if (err) console.error('[CASINO] Failed to create casino_wagers table:', err.message);
+    });
+
+    db.query(`CREATE TABLE IF NOT EXISTS betting_events (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        business_id INT NOT NULL,
+        opened_by_char_id INT NOT NULL,
+        opened_by_name VARCHAR(64) NOT NULL,
+        title VARCHAR(128) NOT NULL,
+        option_a VARCHAR(48) NOT NULL,
+        option_b VARCHAR(48) NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'open',
+        outcome VARCHAR(8) NULL,
+        total_stake BIGINT UNSIGNED NOT NULL DEFAULT 0,
+        total_payout BIGINT UNSIGNED NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        closed_at TIMESTAMP NULL DEFAULT NULL,
+        settled_at TIMESTAMP NULL DEFAULT NULL,
+        INDEX idx_betting_events_business_status (business_id, status, created_at)
+    )`, (err) => {
+        if (err) {
+            console.error('[BETTING] Failed to create betting_events table:', err.message);
+            return;
+        }
+        db.query(`CREATE TABLE IF NOT EXISTS betting_bets (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            event_id BIGINT UNSIGNED NOT NULL,
+            business_id INT NOT NULL,
+            player_char_id INT NOT NULL,
+            player_name VARCHAR(64) NOT NULL,
+            choice VARCHAR(8) NOT NULL,
+            stake INT UNSIGNED NOT NULL,
+            payout INT UNSIGNED NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_betting_event_player (event_id, player_char_id),
+            INDEX idx_betting_bets_event (event_id),
+            CONSTRAINT fk_betting_bets_event FOREIGN KEY (event_id) REFERENCES betting_events(id) ON DELETE CASCADE
+        )`, (betErr) => {
+            if (betErr) console.error('[BETTING] Failed to create betting_bets table:', betErr.message);
+        });
     });
 
     // Ensure players table has email, email_confirmed, reg_answers columns and tokens table
@@ -4502,8 +5273,18 @@ mp.events.add('selectCharacter', (player, charId) => {
             return;
         }
 
+        if (player.jailTimer) {
+            clearTimeout(player.jailTimer);
+            delete player.jailTimer;
+        }
         player.charId = charData.id;
+        player.activeEmergencyReportId = null;
         player.charName = charData.char_name;
+        player.age = Number.isInteger(Number(charData.age)) && Number(charData.age) > 0 ? Number(charData.age) : null;
+        player.gender = String(charData.gender || '').trim().slice(0, 16) || null;
+        player.bio = String(charData.bio || '').trim().slice(0, 1000);
+        player.heightCm = Number.isInteger(Number(charData.height_cm)) && Number(charData.height_cm) > 0 ? Number(charData.height_cm) : null;
+        player.appearance = String(charData.appearance || '').trim().slice(0, 512);
         player.adminName = charData.admin_name || charData.char_name; // Use admin_name if set, otherwise char_name
         player.health = charData.health;
         player.money = charData.money;
@@ -4514,6 +5295,25 @@ mp.events.add('selectCharacter', (player, charId) => {
         const posZ = parseFloat(charData.position_z);
         const hasSavedPosition = Number.isFinite(posX) && Number.isFinite(posY) && Number.isFinite(posZ);
         player.position = hasSavedPosition ? new mp.Vector3(posX, posY, posZ) : player.position;
+        const jailedUntil = Number(charData.jailed_until) || 0;
+        if (jailedUntil > Date.now()) {
+            startPlayerJailSentence(player, {
+                until: jailedUntil,
+                reason: String(charData.jail_reason || 'Court sentence'),
+                officerCharId: charData.jailed_by_char_id || null,
+                officerName: charData.jailed_by_name || null,
+            });
+        } else if (jailedUntil > 0) {
+            player.isJailed = true;
+            player.jailedUntil = jailedUntil;
+            releasePlayerFromJail(player, false);
+        } else {
+            player.isJailed = false;
+            player.jailedUntil = null;
+            player.jailReason = null;
+            player.jailedByCharId = null;
+            player.jailedByName = null;
+        }
         player.isPMEnabled = charData.is_pm_enabled;
         player.adminLevel = charData.admin_level;
         player.hasDriversLicense = Number(charData.drivers_license || 0) === 1;
@@ -5060,9 +5860,11 @@ mp.events.addCommand('b', (player, _, ...messageArray) => {
 
 mp.events.addCommand('help', (player) => {
     player.outputChatBox(`!{#ADD8E6}----- Galimos komandos -----`);
-    player.outputChatBox(`ROLEPLAY KOMANDOS - /me, /do, /b, /s, /low, /pm, /id, /try`);
+    player.outputChatBox(`ROLEPLAY KOMANDOS - /me, /do, /b, /s, /low, /pm, /id, /roll`);
     player.outputChatBox(`KITOS KOMANDOS - /stats, /pay, /bank, /withdraw, /deposit, /openbank, /changechar, /report, /admins`);
-    player.outputChatBox(`KITOS KOMANDOS - /togglepm, /time, /barber, /changeclothes, /inv`);
+    player.outputChatBox(`LOMBARDAS - /pawnstock, /pawnsell, /pawninbox, /pawncollect, /pawnstockrename, /pawnprice, /pawnlist, /pawnunlist, /pawngive`);
+    player.outputChatBox(`KITOS KOMANDOS - /togglepm, /time, /barber, /changeclothes, /inv, /profile, /profileedit, /showid`);
+    player.outputChatBox(`VERSLAI - /casino, /betlist, /bet; savininkai: /betopen, /betclose, /betsettle, /betvoid`);
     player.outputChatBox(`TURTAS - /helphouse, /helpvehicle`);
     player.outputChatBox(`!{#ADD8E6}----------------------------`);
     player.outputChatBox(`Ivedus komanda gausite komandos paaiskinima.`);
@@ -5073,13 +5875,15 @@ mp.events.addCommand('helphouse', (player) => {
     player.outputChatBox(`BUSTAS - /properties, /buyproperty, /house, /enterhouse, /exithouse`);
     player.outputChatBox(`BUSTAS - /enter (alias), ADMIN: /tpinterior [interiorId]`);
     player.outputChatBox(`BUSTAS - /sellproperty, /setrent, /rent, /houselock, /hlock`);
-    player.outputChatBox(`BUSTAS - /houseinv, /hdeposit, /hwithdraw`);
+    player.outputChatBox(`BUSTAS - /houseinv, /hdeposit, /hwithdraw, /hdrugs. Admin: /allowhdrugs [property ID] [on|off]`);
 });
 
 mp.events.addCommand('helpvehicle', (player) => {
     player.outputChatBox(`TRANSPORTAS - /buyvehicle, /buypark, /vehicles, /get, /park, /lock`);
+    player.outputChatBox(`TRANSPORTAS - /breakin, /hotwire (vehicle security minigames)`);
     player.outputChatBox(`TRANSPORTAS - /engine, /refill, /sellto [zaidejoId] [kaina]`);
     player.outputChatBox(`TRANSPORTAS - /scrap, /scrapconfirm`);
+    player.outputChatBox(`DRIVE APP - Ride requests and trip history are available in /phone.`);
 });
 
 mp.events.addCommand('id', (player, fullText, partialName) => {
@@ -5149,29 +5953,114 @@ mp.events.addCommand('stats', player => {
     player.outputChatBox(`Grynieji pinigai: $${player.money}, Banko saskaitos balansas: $${player.bankBalance}`);
 });
 
-mp.events.addCommand('try', (player, fullText) => {
+mp.events.addCommand('profile', (player) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
-    if (!fullText) {
-        player.outputChatBox('Naudojimas: /try [veiksmas]');
-        return;
+    player.outputChatBox(`!{#5dade2}===== ${player.charName} profilio informacija =====`);
+    player.outputChatBox(`Amzius: ${player.age || 'nenurodytas'} | Lytis: ${player.gender || 'nenurodyta'} | Ugis: ${player.heightCm ? `${player.heightCm} cm` : 'nenurodytas'}`);
+    player.outputChatBox(`Aprasymas: ${player.appearance || 'nenurodytas'}`);
+    player.outputChatBox(`Biografija: ${player.bio || 'nenurodyta'}`);
+    player.outputChatBox('Keitimas: /profileedit [age|gender|bio|appearance|height] [reiksme]');
+});
+
+mp.events.addCommand('profileedit', (player, fullText) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const args = splitCommandText(fullText);
+    const field = String(args.shift() || '').toLowerCase();
+    const rawValue = args.join(' ').trim();
+    const textFields = {
+        bio: { column: 'bio', property: 'bio', maxLength: 1000, label: 'biografija' },
+        appearance: { column: 'appearance', property: 'appearance', maxLength: 512, label: 'isvaizdos aprasymas' },
+    };
+
+    let column;
+    let property;
+    let value;
+    if (field === 'age') {
+        const age = Number.parseInt(rawValue, 10);
+        if (!Number.isInteger(age) || age < 18 || age > 65) {
+            return player.outputChatBox('!{#f7dc6f}Amzius turi buti nuo 18 iki 65 metu.');
+        }
+        column = 'age';
+        property = 'age';
+        value = age;
+    } else if (field === 'gender') {
+        if (rawValue.length < 2) return player.outputChatBox('!{#f7dc6f}Irasykite lyties aprasyma.');
+        column = 'gender';
+        property = 'gender';
+        value = rawValue.slice(0, 16);
+    } else if (field === 'height') {
+        const height = Number.parseInt(rawValue, 10);
+        if (!Number.isInteger(height) || height < 100 || height > 250) {
+            return player.outputChatBox('!{#f7dc6f}Ugis turi buti nuo 100 iki 250 cm.');
+        }
+        column = 'height_cm';
+        property = 'heightCm';
+        value = height;
+    } else if (textFields[field]) {
+        const definition = textFields[field];
+        if (rawValue.length < 3) return player.outputChatBox(`!{#f7dc6f}Irasykite bent 3 simboliu ${definition.label}.`);
+        column = definition.column;
+        property = definition.property;
+        value = rawValue.slice(0, definition.maxLength);
+    } else {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /profileedit [age|gender|bio|appearance|height] [reiksme]');
     }
 
-    const success = Math.random() < 0.5;
-    const outcome = success ? 'pavyko' : 'nepavyko';
-    const message = `${player.charName} bando ${fullText} ir jam ${outcome}.`;
-
-    const nearbyPlayers = mp.players.toArray().filter(target => {
-        const distance = Math.sqrt(
-            Math.pow(player.position.x - target.position.x, 2) +
-            Math.pow(player.position.y - target.position.y, 2) +
-            Math.pow(player.position.z - target.position.z, 2)
-        );
-        return distance <= 10;
+    db.query(`UPDATE characters SET ${column} = ? WHERE id = ?`, [value, player.charId], (err) => {
+        if (err) {
+            console.error('[PROFILE] Failed to save character profile:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko issaugoti profilio.');
+        }
+        player[property] = value;
+        player.outputChatBox(`!{#7aa164}Atnaujinta: ${field}.`);
     });
+});
 
-    nearbyPlayers.forEach(target => {
-        target.outputChatBox(`!{#c2749d}${message}`);
+mp.events.addCommand('showid', (player, fullText, targetIdentifier) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    if (!targetIdentifier) return player.outputChatBox('!{#f7dc6f}Naudojimas: /showid [zaidejo ID arba vardas]');
+    const target = getPlayerByIDOrName(targetIdentifier);
+    if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (target === player) return player.outputChatBox('!{#f7dc6f}Savo dokumenta perziurekite su /profile.');
+    if (Number(target.dimension) !== Number(player.dimension) || getDistanceBetweenPositions(player.position, target.position) > 3) {
+        return player.outputChatBox('!{#f7dc6f}Dokumenta galima parodyti tik salia esanciam veikejui.');
+    }
+
+    const license = target.hasDriversLicense ? 'galioja' : 'neturi';
+    const lines = [
+        `!{#5dade2}[ID] ${target.charName}`,
+        `Amzius: ${target.age || 'nenurodytas'} | Lytis: ${target.gender || 'nenurodyta'} | Ugis: ${target.heightCm ? `${target.heightCm} cm` : 'nenurodytas'}`,
+        `Isvaizda: ${target.appearance || 'nenurodyta'} | Vairuotojo pazymejimas: ${license}`,
+    ];
+    lines.forEach((line) => {
+        player.outputChatBox(line);
+        target.outputChatBox(line);
     });
+});
+
+function broadcastRoleplayRoll(player, sides, action) {
+    const result = crypto.randomInt(1, sides + 1);
+    const actionText = action ? ` del ${action}` : '';
+    const message = `* ${player.charName} rita d${sides}${actionText}: ${result}. Rezultatas tik informacinis; zaidejai patys susitaria del veiksmo baigties.`;
+    mp.players.forEachInRange(player.position, 10, (nearbyPlayer) => {
+        nearbyPlayer.outputChatBox(`!{#c2749d}${message}`);
+    });
+}
+
+mp.events.addCommand('roll', (player, fullText) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const args = splitCommandText(fullText);
+    const dice = /^d(20|100)$/i.test(args[0] || '') ? args.shift().toLowerCase() : 'd20';
+    const sides = Number(dice.slice(1));
+    const action = args.join(' ').trim().replace(/\s+/g, ' ').slice(0, 120);
+    broadcastRoleplayRoll(player, sides, action);
+});
+
+mp.events.addCommand('try', (player, fullText) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const action = String(fullText || '').trim().replace(/\s+/g, ' ').slice(0, 120);
+    if (!action) return player.outputChatBox('Naudojimas: /try [veiksmas] (tik metimas, be automatines baigties)');
+    broadcastRoleplayRoll(player, 20, action);
 });
 
 mp.events.addCommand('time', (player) => {
@@ -5180,20 +6069,20 @@ mp.events.addCommand('time', (player) => {
 });
 
 const knownCommands = new Set([
-    'me', 'do', 's', 'low', 'b', 'help', 'id', 'pm', 'stats', 'try', 'time',
+    'me', 'do', 's', 'low', 'b', 'help', 'id', 'pm', 'stats', 'try', 'roll', 'time', 'profile', 'profileedit', 'showid',
     'bank', 'withdraw', 'deposit', 'transfer', 'openbank', 'inventory', 'inv',
     'kick', 'freeze', 'goto', 'bring', 'tpls', 'ban', 'heal', 'giveitem', 'giveweapon', 'dropweapon', 'stashweapon', 'takeweapon', 'buildpackage', 'putpackage', 'viewpackage', 'admingiveweapon',
     'helpme', 'accepthelp', 'declinehelp',
     'report', 'acceptreport', 'declinereport',
     'admins', 'setaname', 'changechar', 'coords', 'createtwittertables', 'dmv',
     'setfactionleader', 'faction', 'finvite', 'funinvite', 'frank', 'frankname', 'duty', 'badge', 'panic',
-    'cuf', 'cuff', 'uncuff', 'jail', 'unjail', 'fine', 'mdc', 'revive', 'treat', '911', 'respond',
-    'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'buy', 'pawnstock', 'pawnsell', 'pawnbuy', 'pawnprice', 'pawnrename', 'pawnstockrename', 'bizbank', 'bizbankdeposit', 'bizbankwithdraw', 'setbizname', 'sellbiz', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'aprop', 'abiz', 'tpinterior',
-    'ph', 'phone', 'acceptdrive',
+    'cuf', 'cuff', 'uncuff', 'jail', 'unjail', 'arrest', 'fine', 'mdc', 'revive', 'treat', 'medhistory', '911', '911list', 'respond', 'dispatchstatus', 'case', 'casenote',
+    'properties', 'buyproperty', 'house', 'enterhouse', 'enter', 'exithouse', 'exit', 'buy', 'casino', 'betopen', 'betlist', 'bet', 'betclose', 'betsettle', 'betvoid', 'pawnstock', 'pawnsell', 'pawninbox', 'pawncollect', 'pawnlist', 'pawnunlist', 'pawngive', 'pawnbuy', 'pawnprice', 'pawnrename', 'pawnstockrename', 'bizbank', 'bizbankdeposit', 'bizbankwithdraw', 'setbizname', 'sellbiz', 'sellproperty', 'setrent', 'rent', 'houselock', 'hlock', 'houseinv', 'hdeposit', 'hwithdraw', 'hdrugs', 'allowhdrugs', 'aprop', 'abiz', 'tpinterior',
+    'ph', 'phone', 'acceptdrive', 'startdrive', 'drivefare', 'acceptfare', 'enddrive', 'cancelride',
     'call', 'answer', 'decline', 'hangup', 'acceptdeath',
     'sharenumber', 'sms',
     'pay', 'togglepm',
-    'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock', 'refill', 'scrap', 'scrapconfirm', 'sellto'
+    'buyvehicle', 'buypark', 'vehicles', 'park', 'get', 'lock', 'breakin', 'hotwire', 'refill', 'scrap', 'scrapconfirm', 'sellto'
 ]);
 
 mp.events.add('playerCommand', (player, command) => {
@@ -5253,8 +6142,8 @@ mp.events.addCommand('faction', (player) => {
     const salary = getFactionSalary(player.factionKey, player.factionRank);
     player.outputChatBox(`!{#5dade2}${def.label}: ${rankName} (rank ${player.factionRank}) | salary $${salary}/paycheck | duty: ${player.factionDuty ? 'on' : 'off'}`);
     player.outputChatBox('!{#d6eaf8}Komandos: /duty, /badge, /panic. Leader: /finvite /funinvite /frank /frankname');
-    if (def.key === 'pd') player.outputChatBox('!{#d6eaf8}PD: /cuf /uncuff /jail /unjail /fine /mdc /respond');
-    if (def.key === 'md') player.outputChatBox('!{#d6eaf8}MD: /revive /treat /respond');
+    if (def.key === 'pd') player.outputChatBox('!{#d6eaf8}PD: /cuf /uncuff /arrest /jail /unjail /fine /mdc /911list /respond /dispatchstatus /case /casenote');
+    if (def.key === 'md') player.outputChatBox('!{#d6eaf8}MD: /revive /treat /medhistory /911list /respond /dispatchstatus /case /casenote');
 
     const online = getFactionOnlineList(def.key);
     player.outputChatBox(`!{#d6eaf8}Online ${def.shortLabel}: ${online.length ? online.join(', ') : 'nieko'}`);
@@ -5390,6 +6279,10 @@ mp.events.addCommand('jail', (player, fullText, targetNameOrID, minutesArg, ...r
 
     const target = getPlayerByIDOrName(targetNameOrID);
     if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (target === player) return player.outputChatBox('!{#f7dc6f}Negalite uzdaryti saves.');
+    if (target.isJailed) return player.outputChatBox('!{#f7dc6f}Zaidejas jau atlieka bausme.');
+    if (!target.isCuffed) return player.outputChatBox('!{#f7dc6f}Pries registruojant sulaikyma, itariamasis turi buti surakintas.');
+    if (Number(target.dimension) !== Number(player.dimension)) return player.outputChatBox('!{#f7dc6f}Jus turite buti toje pacioje dimensijoje.');
     if (!isNearPdJailCells(player)) {
         return player.outputChatBox('!{#f7dc6f}/jail galima naudoti tik prie PD kameru.');
     }
@@ -5399,21 +6292,28 @@ mp.events.addCommand('jail', (player, fullText, targetNameOrID, minutesArg, ...r
     if (getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
         return player.outputChatBox('!{#f7dc6f}Turite buti salia zaidejo.');
     }
-    const minutes = Math.max(1, Math.min(60, parseInt(minutesArg, 10) || 0));
-    const reason = reasonParts.join(' ').trim() || 'No reason';
+    const minutes = Number(minutesArg);
+    const reason = reasonParts.join(' ').trim().replace(/\s+/g, ' ').slice(0, 255);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60 || reason.length < 3) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /jail [ID/vardas] [1-60 min] [priezastis].');
+    }
 
-    clearDeathState(target, true);
-    setPlayerCuffed(target, false);
-    target.isJailed = true;
-    target.jailedUntil = Date.now() + minutes * 60000;
-    target.dimension = 0;
-    target.position = PD_JAIL_POS;
-    target.heading = PD_JAIL_HEADING;
-    if (target.jailTimer) clearTimeout(target.jailTimer);
-    target.jailTimer = setTimeout(() => releasePlayerFromJail(target, true), minutes * 60000);
-
-    player.outputChatBox(`!{#5dade2}${target.charName} uzdarytas ${minutes} min. Priezastis: ${reason}`);
-    target.outputChatBox(`!{#e74c3c}Jus uzdarytas i PD kamera ${minutes} min. Priezastis: ${reason}`);
+    bookPlayerIntoJail(player, target, { minutes, reason }, (err, booking) => {
+        if (err) {
+            console.error('[PD] Booking failed:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko issaugoti sulaikymo. Bandykite dar karta.');
+        }
+        clearDeathState(target, true);
+        startPlayerJailSentence(target, {
+            until: booking.until,
+            reason,
+            officerCharId: player.charId,
+            officerName: player.charName,
+        });
+        player.outputChatBox(`!{#5dade2}${target.charName} uzdarytas ${minutes} min. Priezastis: ${reason}. Byla #${booking.id}.`);
+        target.outputChatBox(`!{#e74c3c}Jus uzdarytas i PD kamera ${minutes} min. Priezastis: ${reason}`);
+        if (player.activeEmergencyReportId) addEmergencyReportNote(player.activeEmergencyReportId, player, 'pd', `Sulaikymas #${booking.id}: ${target.charName}, ${minutes} min.; ${reason}`);
+    });
 });
 
 mp.events.addCommand('unjail', (player, fullText, targetNameOrID) => {
@@ -5423,8 +6323,56 @@ mp.events.addCommand('unjail', (player, fullText, targetNameOrID) => {
     const target = getPlayerByIDOrName(targetNameOrID);
     if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
     if (!target.isJailed) return player.outputChatBox('!{#f7dc6f}Zaidejas nera PD kameroje.');
-    releasePlayerFromJail(target, true);
+    if (!isNearPdJailCells(player) || Number(target.dimension) !== 0 || !isNearPdJailCells(target)) {
+        return player.outputChatBox('!{#f7dc6f}Paleisti galite tik budedami prie PD kameru, salia sulaikytojo.');
+    }
+    releasePlayerFromJail(target, true, player);
     player.outputChatBox(`!{#7aa164}${target.charName} paleistas.`);
+    if (player.activeEmergencyReportId) addEmergencyReportNote(player.activeEmergencyReportId, player, 'pd', `Paleistas ${target.charName} is PD kameros.`);
+});
+
+mp.events.addCommand('arrest', (player, fullText, targetNameOrID, minutesRaw) => {
+    if (!requireFactionMember(player, 'pd', true)) return;
+    if (!targetNameOrID) return sendUsageInstructions(player, 'arrest');
+    const target = getPlayerByIDOrName(targetNameOrID);
+    if (!target || !target.charName || !target.charId) return player.outputChatBox('!{#e74c3c}Itariamasis nerastas arba nepasirinko veikejo.');
+    if (target === player) return player.outputChatBox('!{#f7dc6f}Negalite sulaikyti saves.');
+    if (!target.isCuffed) return player.outputChatBox('!{#f7dc6f}Itariamasis turi buti surakintas.');
+    if (target.isJailed) return player.outputChatBox('!{#f7dc6f}Itariamasis jau atlieka bausme.');
+    if (Number(target.dimension) !== Number(player.dimension)
+        || getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Itariamasis turi buti salia jusu toje pacioje dimensijoje.');
+    }
+
+    const minutes = minutesRaw === undefined ? 10 : Number(minutesRaw);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60) return player.outputChatBox('!{#f7dc6f}Naudojimas: /arrest [ID/vardas] [1-60 min].');
+    db.query('SELECT id, reason FROM police_mdc_warrants WHERE char_id = ? AND status = ? ORDER BY created_at ASC LIMIT 1', [target.charId, POLICE_MDC_WARRANT_STATUS_OPEN], (warrantErr, rows) => {
+        if (warrantErr) {
+            console.error('[PD] Arrest warrant lookup failed:', warrantErr.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko patikrinti warrant.');
+        }
+        if (!rows || rows.length === 0) return player.outputChatBox('!{#f7dc6f}Atviro warrant nera. Naudokite /jail tik po roleplay tyrimo ir sulaikymo.');
+
+        const warrant = rows[0];
+        const reason = String(warrant.reason || 'Warrant').trim().slice(0, 255);
+        bookPlayerIntoJail(player, target, { minutes, reason, warrantId: warrant.id }, (bookingErr, booking) => {
+            if (bookingErr) {
+                if (bookingErr.message === 'WARRANT_NOT_OPEN') return player.outputChatBox('!{#f7dc6f}Warrant jau panaudotas arba uzdarytas.');
+                console.error('[PD] Warrant arrest failed:', bookingErr.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko uzregistruoti aresto.');
+            }
+            clearDeathState(target, true);
+            startPlayerJailSentence(target, {
+                until: booking.until,
+                reason,
+                officerCharId: player.charId,
+                officerName: player.charName,
+            });
+            player.outputChatBox(`!{#7aa164}Warrant #${warrant.id} ivykdytas. ${target.charName} uzdarytas ${minutes} min. Arestas #${booking.id}.`);
+            target.outputChatBox(`!{#e74c3c}Esate arestuotas pagal warrant #${warrant.id}. Bausme: ${minutes} min.`);
+            if (player.activeEmergencyReportId) addEmergencyReportNote(player.activeEmergencyReportId, player, 'pd', `Warrant #${warrant.id} ivykdytas: ${target.charName}, arestas #${booking.id}.`);
+        });
+    });
 });
 
 mp.events.addCommand('fine', (player, fullText, targetNameOrID, amountArg, ...reasonParts) => {
@@ -5459,9 +6407,12 @@ mp.events.addCommand('fine', (player, fullText, targetNameOrID, amountArg, ...re
     persistPlayerMoney(target);
     persistPlayerBankBalance(target);
 
-    db.query('INSERT INTO police_fines (char_id, suspect_name, officer_char_id, officer_name, amount, reason, paid_from_cash, paid_from_bank) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [target.charId, target.charName, player.charId || null, player.charName, parsedAmount, reason, paidFromCash, paidFromBank], (err) => {
+    const reportId = Number(player.activeEmergencyReportId) || null;
+    db.query('INSERT INTO police_fines (char_id, suspect_name, officer_char_id, officer_name, amount, reason, paid_from_cash, paid_from_bank, report_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [target.charId, target.charName, player.charId || null, player.charName, parsedAmount, reason, paidFromCash, paidFromBank, reportId], (err) => {
         if (err) {
             console.error('[PD] Failed to save fine:', err.message);
+        } else if (reportId) {
+            addEmergencyReportNote(reportId, player, 'pd', `Bauda #${target.charName} $${parsedAmount}: ${reason}`);
         }
     });
 
@@ -5485,6 +6436,14 @@ mp.events.addCommand('mdc', (player, fullText) => {
         if (!args[0]) return showPoliceMdcHelp(player);
         return handlePoliceMdcPlateLookup(player, args[0]);
     }
+    if (subcommand === 'fines') {
+        if (!args[0]) return showPoliceMdcHelp(player);
+        return handlePoliceMdcFineList(player, args[0]);
+    }
+    if (subcommand === 'arrests') {
+        if (!args[0]) return showPoliceMdcHelp(player);
+        return handlePoliceMdcArrestList(player, args[0]);
+    }
     if (subcommand === 'warrant') {
         if (args.length < 2) return showPoliceMdcHelp(player);
         return handlePoliceMdcWarrantCreate(player, args.shift(), args.join(' '));
@@ -5494,12 +6453,52 @@ mp.events.addCommand('mdc', (player, fullText) => {
         return handlePoliceMdcWarrantList(player, args[0]);
     }
     if (subcommand === 'clear') {
-        if (!args[0]) return showPoliceMdcHelp(player);
-        return handlePoliceMdcWarrantClear(player, args[0]);
+        if (args.length < 2) return showPoliceMdcHelp(player);
+        return handlePoliceMdcWarrantClear(player, args[0], args.slice(1).join(' '));
     }
 
     showPoliceMdcHelp(player);
 });
+
+function recordMedicalTreatment(medic, patient, action, healthBefore, healthAfter, notes, callback) {
+    if (!medic || !medic.charId || !patient || !patient.charId) return callback(new Error('Missing medical record data.'));
+    if (patient.medicalTreatmentPending) return callback(new Error('Medical treatment is already being recorded.'));
+    patient.medicalTreatmentPending = true;
+    const finish = (err, treatmentId = null) => {
+        patient.medicalTreatmentPending = false;
+        callback(err || null, treatmentId);
+    };
+    const reportId = Number(medic.activeEmergencyReportId) || null;
+    db.getConnection((connectionErr, connection) => {
+        if (connectionErr) return finish(connectionErr);
+        connection.beginTransaction((transactionErr) => {
+            if (transactionErr) {
+                connection.release();
+                return finish(transactionErr);
+            }
+            const rollback = (err) => connection.rollback(() => {
+                connection.release();
+                finish(err);
+            });
+            connection.query('UPDATE characters SET health = ? WHERE id = ?', [healthAfter, patient.charId], (healthErr, healthResult) => {
+                if (healthErr) return rollback(healthErr);
+                if (!healthResult.affectedRows) return rollback(new Error('Patient character not found.'));
+                connection.query(
+                    'INSERT INTO medical_treatments (patient_char_id, patient_name, medic_char_id, medic_name, report_id, action, health_before, health_after, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [patient.charId, patient.charName, medic.charId, medic.charName, reportId, action, healthBefore, healthAfter, String(notes || '').slice(0, 255)],
+                    (recordErr, result) => {
+                        if (recordErr) return rollback(recordErr);
+                        connection.commit((commitErr) => {
+                            if (commitErr) return rollback(commitErr);
+                            connection.release();
+                            finish(null, Number(result.insertId));
+                        });
+                    }
+                );
+            });
+        });
+    });
+}
 
 mp.events.addCommand('revive', (player, fullText, targetNameOrID) => {
     if (!requireFactionMember(player, 'md', true)) return;
@@ -5508,15 +6507,22 @@ mp.events.addCommand('revive', (player, fullText, targetNameOrID) => {
     const target = getPlayerByIDOrName(targetNameOrID);
     if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
     if (!target.isDowned) return player.outputChatBox('!{#f7dc6f}Zaidejas nera deathstate. Jei naudojo /acceptdeath, revive nebegalimas.');
-    if (getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
+    if (Number(player.dimension) !== Number(target.dimension) || getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
         return player.outputChatBox('!{#f7dc6f}Turite buti salia paciento.');
     }
 
-    clearDeathState(target, true);
-    target.health = MD_REVIVE_HEALTH;
-    target.outputChatBox(`!{#7aa164}${player.charName} jus atgaivino. Sveikata: ${MD_REVIVE_HEALTH}.`);
-    player.outputChatBox(`!{#7aa164}Atgaivinote ${target.charName}.`);
-    db.query('UPDATE characters SET health = ? WHERE id = ?', [target.health, target.charId]);
+    const healthBefore = Math.max(0, Number(target.health) || 0);
+    recordMedicalTreatment(player, target, 'revive', healthBefore, MD_REVIVE_HEALTH, 'Patient resuscitated.', (err, treatmentId) => {
+        if (err) {
+            console.error('[MD] Failed to save revive record:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko issaugoti medicininio iraso.');
+        }
+        clearDeathState(target, true);
+        target.health = MD_REVIVE_HEALTH;
+        target.outputChatBox(`!{#7aa164}${player.charName} jus atgaivino. Sveikata: ${MD_REVIVE_HEALTH}.`);
+        player.outputChatBox(`!{#7aa164}Atgaivinote ${target.charName}. Medicininis irasas #${treatmentId}.`);
+        if (player.activeEmergencyReportId) addEmergencyReportNote(player.activeEmergencyReportId, player, 'md', `Medicininis irasas #${treatmentId}: atgaivintas pacientas ${target.charName}.`);
+    });
 });
 
 mp.events.addCommand('treat', (player, fullText, targetNameOrID) => {
@@ -5526,71 +6532,267 @@ mp.events.addCommand('treat', (player, fullText, targetNameOrID) => {
     const target = getPlayerByIDOrName(targetNameOrID);
     if (!target || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
     if (target.isDowned) return player.outputChatBox('!{#f7dc6f}Downed zaidejui naudokite /revive.');
-    if (getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
+    if (Number(player.dimension) !== Number(target.dimension) || getDistanceBetweenPositions(player.position, target.position) > FACTION_INTERACT_RADIUS) {
         return player.outputChatBox('!{#f7dc6f}Turite buti salia paciento.');
     }
 
-    target.health = Math.min(100, Math.max(1, parseInt(target.health, 10) || 1) + MD_TREAT_AMOUNT);
-    player.outputChatBox(`!{#7aa164}Pagydete ${target.charName}. Sveikata: ${target.health}.`);
-    target.outputChatBox(`!{#7aa164}${player.charName} jus pagyde. Sveikata: ${target.health}.`);
-    db.query('UPDATE characters SET health = ? WHERE id = ?', [target.health, target.charId]);
+    const healthBefore = Math.max(1, parseInt(target.health, 10) || 1);
+    const healthAfter = Math.min(100, healthBefore + MD_TREAT_AMOUNT);
+    recordMedicalTreatment(player, target, 'treat', healthBefore, healthAfter, 'Field treatment.', (err, treatmentId) => {
+        if (err) {
+            console.error('[MD] Failed to save treatment record:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko issaugoti medicininio iraso.');
+        }
+        target.health = healthAfter;
+        player.outputChatBox(`!{#7aa164}Pagydete ${target.charName}. Sveikata: ${target.health}. Medicininis irasas #${treatmentId}.`);
+        target.outputChatBox(`!{#7aa164}${player.charName} jus pagyde. Sveikata: ${target.health}.`);
+        if (player.activeEmergencyReportId) addEmergencyReportNote(player.activeEmergencyReportId, player, 'md', `Medicininis irasas #${treatmentId}: gydytas ${target.charName}; sveikata ${target.health}%.`);
+    });
 });
+
+mp.events.addCommand('medhistory', (player, fullText, targetIdentifier) => {
+    if (!requireFactionMember(player, 'md', true)) return;
+    if (!targetIdentifier) return sendUsageInstructions(player, 'medhistory');
+    resolveCharacterRecordForPolice(targetIdentifier, (resolveErr, record) => {
+        if (resolveErr) {
+            if (resolveErr.message === 'ambiguous') return player.outputChatBox('!{#f7dc6f}Rasti keli veikejai. Naudokite tikslu ID arba pilna varda.');
+            console.error('[MD] Patient lookup failed:', resolveErr.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko rasti paciento istorijos.');
+        }
+        if (!record) return player.outputChatBox('!{#f7dc6f}Pacientas nerastas.');
+        db.query('SELECT action, health_before, health_after, medic_name, report_id, notes, created_at FROM medical_treatments WHERE patient_char_id = ? ORDER BY created_at DESC LIMIT 10', [record.id], (historyErr, rows) => {
+            if (historyErr) {
+                console.error('[MD] Patient history query failed:', historyErr.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko gauti medicinines istorijos.');
+            }
+            if (!rows || rows.length === 0) return player.outputChatBox(`!{#d5f5e3}[MD] ${record.char_name} medicininiu irasu neturi.`);
+            player.outputChatBox(`!{#5dade2}[MD] ${record.char_name} paskutiniai medicininiai irasai:`);
+            rows.forEach((row) => {
+                const caseLabel = row.report_id ? ` | 911 #${row.report_id}` : '';
+                player.outputChatBox(`#${formatMdcTimestamp(row.created_at)} | ${row.action} | ${row.health_before}% -> ${row.health_after}% | ${row.medic_name}${caseLabel} | ${row.notes}`);
+            });
+        });
+    });
+});
+
+function getPlayerEmergencyAgency(player) {
+    return player && player.factionDuty && (player.factionKey === 'pd' || player.factionKey === 'md')
+        ? player.factionKey
+        : null;
+}
+
+function canAccessEmergencyReport(player, reportType) {
+    const agency = getPlayerEmergencyAgency(player);
+    return Boolean(agency && (reportType === 'both' || reportType === agency));
+}
+
+function addEmergencyReportNote(reportId, author, agency, note, callback = () => { }) {
+    const id = parseInt(reportId, 10);
+    const normalizedNote = String(note || '').trim().replace(/\s+/g, ' ').slice(0, 1000);
+    if (!Number.isInteger(id) || id <= 0 || !author || !author.charName || !normalizedNote) return;
+
+    db.query(
+        'INSERT INTO emergency_report_notes (report_id, author_char_id, author_name, agency, note) VALUES (?, ?, ?, ?, ?)',
+        [id, author.charId || null, author.charName, agency, normalizedNote],
+        (err) => {
+            if (err) console.error('[911] Failed to save case note:', err.message);
+            callback(err || null);
+        }
+    );
+}
+
+function notifyEmergencyReportCaller(reportId, message) {
+    const report = activeEmergencyReports.get(Number(reportId));
+    if (!report || !report.caller || report.caller.charId !== report.callerCharId || !report.caller.charName) return;
+    report.caller.outputChatBox(message);
+}
 
 mp.events.addCommand('911', (player, fullText) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
     const args = splitCommandText(fullText);
     const type = String(args.shift() || '').toLowerCase();
-    const message = args.join(' ').trim();
+    const message = args.join(' ').trim().replace(/\s+/g, ' ').slice(0, 500);
     if (!['pd', 'md', 'both'].includes(type) || message.length < 3) return sendUsageInstructions(player, '911');
 
-    const reportId = nextEmergencyReportId++;
     const pos = player.position || { x: 0, y: 0, z: 0 };
-    const report = {
-        id: reportId,
-        type,
-        caller: player,
-        callerCharId: player.charId,
-        callerName: player.charName,
-        message,
-        position: { x: pos.x, y: pos.y, z: pos.z },
-        createdAt: Date.now(),
-        responder: null,
-    };
-    activeEmergencyReports.set(reportId, report);
+    db.query(
+        'INSERT INTO emergency_reports (caller_char_id, caller_name, report_type, message, position_x, position_y, position_z) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [player.charId || null, player.charName, type, message, pos.x, pos.y, pos.z],
+        (err, result) => {
+            if (err) {
+                console.error('[911] Failed to save emergency report:', err.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko issiusti 911 pranesimo. Bandykite veliau.');
+            }
 
-    const formatted = `!{#e74c3c}[911 #${reportId}] ${type.toUpperCase()} | ${player.charName}: ${message} | X ${pos.x.toFixed(1)}, Y ${pos.y.toFixed(1)}, Z ${pos.z.toFixed(1)} | /respond ${reportId}`;
-    let sent = 0;
-    mp.players.toArray().forEach((target) => {
-        if (!target.charName) return;
-        const matches = type === 'both' || target.factionKey === type;
-        if (matches && (target.factionKey === 'pd' || target.factionKey === 'md')) {
-            target.outputChatBox(formatted);
-            sent += 1;
+            const reportId = Number(result.insertId);
+            activeEmergencyReports.set(reportId, { caller: player, callerCharId: player.charId });
+            const formatted = `!{#e74c3c}[911 #${reportId}] ${type.toUpperCase()} | ${player.charName}: ${message} | X ${pos.x.toFixed(1)}, Y ${pos.y.toFixed(1)}, Z ${pos.z.toFixed(1)} | /respond ${reportId}`;
+            let sent = 0;
+            mp.players.toArray().forEach((target) => {
+                if (!target.charName || !target.factionDuty) return;
+                if (type === 'both' || target.factionKey === type) {
+                    target.outputChatBox(formatted);
+                    sent += 1;
+                }
+            });
+            player.outputChatBox(`!{#7aa164}911 pranesimas #${reportId} issiustas. Online tarnybos: ${sent}.`);
         }
-    });
+    );
+});
 
-    player.outputChatBox(`!{#7aa164}911 pranesimas #${reportId} issiustas. Online tarnybos: ${sent}.`);
+mp.events.addCommand('911list', (player) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const agency = getPlayerEmergencyAgency(player);
+    if (!agency) return player.outputChatBox('!{#f7dc6f}Aktyvius 911 pranesimus gali matyti tik on-duty PD/MD.');
+
+    db.query(
+        "SELECT id, report_type, status, caller_name, message, position_x, position_y FROM emergency_reports WHERE status <> 'closed' AND (report_type = ? OR report_type = 'both') ORDER BY created_at DESC LIMIT 10",
+        [agency],
+        (err, rows) => {
+            if (err) {
+                console.error('[911] Failed to list reports:', err.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko gauti 911 pranesimu.');
+            }
+            if (!rows || rows.length === 0) return player.outputChatBox('!{#d5f5e3}Aktyviu 911 pranesimu nera.');
+            rows.forEach((row) => {
+                player.outputChatBox(`!{#e74c3c}[911 #${row.id}] ${row.status} | ${row.caller_name}: ${row.message} | X ${Number(row.position_x).toFixed(1)}, Y ${Number(row.position_y).toFixed(1)} | /respond ${row.id}`);
+            });
+        }
+    );
 });
 
 mp.events.addCommand('respond', (player, fullText, reportIdArg) => {
     if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
-    if (!player.factionDuty || (player.factionKey !== 'pd' && player.factionKey !== 'md')) {
-        return player.outputChatBox('!{#f7dc6f}Tik on-duty PD/MD gali priimti 911.');
-    }
+    const agency = getPlayerEmergencyAgency(player);
+    if (!agency) return player.outputChatBox('!{#f7dc6f}Tik on-duty PD/MD gali priimti 911.');
 
     const reportId = parseInt(reportIdArg, 10);
-    const report = activeEmergencyReports.get(reportId);
-    if (!report) return player.outputChatBox('!{#f7dc6f}911 pranesimas nerastas.');
-    if (report.type !== 'both' && report.type !== player.factionKey) return player.outputChatBox('!{#f7dc6f}Sis iskvietimas skirtas kitai tarnybai.');
-    if (report.responder) return player.outputChatBox(`!{#f7dc6f}911 #${reportId} jau prieme ${report.responder}.`);
+    if (!Number.isInteger(reportId) || reportId <= 0) return sendUsageInstructions(player, 'respond');
+    db.query('SELECT * FROM emergency_reports WHERE id = ? LIMIT 1', [reportId], (selectErr, rows) => {
+        if (selectErr) {
+            console.error('[911] Failed to load report:', selectErr.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko gauti 911 pranesimo.');
+        }
+        const report = rows && rows[0];
+        if (!report) return player.outputChatBox('!{#f7dc6f}911 pranesimas nerastas.');
+        if (!canAccessEmergencyReport(player, report.report_type)) return player.outputChatBox('!{#f7dc6f}Sis iskvietimas skirtas kitai tarnybai.');
+        const previousResponderOnline = report.responder_char_id && mp.players.toArray().some((onlinePlayer) => (
+            Number(onlinePlayer.charId) === Number(report.responder_char_id) && Boolean(onlinePlayer.charName)
+        ));
+        const canTakeOver = ['accepted', 'enroute', 'onscene'].includes(report.status) && !previousResponderOnline;
+        if (report.status !== 'open' && !canTakeOver) {
+            return player.outputChatBox(`!{#f7dc6f}911 #${reportId} jau turi busena ${report.status}.`);
+        }
 
-    report.responder = player.charName;
-    player.outputChatBox(`!{#7aa164}Priemete 911 #${reportId}: ${report.message}. Vieta X ${report.position.x.toFixed(1)}, Y ${report.position.y.toFixed(1)}.`);
-    if (report.caller && report.caller.charName && report.caller.charId === report.callerCharId) {
-        report.caller.outputChatBox(`!{#5dade2}911 #${reportId}: ${player.charName} prieme jusu iskvietima.`);
+        db.query(
+            "UPDATE emergency_reports SET status = 'accepted', responder_char_id = ?, responder_name = ?, responder_faction = ? WHERE id = ? AND status = ? AND responder_char_id <=> ?",
+            [player.charId, player.charName, agency, reportId, report.status, report.responder_char_id],
+            (updateErr, result) => {
+                if (updateErr) {
+                    console.error('[911] Failed to assign report:', updateErr.message);
+                    return player.outputChatBox('!{#e74c3c}Nepavyko priimti 911 pranesimo.');
+                }
+                if (!result.affectedRows) return player.outputChatBox('!{#f7dc6f}Kitas pareigunas jau prieme si iskvietima.');
+
+                player.activeEmergencyReportId = reportId;
+                addEmergencyReportNote(reportId, player, agency, 'Ieskvietimas priimtas.');
+                player.outputChatBox(`!{#7aa164}Priemete 911 #${reportId}: ${report.message}. Vieta X ${Number(report.position_x).toFixed(1)}, Y ${Number(report.position_y).toFixed(1)}. Naudokite /dispatchstatus ${reportId} enroute.`);
+                notifyEmergencyReportCaller(reportId, `!{#5dade2}911 #${reportId}: ${player.charName} prieme jusu iskvietima.`);
+            }
+        );
+    });
+});
+
+mp.events.addCommand('dispatchstatus', (player, fullText) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const agency = getPlayerEmergencyAgency(player);
+    if (!agency) return player.outputChatBox('!{#f7dc6f}Tik on-duty PD/MD gali keisti 911 busena.');
+    const args = splitCommandText(fullText);
+    const reportId = parseInt(args.shift(), 10);
+    const nextStatus = String(args.shift() || '').toLowerCase();
+    const closureNote = args.join(' ').trim().replace(/\s+/g, ' ').slice(0, 255);
+    const expectedStatus = { enroute: 'accepted', onscene: 'enroute', close: 'onscene' }[nextStatus];
+    if (!Number.isInteger(reportId) || !expectedStatus || (nextStatus === 'close' && closureNote.length < 3)) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /dispatchstatus [ID] [enroute|onscene|close] [uzdarymo aprasymas]');
     }
 
-    setTimeout(() => activeEmergencyReports.delete(reportId), 600000);
+    const status = nextStatus === 'close' ? 'closed' : nextStatus;
+    db.query(
+        'UPDATE emergency_reports SET status = ?, closure_note = ?, closed_at = ? WHERE id = ? AND responder_char_id = ? AND responder_faction = ? AND status = ?',
+        [status, nextStatus === 'close' ? closureNote : null, nextStatus === 'close' ? new Date() : null, reportId, player.charId, agency, expectedStatus],
+        (err, result) => {
+            if (err) {
+                console.error('[911] Failed to update report status:', err.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko pakeisti 911 busenos.');
+            }
+            if (!result.affectedRows) return player.outputChatBox('!{#f7dc6f}Pranesimas nerastas arba busena negalima.');
+
+            if (nextStatus === 'close') {
+                if (Number(player.activeEmergencyReportId) === reportId) player.activeEmergencyReportId = null;
+            }
+            addEmergencyReportNote(reportId, player, agency, `Busena pakeista i ${status}${nextStatus === 'close' ? `: ${closureNote}` : ''}.`);
+            player.outputChatBox(`!{#7aa164}911 #${reportId} busena: ${status}.`);
+            notifyEmergencyReportCaller(reportId, `!{#5dade2}911 #${reportId}: jusu iskvietimo busena pakeista i ${status}.`);
+            if (nextStatus === 'close') activeEmergencyReports.delete(reportId);
+        }
+    );
+});
+
+mp.events.addCommand('case', (player, fullText) => {
+    const agency = getPlayerEmergencyAgency(player);
+    if (!agency) return player.outputChatBox('!{#f7dc6f}Bylu istorija gali matyti tik on-duty PD/MD.');
+    const reportId = parseInt(splitCommandText(fullText)[0], 10);
+    if (!Number.isInteger(reportId) || reportId <= 0) return player.outputChatBox('!{#f7dc6f}Naudojimas: /case [911 ID]');
+
+    db.query('SELECT * FROM emergency_reports WHERE id = ? LIMIT 1', [reportId], (err, rows) => {
+        if (err) {
+            console.error('[911] Failed to load case:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko gauti bylos.');
+        }
+        const report = rows && rows[0];
+        if (!report || !canAccessEmergencyReport(player, report.report_type)) return player.outputChatBox('!{#f7dc6f}Byla nerasta arba neprieinama jusu tarnybai.');
+
+        player.outputChatBox(`!{#5dade2}[CASE #${report.id}] ${report.status} | ${report.report_type.toUpperCase()} | ${report.caller_name}: ${report.message}`);
+        player.outputChatBox(`Vieta X ${Number(report.position_x).toFixed(1)}, Y ${Number(report.position_y).toFixed(1)}, Z ${Number(report.position_z).toFixed(1)} | Atsakingas: ${report.responder_name || 'nepriskirtas'}`);
+        if (report.closure_note) player.outputChatBox(`Uzdarymas: ${report.closure_note}`);
+
+        db.query('SELECT agency, author_name, note, created_at FROM emergency_report_notes WHERE report_id = ? ORDER BY created_at ASC, id ASC', [reportId], (notesErr, notes) => {
+            if (notesErr) {
+                console.error('[911] Failed to load case notes:', notesErr.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko gauti bylos uzrasu.');
+            }
+            if (!notes || notes.length === 0) return player.outputChatBox('Byloje uzrasu nera.');
+            notes.forEach((note) => player.outputChatBox(`[${note.agency.toUpperCase()}] ${note.author_name}: ${note.note}`));
+        });
+    });
+});
+
+mp.events.addCommand('casenote', (player, fullText) => {
+    const agency = getPlayerEmergencyAgency(player);
+    if (!agency) return player.outputChatBox('!{#f7dc6f}Bylos irasa gali prideti tik on-duty PD/MD.');
+    const args = splitCommandText(fullText);
+    const reportId = parseInt(args.shift(), 10);
+    const note = args.join(' ').trim();
+    if (!Number.isInteger(reportId) || reportId <= 0 || note.length < 3) {
+        return player.outputChatBox('!{#f7dc6f}Naudojimas: /casenote [911 ID] [irasas]');
+    }
+
+    db.query('SELECT report_type, responder_char_id, responder_faction FROM emergency_reports WHERE id = ? LIMIT 1', [reportId], (err, rows) => {
+        if (err) {
+            console.error('[911] Failed to verify case note:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko patikrinti bylos.');
+        }
+        const report = rows && rows[0];
+        if (!report || !canAccessEmergencyReport(player, report.report_type)
+            || Number(report.responder_char_id) !== Number(player.charId)
+            || report.responder_faction !== agency) {
+            return player.outputChatBox('!{#f7dc6f}Irasa gali prideti tik byla priemes pareigunas.');
+        }
+        addEmergencyReportNote(reportId, player, agency, note, (saveErr) => {
+            if (saveErr) return player.outputChatBox('!{#e74c3c}Nepavyko issaugoti bylos iraso.');
+            player.outputChatBox(`!{#7aa164}Irasas pridetas prie bylos #${reportId}.`);
+        });
+    });
 });
 
 mp.events.addCommand('pay', (player, fullText, targetNameOrID, amountStr) => {
@@ -6132,6 +7334,203 @@ mp.events.addCommand('get', (player, _, vehicleDbIdRaw) => {
 
     persistOwnedVehicleState(record);
     player.outputChatBox(`!{#7aa164}Ispawnote ${record.displayName} parkavimo zonoje. Zinokite ziurekite zemelapyje.`);
+});
+
+function getNearbyVehicleForBreakIn(player) {
+    if (!player || !player.position) return null;
+    let closest = null;
+    let closestDistance = VEHICLE_BREAKIN_RADIUS;
+    mp.vehicles.forEach((vehicle) => {
+        if (!vehicle || Number(vehicle.dimension) !== Number(player.dimension)) return;
+        const distance = getDistanceBetweenPositions(player.position, vehicle.position);
+        if (distance <= closestDistance) {
+            closest = vehicle;
+            closestDistance = distance;
+        }
+    });
+    return closest;
+}
+
+function sendVehicleSecurityResult(player, success, message) {
+    if (player && player.call) player.call('vehicleSecurityResult', [Boolean(success), String(message || '')]);
+}
+
+function cancelVehicleSecurityAttempt(player, message = '', notify = true) {
+    if (!player) return;
+    const attempt = activeVehicleSecurityAttempts.get(player.id);
+    if (!attempt) return;
+    if (attempt.timeout) clearTimeout(attempt.timeout);
+    activeVehicleSecurityAttempts.delete(player.id);
+    if (notify) sendVehicleSecurityResult(player, false, message || 'Veiksmas atsauktas.');
+}
+
+function reportVehicleSecurityAlarm(vehicle) {
+    const position = vehicle && vehicle.position;
+    if (!position) return;
+    mp.players.toArray().forEach((officer) => {
+        if (!officer.charName || officer.factionKey !== 'pd' || !officer.factionDuty) return;
+        officer.outputChatBox(`!{#e74c3c}[SIGNALIZACIJA] Bandoma atrakinti transporta netoli X ${Number(position.x).toFixed(1)}, Y ${Number(position.y).toFixed(1)}.`);
+    });
+}
+
+function finishVehicleSecurityAttempt(player, attempt, submittedKeys, allowFailure = true) {
+    if (!attempt || activeVehicleSecurityAttempts.get(player.id) !== attempt) return;
+    if (attempt.timeout) clearTimeout(attempt.timeout);
+    activeVehicleSecurityAttempts.delete(player.id);
+
+    const elapsed = Date.now() - attempt.startedAt;
+    const keys = Array.isArray(submittedKeys) ? submittedKeys.map((key) => String(key).toLowerCase()) : [];
+    const sequenceMatches = keys.length === attempt.sequence.length
+        && keys.every((key, index) => key === attempt.sequence[index]);
+    const minimumElapsed = attempt.mode.previewMs + (attempt.mode.sequenceLength * attempt.mode.minInputMs);
+    const withinWindow = elapsed >= minimumElapsed && elapsed <= attempt.expiresAt - attempt.startedAt;
+    const vehicle = attempt.vehicle;
+    const playerStillInPlace = attempt.modeName === 'breakin'
+        ? !player.vehicle && Number(player.dimension) === Number(attempt.dimension)
+            && Number(vehicle.dimension) === Number(attempt.dimension)
+            && getDistanceBetweenPositions(player.position, vehicle.position) <= VEHICLE_BREAKIN_RADIUS
+        : player.vehicle && Number(player.vehicle.id) === Number(attempt.vehicleId)
+            && (Number(player.seat) === -1 || Number(player.seat) === 0);
+    const vehicleStateValid = attempt.modeName === 'breakin'
+        ? Boolean(vehicle.locked)
+        : !Boolean(vehicle.locked) && !Boolean(vehicle.engine);
+
+    if (!withinWindow || !sequenceMatches || !playerStillInPlace || !vehicleStateValid) {
+        if (allowFailure) {
+            const failures = (vehicleSecurityFailures.get(attempt.vehicleId) || 0) + 1;
+            vehicleSecurityFailures.set(attempt.vehicleId, failures);
+            if (attempt.modeName === 'breakin' && failures >= 3) {
+                reportVehicleSecurityAlarm(vehicle);
+                vehicleSecurityFailures.set(attempt.vehicleId, 0);
+            }
+        }
+        vehicleSecurityCooldowns.set(player.id, Date.now() + VEHICLE_SECURITY_COOLDOWN_MS);
+        sendVehicleSecurityResult(player, false, !playerStillInPlace
+            ? 'Pametete padeti. Bandykite vel.'
+            : 'Nepavyko. Sekos klaida arba laikas baigesi.');
+        return;
+    }
+
+    vehicleSecurityCooldowns.delete(player.id);
+    vehicleSecurityFailures.delete(attempt.vehicleId);
+    if (attempt.modeName === 'breakin') {
+        vehicle.locked = false;
+        try {
+            vehicle.setVariable('hotwireActive', 0);
+            vehicle.setVariable('manualEngineOn', 0);
+            vehicle.engine = false;
+        } catch (error) { }
+        const ownerCharId = Number(vehicle.getVariable('ownedByCharId')) || 0;
+        const ownedVehicleId = Number(vehicle.getVariable('ownedVehicleId')) || 0;
+        if (ownerCharId > 0 && ownedVehicleId > 0) {
+            db.query('UPDATE player_vehicles SET locked = 0 WHERE id = ? AND char_id = ?', [ownedVehicleId, ownerCharId], (err) => {
+                if (err) console.error('[VEHICLES] Failed to persist lockpick state:', err.message);
+            });
+            const owner = findOnlinePlayerByCharId(ownerCharId);
+            const record = owner && owner.ownedVehicles instanceof Map ? owner.ownedVehicles.get(ownedVehicleId) : null;
+            if (record) {
+                record.locked = 0;
+                record.entity = vehicle;
+            }
+        }
+        sendVehicleSecurityResult(player, true, 'Spyna atrakinta. Dabar sedekite prie vairo ir naudokite /hotwire.');
+        return;
+    }
+
+    try {
+        vehicle.setVariable('hotwireActive', 1);
+        vehicle.setVariable('manualEngineOn', 1);
+        vehicle.engine = true;
+    } catch (error) {
+        return sendVehicleSecurityResult(player, false, 'Nepavyko uzvesti variklio.');
+    }
+    sendVehicleSecurityResult(player, true, 'Variklis uzvestas.');
+}
+
+function startVehicleSecurityAttempt(player, vehicle, modeName) {
+    const mode = VEHICLE_SECURITY_MODES[modeName];
+    if (!mode || !player || !vehicle) return;
+    if (activeVehicleSecurityAttempts.has(player.id)) return player.outputChatBox('!{#f7dc6f}Jau vykdote transporto saugumo veiksma.');
+    const cooldownRemaining = (vehicleSecurityCooldowns.get(player.id) || 0) - Date.now();
+    if (cooldownRemaining > 0) return player.outputChatBox(`!{#f7dc6f}Palaukite ${Math.ceil(cooldownRemaining / 1000)} s. pries kita bandyma.`);
+
+    const keys = ['w', 'a', 's', 'd'];
+    const sequence = [];
+    while (sequence.length < mode.sequenceLength) {
+        const nextKey = keys[crypto.randomInt(0, keys.length)];
+        if (sequence[sequence.length - 1] !== nextKey) sequence.push(nextKey);
+    }
+    const attemptId = crypto.randomBytes(12).toString('hex');
+    const startedAt = Date.now();
+    const attempt = {
+        attemptId,
+        modeName,
+        mode,
+        sequence,
+        vehicle,
+        vehicleId: Number(vehicle.id),
+        dimension: Number(player.dimension),
+        startedAt,
+        expiresAt: startedAt + mode.timeLimitMs,
+        timeout: null,
+    };
+    activeVehicleSecurityAttempts.set(player.id, attempt);
+    vehicleSecurityCooldowns.set(player.id, Date.now() + VEHICLE_SECURITY_COOLDOWN_MS);
+    attempt.timeout = setTimeout(() => {
+        if (activeVehicleSecurityAttempts.get(player.id) === attempt) {
+            finishVehicleSecurityAttempt(player, attempt, [], false);
+        }
+    }, mode.timeLimitMs + 50);
+
+    player.call('startVehicleSecurityMinigame', [JSON.stringify({
+        attemptId,
+        mode: modeName,
+        label: mode.label,
+        sequence,
+        previewMs: mode.previewMs,
+        timeLimitMs: mode.timeLimitMs,
+    })]);
+}
+
+mp.events.addCommand('breakin', (player) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    if (player.vehicle) return player.outputChatBox('!{#f7dc6f}Islipkite is transporto pries lauzdami spyna.');
+    const vehicle = getNearbyVehicleForBreakIn(player);
+    if (!vehicle) return player.outputChatBox('!{#f7dc6f}Nera uzrakinto transporto pakankamai arti.');
+    if (!vehicle.locked) return player.outputChatBox('!{#f7dc6f}Transportas atrakintas; galite sedeti prie vairo ir naudoti /hotwire.');
+    startVehicleSecurityAttempt(player, vehicle, 'breakin');
+});
+
+mp.events.addCommand('hotwire', (player) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    const vehicle = player.vehicle;
+    if (!vehicle || (Number(player.seat) !== -1 && Number(player.seat) !== 0)) {
+        return player.outputChatBox('!{#f7dc6f}Hotwire galite naudoti tik sededami vairuotojo vietoje.');
+    }
+    if (vehicle.isDMVTestVehicle) return player.outputChatBox('!{#f7dc6f}DMV testini transporta uzvesti galima iprastai.');
+    if (vehicle.locked) return player.outputChatBox('!{#f7dc6f}Transportas uzrakintas. Pirma naudokite /breakin salia jo.');
+    if (Number(vehicle.getVariable('hotwireActive')) === 1) return player.outputChatBox('!{#f7dc6f}Sis transportas jau buvo uzvestas hotwire budu.');
+    if (Number(vehicle.getVariable('manualEngineOn')) === 1 || vehicle.engine) return player.outputChatBox('!{#f7dc6f}Variklis jau veikia.');
+    startVehicleSecurityAttempt(player, vehicle, 'hotwire');
+});
+
+mp.events.add('submitVehicleSecurityMinigame', (player, attemptId, keysJson) => {
+    const attempt = activeVehicleSecurityAttempts.get(player.id);
+    if (!attempt || String(attemptId || '') !== attempt.attemptId) return;
+    let submittedKeys = [];
+    try {
+        submittedKeys = JSON.parse(String(keysJson || '[]'));
+    } catch (error) {
+        return finishVehicleSecurityAttempt(player, attempt, [], true);
+    }
+    finishVehicleSecurityAttempt(player, attempt, submittedKeys, true);
+});
+
+mp.events.add('cancelVehicleSecurityAttempt', (player, attemptId) => {
+    const attempt = activeVehicleSecurityAttempts.get(player.id);
+    if (!attempt || String(attemptId || '') !== attempt.attemptId) return;
+    cancelVehicleSecurityAttempt(player, 'Bandymas atsauktas.', true);
+    vehicleSecurityCooldowns.set(player.id, Date.now() + 5000);
 });
 
 mp.events.addCommand('lock', (player) => {
@@ -6699,6 +8098,8 @@ mp.events.addCommand('pawnsell', (player, _, itemId) => {
     const stockItem = {
         stockId: generateInventoryItemId(),
         type: item.type,
+        status: 'pending',
+        priceSetByOwner: false,
         name: sanitizeInventoryItemName(item.name, INVENTORY_ITEM_DEFS[item.type].name),
         description: item.description || INVENTORY_ITEM_DEFS[item.type].description,
         icon: item.icon || INVENTORY_ITEM_DEFS[item.type].icon || 'BOX',
@@ -6720,6 +8121,89 @@ mp.events.addCommand('pawnsell', (player, _, itemId) => {
     persistBusinessState(business);
     sendInventoryUpdate(player, `Pardavete lombardui ${stockItem.name} uz $${buyPrice}.`, true);
     player.outputChatBox(`!{#7aa164}Pardavete ${stockItem.name} lombardui ${business.name} uz $${buyPrice}.`);
+    const owner = findOnlinePlayerByCharId(business.ownerCharId);
+    if (owner && owner.charId && Number(owner.charId) === Number(business.ownerCharId)) {
+        owner.outputChatBox(`!{#f7dc6f}[Lombardas] Gauta preke #${stockItem.stockId}: ${stockItem.name} is ${player.charName}. Perziureti: /pawninbox.`);
+    }
+});
+
+mp.events.addCommand('pawninbox', (player) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    const business = getOwnedBusinessContext(player);
+    if (!isPawnShopBusiness(business)) return player.outputChatBox('!{#e74c3c}Pasiulymus gali perziureti tik lombardo savininkas savo lombarde.');
+    const pending = (business.pawnInventory || []).filter((item) => item && item.status === 'pending');
+    if (!pending.length) return player.outputChatBox('!{#f7dc6f}Lombardo pasiulymu deze tuscia.');
+
+    player.outputChatBox(`!{#5dade2}===== ${business.name} pasiulymai =====`);
+    pending.forEach((item) => {
+        player.outputChatBox(`#${item.stockId} ${item.name} (${item.type}) | ismoketa $${item.buyPrice} | pardavejas: ${item.sellerCharName || 'nezinomas'} | /pawncollect ${item.stockId}`);
+    });
+});
+
+mp.events.addCommand('pawncollect', (player, _, stockId) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    if (!stockId) return sendUsageInstructions(player, 'pawncollect');
+    const business = getOwnedBusinessContext(player);
+    if (!isPawnShopBusiness(business)) return player.outputChatBox('!{#e74c3c}Pasiulymus gali priimti tik lombardo savininkas savo lombarde.');
+
+    const stockEntry = findPawnStockItem(business, stockId);
+    if (!stockEntry || stockEntry.item.status !== 'pending') return player.outputChatBox('!{#f7dc6f}Nepaimtas lombardo pasiulymas nerastas.');
+    stockEntry.item.status = 'owned';
+    persistBusinessPawnInventory(business);
+    player.outputChatBox(`!{#7aa164}Priemete ${stockEntry.item.name}. Pervadinkite /pawnstockrename ${stockId} [pavadinimas], nustatykite /pawnprice ${stockId} [kaina], tada /pawnlist ${stockId}.`);
+});
+
+mp.events.addCommand('pawnlist', (player, _, stockId) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    if (!stockId) return sendUsageInstructions(player, 'pawnlist');
+    const business = getOwnedBusinessContext(player);
+    if (!isPawnShopBusiness(business)) return player.outputChatBox('!{#e74c3c}Prekes skelbti gali tik lombardo savininkas savo lombarde.');
+
+    const stockEntry = findPawnStockItem(business, stockId);
+    if (!stockEntry || stockEntry.item.status !== 'owned') return player.outputChatBox('!{#f7dc6f}Preke turi buti priimta ir dar nepaskelbta.');
+    if (!stockEntry.item.priceSetByOwner) return player.outputChatBox(`!{#f7dc6f}Pries skelbdami nustatykite kaina: /pawnprice ${stockId} [kaina].`);
+    stockEntry.item.status = 'listed';
+    persistBusinessPawnInventory(business);
+    player.outputChatBox(`!{#7aa164}${stockEntry.item.name} ideta i ${business.name} parduodamu prekiu sarasa uz $${stockEntry.item.price}.`);
+});
+
+mp.events.addCommand('pawnunlist', (player, _, stockId) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    if (!stockId) return sendUsageInstructions(player, 'pawnunlist');
+    const business = getOwnedBusinessContext(player);
+    if (!isPawnShopBusiness(business)) return player.outputChatBox('!{#e74c3c}Prekes isimti gali tik lombardo savininkas savo lombarde.');
+
+    const stockEntry = findPawnStockItem(business, stockId);
+    if (!stockEntry || stockEntry.item.status !== 'listed') return player.outputChatBox('!{#f7dc6f}Parduodama preke nerasta.');
+    stockEntry.item.status = 'owned';
+    persistBusinessPawnInventory(business);
+    player.outputChatBox(`!{#7aa164}${stockEntry.item.name} isimta is parduodamu prekiu. Galite ja /pawngive arba vel /pawnlist.`);
+});
+
+mp.events.addCommand('pawngive', (player, _, stockId, targetIdentifier) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    if (!stockId || !targetIdentifier) return sendUsageInstructions(player, 'pawngive');
+    const business = getOwnedBusinessContext(player);
+    if (!isPawnShopBusiness(business)) return player.outputChatBox('!{#e74c3c}Daikta perduoti gali tik lombardo savininkas savo lombarde.');
+
+    const stockEntry = findPawnStockItem(business, stockId);
+    if (!stockEntry || stockEntry.item.status !== 'owned') return player.outputChatBox('!{#f7dc6f}Perduoti galima tik priimta ir neskelbiama preke.');
+    const target = getPlayerByIDOrName(targetIdentifier);
+    if (!target || !target.charId || !target.charName) return player.outputChatBox('!{#e74c3c}Zaidejas nerastas arba nepasirinko veikejo.');
+    if (target.id === player.id) return player.outputChatBox('!{#f7dc6f}Negalite perduoti daikto sau.');
+    if (Number(target.dimension) !== Number(player.dimension) || getDistanceBetweenPositions(player.position, target.position) > INVENTORY_GIVE_RADIUS) {
+        return player.outputChatBox('!{#f7dc6f}Gavejas turi buti salia jusu lombarde.');
+    }
+
+    const addedItem = addExistingInventoryItem(target, stockEntry.item, 1);
+    if (!addedItem) return player.outputChatBox('!{#e74c3c}Nepavyko perduoti daikto.');
+    const itemName = stockEntry.item.name;
+    business.pawnInventory.splice(stockEntry.index, 1);
+    persistInventory(target);
+    persistBusinessPawnInventory(business);
+    sendInventoryUpdate(target, `Gavote ${itemName} is ${business.name}.`, true);
+    player.outputChatBox(`!{#7aa164}Perdavete ${itemName} zaidejui ${target.charName}.`);
+    target.outputChatBox(`!{#7aa164}${player.charName} jums perdave ${itemName}.`);
 });
 
 function buyPawnStockItem(player, stockId, updateUi = false) {
@@ -6743,6 +8227,10 @@ function buyPawnStockItem(player, stockId, updateUi = false) {
     }
 
     const stockItem = stockEntry.item;
+    if (stockItem.status !== 'listed') {
+        if (updateUi) openPawnShopForPlayer(player, business, 'Preke neparduodama.', false, true);
+        return player.outputChatBox('!{#e74c3c}Si preke nera pazymeta kaip parduodama.');
+    }
     const price = Math.max(1, parseInt(stockItem.price, 10) || 1);
     if ((player.money || 0) < price) {
         if (updateUi) openPawnShopForPlayer(player, business, `Nepakanka grynuju. Reikia $${price}.`, false, true);
@@ -6794,6 +8282,9 @@ mp.events.addCommand('pawnprice', (player, _, stockId, priceRaw) => {
     if (!stockEntry) {
         return player.outputChatBox('!{#e74c3c}Toks pawn stock ID nerastas.');
     }
+    if (stockEntry.item.status === 'pending') {
+        return player.outputChatBox('!{#f7dc6f}Pirma priimkite pasiulyma su /pawncollect.');
+    }
 
     const price = parseInt(priceRaw, 10);
     if (!Number.isFinite(price) || price <= 0) {
@@ -6801,6 +8292,7 @@ mp.events.addCommand('pawnprice', (player, _, stockId, priceRaw) => {
     }
 
     stockEntry.item.price = Math.min(price, 100000000);
+    stockEntry.item.priceSetByOwner = true;
     persistBusinessPawnInventory(business);
     player.outputChatBox(`!{#7aa164}${stockEntry.item.name} kaina pakeista i $${stockEntry.item.price}.`);
 });
@@ -6850,10 +8342,339 @@ mp.events.addCommand('pawnstockrename', (player, fullText, stockId, ...nameParts
     if (!stockEntry) {
         return player.outputChatBox('!{#e74c3c}Toks pawn stock ID nerastas.');
     }
+    if (stockEntry.item.status === 'pending') {
+        return player.outputChatBox('!{#f7dc6f}Pirma priimkite pasiulyma su /pawncollect.');
+    }
 
     stockEntry.item.name = nextName;
     persistBusinessPawnInventory(business);
     player.outputChatBox(`!{#7aa164}Pawn stock pervadintas i: ${nextName}.`);
+});
+
+function buildCasinoUiPayload(player, business, lastResult = null) {
+    return JSON.stringify({
+        businessName: business ? business.name : 'Kazino',
+        money: Math.max(0, parseInt(player && player.money, 10) || 0),
+        minBet: CASINO_MIN_BET,
+        maxBet: CASINO_MAX_BET,
+        lastResult,
+    });
+}
+
+mp.events.addCommand('casino', (player) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    const business = getPlayerBusinessOfType(player, 'casino');
+    if (!business) return player.outputChatBox('!{#f7dc6f}Roulette galima zaisti tik kazino viduje arba prie jo iejimo.');
+    player.call('openCasinoUI', [buildCasinoUiPayload(player, business)]);
+});
+
+mp.events.add('submitCasinoBet', (player, selection, stakeRaw) => {
+    if (!player.charId || !player.charName) return;
+    playCasinoRoulette(player, selection, stakeRaw, (err, result) => {
+        if (err) {
+            const business = getPlayerBusinessOfType(player, 'casino');
+            return player.call('casinoBetResult', [buildCasinoUiPayload(player, business), err.message, false]);
+        }
+
+        const resultText = result.won
+            ? `#${result.wagerId}: ${result.outcome.number} ${result.outcome.color}. Laimejote $${result.payout}.`
+            : `#${result.wagerId}: ${result.outcome.number} ${result.outcome.color}. Statymas pralaimetas.`;
+        player.call('casinoBetResult', [
+            buildCasinoUiPayload(player, { name: result.businessName }, result.outcome),
+            resultText,
+            result.won,
+        ]);
+    });
+});
+
+function normalizeBettingChoice(choiceRaw) {
+    const choice = String(choiceRaw || '').trim().toLowerCase();
+    if (choice === 'a') return 'a';
+    if (choice === 'b') return 'b';
+    return null;
+}
+
+function formatBettingEvent(row) {
+    return `#${row.id} ${row.title} | A: ${row.option_a} | B: ${row.option_b} | ${row.status} | /bet ${row.id} [a|b] [suma]`;
+}
+
+mp.events.addCommand('betopen', (player, fullText) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    const business = getPlayerBusinessOfType(player, 'betting_house');
+    if (!business || !isBusinessOwner(player, business)) return player.outputChatBox('!{#e74c3c}Rengini gali paskelbti tik lazymu namu savininkas savo versle.');
+    const parts = String(fullText || '').split('|').map((part) => part.trim());
+    if (parts.length !== 3) return sendUsageInstructions(player, 'betopen');
+    const [titleRaw, optionARaw, optionBRaw] = parts;
+    const title = titleRaw.replace(/\s+/g, ' ').slice(0, 120);
+    const optionA = optionARaw.replace(/\s+/g, ' ').slice(0, 48);
+    const optionB = optionBRaw.replace(/\s+/g, ' ').slice(0, 48);
+    if (title.length < 4 || optionA.length < 1 || optionB.length < 1 || optionA.toLowerCase() === optionB.toLowerCase()) {
+        return player.outputChatBox('!{#f7dc6f}Iveskite pavadinima ir du skirtingus pasirinkimus.');
+    }
+
+    db.query('INSERT INTO betting_events (business_id, opened_by_char_id, opened_by_name, title, option_a, option_b) VALUES (?, ?, ?, ?, ?, ?)', [business.id, player.charId, player.charName, title, optionA, optionB], (err, result) => {
+        if (err) {
+            console.error('[BETTING] Failed to open event:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko paskelbti lazymu renginio.');
+        }
+        player.outputChatBox(`!{#7aa164}Atidarete rengini #${result.insertId}: ${title}. Statymu koeficientas 1.8x; uzdarymo metu serveris atsitiktinai parinks A arba B. Uzdarykite /betclose ${result.insertId}.`);
+    });
+});
+
+mp.events.addCommand('betlist', (player) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    const business = getPlayerBusinessOfType(player, 'betting_house');
+    if (!business) return player.outputChatBox('!{#f7dc6f}Atvirus statymus galite perziureti lazymu namuose arba prie ju iejimo.');
+    db.query("SELECT id, title, option_a, option_b, status FROM betting_events WHERE business_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 10", [business.id], (err, rows) => {
+        if (err) {
+            console.error('[BETTING] Failed to list events:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko gauti renginiu saraso.');
+        }
+        if (!rows || rows.length === 0) return player.outputChatBox(`!{#f7dc6f}${business.name}: atviru renginiu nera.`);
+        player.outputChatBox(`!{#5dade2}===== ${business.name} atviri renginiai =====`);
+        rows.forEach((row) => player.outputChatBox(formatBettingEvent(row)));
+    });
+});
+
+mp.events.addCommand('bet', (player, fullText, eventIdRaw, choiceRaw, stakeRaw) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    const business = getPlayerBusinessOfType(player, 'betting_house');
+    if (!business) return player.outputChatBox('!{#f7dc6f}Statymus galite deti tik lazymu namuose arba prie ju iejimo.');
+    const eventId = Number(eventIdRaw);
+    const choice = normalizeBettingChoice(choiceRaw);
+    const stake = Number(stakeRaw);
+    if (!Number.isSafeInteger(eventId) || eventId <= 0 || !choice || !Number.isInteger(stake)
+        || stake < BETTING_MIN_STAKE || stake > BETTING_MAX_STAKE) {
+        return sendUsageInstructions(player, 'bet');
+    }
+
+    db.getConnection((connectionErr, connection) => {
+        if (connectionErr) {
+            console.error('[BETTING] Failed to get connection:', connectionErr.message);
+            return player.outputChatBox('!{#e74c3c}Statymo apdoroti nepavyko.');
+        }
+        connection.beginTransaction((transactionErr) => {
+            if (transactionErr) {
+                connection.release();
+                return player.outputChatBox('!{#e74c3c}Statymo apdoroti nepavyko.');
+            }
+            const rollback = (err, userMessage) => connection.rollback(() => {
+                connection.release();
+                if (err) console.error('[BETTING] Bet transaction rolled back:', err.message);
+                player.outputChatBox(`!{#e74c3c}${userMessage}`);
+            });
+            connection.query('SELECT business_id, opened_by_char_id, title, option_a, option_b, status FROM betting_events WHERE id = ? FOR UPDATE', [eventId], (eventErr, eventRows) => {
+                if (eventErr) return rollback(eventErr, 'Nepavyko patikrinti renginio.');
+                const event = eventRows && eventRows[0];
+                if (!event || Number(event.business_id) !== Number(business.id)) return rollback(null, 'Renginys nerastas siuose lazymu namuose.');
+                if (event.status !== 'open') return rollback(null, 'Statymai i si rengini uzdaryti.');
+                if (Number(event.opened_by_char_id) === Number(player.charId)
+                    || Number(business.ownerCharId) === Number(player.charId)) {
+                    return rollback(null, 'Renginio organizatorius ir lazymu namu savininkas savo renginyje statyti negali.');
+                }
+
+                connection.query('SELECT money FROM characters WHERE id = ? FOR UPDATE', [player.charId], (moneyErr, moneyRows) => {
+                    if (moneyErr) return rollback(moneyErr, 'Nepavyko patikrinti pinigu.');
+                    const money = moneyRows && moneyRows[0] ? Number(moneyRows[0].money) || 0 : -1;
+                    if (money < stake) return rollback(null, `Neturite pakankamai grynuju. Reikia $${stake}.`);
+
+                    connection.query('UPDATE characters SET money = money - ? WHERE id = ? AND money >= ?', [stake, player.charId, stake], (debitErr, debitResult) => {
+                        if (debitErr) return rollback(debitErr, 'Nepavyko priimti statymo.');
+                        if (!debitResult.affectedRows) return rollback(null, 'Nepakanka grynuju statymui.');
+                        connection.query('INSERT INTO betting_bets (event_id, business_id, player_char_id, player_name, choice, stake) VALUES (?, ?, ?, ?, ?, ?)', [eventId, business.id, player.charId, player.charName, choice, stake], (betErr) => {
+                            if (betErr) {
+                                const message = betErr.code === 'ER_DUP_ENTRY' ? 'Jau turite statyma siame renginyje.' : 'Nepavyko issaugoti statymo.';
+                                return rollback(betErr, message);
+                            }
+                            connection.commit((commitErr) => {
+                                if (commitErr) return rollback(commitErr, 'Nepavyko issaugoti statymo.');
+                                connection.release();
+                                player.money = money - stake;
+                                player.call('updateMoneyHUD', [player.money]);
+                                player.outputChatBox(`!{#7aa164}Statymas priimtas: renginys #${eventId}, ${choice.toUpperCase()} (${choice === 'a' ? event.option_a : event.option_b}), $${stake}. Galimas ismokejimas $${Math.floor(stake * BETTING_PAYOUT_NUMERATOR / BETTING_PAYOUT_DENOMINATOR)}.`);
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+});
+
+mp.events.addCommand('betclose', (player, fullText, eventIdRaw) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    const business = getPlayerBusinessOfType(player, 'betting_house');
+    if (!business || !isBusinessOwner(player, business)) return player.outputChatBox('!{#e74c3c}Renginius valdyti gali tik lazymu namu savininkas savo versle.');
+    const eventId = Number(eventIdRaw);
+    if (!Number.isSafeInteger(eventId) || eventId <= 0) return sendUsageInstructions(player, 'betclose');
+    const serverOutcome = crypto.randomInt(0, 2) === 0 ? 'a' : 'b';
+    db.query("UPDATE betting_events SET status = 'closed', outcome = ?, closed_at = NOW() WHERE id = ? AND business_id = ? AND status = 'open'", [serverOutcome, eventId, business.id], (err, result) => {
+        if (err) {
+            console.error('[BETTING] Failed to close event:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko uzdaryti renginio.');
+        }
+        if (!result.affectedRows) return player.outputChatBox('!{#f7dc6f}Atviras renginys nerastas.');
+        player.outputChatBox(`!{#7aa164}Renginys #${eventId} uzdarytas. Serveris uztvirtino rezultata; atsiskaitykite su /betsettle ${eventId}.`);
+    });
+});
+
+    mp.events.addCommand('betsettle', (player, fullText, eventIdRaw) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    const business = getPlayerBusinessOfType(player, 'betting_house');
+    if (!business || !isBusinessOwner(player, business)) return player.outputChatBox('!{#e74c3c}Renginius valdyti gali tik lazymu namu savininkas savo versle.');
+    const eventId = Number(eventIdRaw);
+    if (!Number.isSafeInteger(eventId) || eventId <= 0) return sendUsageInstructions(player, 'betsettle');
+
+    const fallbackOutcome = crypto.randomInt(0, 2) === 0 ? 'a' : 'b';
+    db.query("UPDATE betting_events SET outcome = COALESCE(outcome, ?) WHERE id = ? AND business_id = ? AND status = 'closed'", [fallbackOutcome, eventId, business.id], (outcomeErr) => {
+        if (outcomeErr) {
+            console.error('[BETTING] Failed to lock server result:', outcomeErr.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko uztvirtinti serverio rezultato.');
+        }
+
+    db.getConnection((connectionErr, connection) => {
+        if (connectionErr) return player.outputChatBox('!{#e74c3c}Nepavyko atsiskaityti uz rengini.');
+        connection.beginTransaction((transactionErr) => {
+            if (transactionErr) {
+                connection.release();
+                return player.outputChatBox('!{#e74c3c}Nepavyko atsiskaityti uz rengini.');
+            }
+            const rollback = (err, message) => connection.rollback(() => {
+                connection.release();
+                if (err) console.error('[BETTING] Settlement rolled back:', err.message);
+                player.outputChatBox(`!{#e74c3c}${message}`);
+            });
+            connection.query('SELECT status, business_id, title, option_a, option_b, outcome FROM betting_events WHERE id = ? FOR UPDATE', [eventId], (eventErr, eventRows) => {
+                if (eventErr) return rollback(eventErr, 'Nepavyko patikrinti renginio.');
+                const event = eventRows && eventRows[0];
+                if (!event || Number(event.business_id) !== Number(business.id)) return rollback(null, 'Renginys nerastas siuose lazymu namuose.');
+                if (event.status !== 'closed') return rollback(null, 'Pirmiausia uzdarykite atvira rengini su /betclose.');
+                const outcome = normalizeBettingChoice(event.outcome);
+                if (!outcome) return rollback(null, 'Serverio rezultatas neuzfiksuotas; renginio atsiskaityti negalima.');
+                connection.query('SELECT id, player_char_id, player_name, choice, stake FROM betting_bets WHERE event_id = ? FOR UPDATE', [eventId], (betsErr, bets) => {
+                    if (betsErr) return rollback(betsErr, 'Nepavyko gauti statymu.');
+                    const rows = bets || [];
+                    const totalStake = rows.reduce((sum, bet) => sum + Number(bet.stake), 0);
+                    const winningBets = rows.filter((bet) => bet.choice === outcome);
+                    const payouts = winningBets.map((bet) => ({
+                        bet,
+                        payout: Math.floor(Number(bet.stake) * BETTING_PAYOUT_NUMERATOR / BETTING_PAYOUT_DENOMINATOR),
+                    }));
+                    const totalPayout = payouts.reduce((sum, entry) => sum + entry.payout, 0);
+                    const houseDelta = totalStake - totalPayout;
+
+                    connection.query('SELECT bank_balance FROM server_businesses WHERE id = ? FOR UPDATE', [business.id], (bankErr, bankRows) => {
+                        if (bankErr) return rollback(bankErr, 'Nepavyko patikrinti verslo rezervo.');
+                        if (!bankRows || !bankRows.length) return rollback(null, 'Verslo saskaita nerasta.');
+                        const houseBalance = Number(bankRows[0].bank_balance) || 0;
+                        if (houseBalance + houseDelta < 0) return rollback(null, `Truksta $${Math.abs(houseDelta) - houseBalance} laimejimams ismoketi. Papildykite verslo banka.`);
+
+                        const updatePayout = (index) => {
+                            if (index >= payouts.length) return finalizeSettlement();
+                            const entry = payouts[index];
+                            connection.query('UPDATE characters SET money = money + ? WHERE id = ?', [entry.payout, entry.bet.player_char_id], (creditErr, creditResult) => {
+                                if (creditErr) return rollback(creditErr, 'Nepavyko ismoketi laimejimu.');
+                                if (!creditResult.affectedRows) return rollback(null, `Zaidejo ${entry.bet.player_name} saskaita nerasta.`);
+                                connection.query('UPDATE betting_bets SET payout = ? WHERE id = ?', [entry.payout, entry.bet.id], (betUpdateErr) => {
+                                    if (betUpdateErr) return rollback(betUpdateErr, 'Nepavyko atnaujinti statymo iraso.');
+                                    updatePayout(index + 1);
+                                });
+                            });
+                        };
+
+                        const finalizeSettlement = () => {
+                            connection.query('UPDATE server_businesses SET bank_balance = ? WHERE id = ?', [houseBalance + houseDelta, business.id], (businessErr) => {
+                                if (businessErr) return rollback(businessErr, 'Nepavyko atnaujinti verslo balanso.');
+                                connection.query("UPDATE betting_events SET status = 'settled', outcome = ?, total_stake = ?, total_payout = ?, settled_at = NOW() WHERE id = ? AND status = 'closed'", [outcome, totalStake, totalPayout, eventId], (settleErr, settleResult) => {
+                                    if (settleErr) return rollback(settleErr, 'Nepavyko uzbaigti renginio.');
+                                    if (!settleResult.affectedRows) return rollback(null, 'Renginys jau atsiskaitytas.');
+                                    connection.commit((commitErr) => {
+                                        if (commitErr) return rollback(commitErr, 'Nepavyko uzbaigti renginio.');
+                                        connection.release();
+                                        business.bankBalance = houseBalance + houseDelta;
+                                        payouts.forEach(({ bet, payout }) => {
+                                            const winner = mp.players.toArray().find((onlinePlayer) => Number(onlinePlayer.charId) === Number(bet.player_char_id));
+                                            if (!winner) return;
+                                            winner.money = (Number(winner.money) || 0) + payout;
+                                            winner.call('updateMoneyHUD', [winner.money]);
+                                            winner.outputChatBox(`!{#7aa164}[Lažybos] Laimejote $${payout} renginyje #${eventId}.`);
+                                        });
+                                        const winningOption = outcome === 'a' ? event.option_a : event.option_b;
+                                        player.outputChatBox(`!{#7aa164}Renginys #${eventId} (${event.title}) atsiskaite: ${winningOption} laimejo. Statymu $${totalStake}, ismoketa $${totalPayout}.`);
+                                    });
+                                });
+                            });
+                        };
+
+                        updatePayout(0);
+                    });
+                });
+            });
+        });
+    });
+    });
+});
+
+mp.events.addCommand('betvoid', (player, fullText, eventIdRaw) => {
+    if (!player.charId || !player.charName) return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    const business = getPlayerBusinessOfType(player, 'betting_house');
+    if (!business || !isBusinessOwner(player, business)) return player.outputChatBox('!{#e74c3c}Renginius valdyti gali tik lazymu namu savininkas savo versle.');
+    const eventId = Number(eventIdRaw);
+    if (!Number.isSafeInteger(eventId) || eventId <= 0) return sendUsageInstructions(player, 'betvoid');
+
+    db.getConnection((connectionErr, connection) => {
+        if (connectionErr) return player.outputChatBox('!{#e74c3c}Nepavyko atsaukti renginio.');
+        connection.beginTransaction((transactionErr) => {
+            if (transactionErr) {
+                connection.release();
+                return player.outputChatBox('!{#e74c3c}Nepavyko atsaukti renginio.');
+            }
+            const rollback = (err, message) => connection.rollback(() => {
+                connection.release();
+                if (err) console.error('[BETTING] Void rolled back:', err.message);
+                player.outputChatBox(`!{#e74c3c}${message}`);
+            });
+            connection.query('SELECT status, business_id FROM betting_events WHERE id = ? FOR UPDATE', [eventId], (eventErr, eventRows) => {
+                if (eventErr) return rollback(eventErr, 'Nepavyko patikrinti renginio.');
+                const event = eventRows && eventRows[0];
+                if (!event || Number(event.business_id) !== Number(business.id)) return rollback(null, 'Renginys nerastas siuose lazymu namuose.');
+                if (event.status !== 'open') return rollback(null, 'Uzdaryto renginio atsaukti negalima; uzdarymo metu rezultatas jau uztvirtintas.');
+                connection.query('SELECT id, player_char_id, player_name, stake FROM betting_bets WHERE event_id = ? FOR UPDATE', [eventId], (betsErr, bets) => {
+                    if (betsErr) return rollback(betsErr, 'Nepavyko gauti statymu.');
+                    const rows = bets || [];
+                    const refund = (index) => {
+                        if (index >= rows.length) return closeVoidedEvent();
+                        const bet = rows[index];
+                        connection.query('UPDATE characters SET money = money + ? WHERE id = ?', [bet.stake, bet.player_char_id], (creditErr, creditResult) => {
+                            if (creditErr) return rollback(creditErr, 'Nepavyko grazinti statymu.');
+                            if (!creditResult.affectedRows) return rollback(null, `Zaidejo ${bet.player_name} saskaita nerasta.`);
+                            connection.query('UPDATE betting_bets SET payout = stake WHERE id = ?', [bet.id], (updateErr) => {
+                                if (updateErr) return rollback(updateErr, 'Nepavyko irasyti grazinimo.');
+                                refund(index + 1);
+                            });
+                        });
+                    };
+                    const closeVoidedEvent = () => connection.query("UPDATE betting_events SET status = 'void', settled_at = NOW() WHERE id = ? AND status = 'open'", [eventId], (updateErr, updateResult) => {
+                        if (updateErr) return rollback(updateErr, 'Nepavyko atsaukti renginio.');
+                        if (!updateResult.affectedRows) return rollback(null, 'Renginys jau pakeistas.');
+                        connection.commit((commitErr) => {
+                            if (commitErr) return rollback(commitErr, 'Nepavyko atsaukti renginio.');
+                            connection.release();
+                            rows.forEach((bet) => {
+                                const bettor = mp.players.toArray().find((onlinePlayer) => Number(onlinePlayer.charId) === Number(bet.player_char_id));
+                                if (!bettor) return;
+                                bettor.money = (Number(bettor.money) || 0) + Number(bet.stake);
+                                bettor.call('updateMoneyHUD', [bettor.money]);
+                                bettor.outputChatBox(`!{#f7dc6f}[Lažybos] Renginys #${eventId} atsauktas; grazinta $${bet.stake}.`);
+                            });
+                            player.outputChatBox(`!{#7aa164}Renginys #${eventId} atsauktas, statymai grazinti.`);
+                        });
+                    });
+                    refund(0);
+                });
+            });
+        });
+    });
 });
 
 mp.events.addCommand('bizbank', (player) => {
@@ -7127,6 +8948,175 @@ mp.events.addCommand('hlock', (player, _, modeRaw) => {
     handleHouseLockCommand(player, modeRaw);
 });
 
+function showHouseDrugStatus(player, property) {
+    const settings = property.settings || getDefaultPropertySettings();
+    const now = Date.now();
+    const plants = Array.isArray(settings.drugPlants) ? settings.drugPlants : [];
+    const ripeCount = plants.filter((plant) => now >= plant.plantedAt + CANNABIS_GROW_DURATION_MS).length;
+    player.outputChatBox(`!{#5dade2}===== Namo #${property.id} gamyba =====`);
+    player.outputChatBox(`Kanape: ${plants.length}/${HOUSE_CANNABIS_PLANT_LIMIT} augalu | paruosta nuimti: ${ripeCount}`);
+    if (plants.length === 0) {
+        player.outputChatBox('Auginamu augalu nera. Pradeti: /hdrugs plant [kiekis].');
+    } else {
+        plants.forEach((plant, index) => {
+            const remaining = plant.plantedAt + CANNABIS_GROW_DURATION_MS - now;
+            player.outputChatBox(`Augalas ${index + 1}: ${remaining <= 0 ? 'paruostas, 30 g' : `liko ${formatDrugTimeRemaining(remaining)}`}`);
+        });
+    }
+
+    player.outputChatBox(`Laboratorija: ${Number(settings.drugLabEnabled) === 1 ? 'irengta' : 'neirengta (reikia admin /allowhdrugs ' + property.id + ')'}.`);
+    const batch = settings.drugBatch;
+    if (!batch) {
+        player.outputChatBox('Aktyvios sintezes nera.');
+    } else {
+        const recipe = DRUG_SYNTHESIS_RECIPES[batch.drugType];
+        const remaining = batch.completesAt - now;
+        player.outputChatBox(`Sinteze: ${recipe.label} x${batch.quantity} | ${remaining <= 0 ? 'paruosta, naudokite /hdrugs collect' : `liko ${formatDrugTimeRemaining(remaining)}`}`);
+    }
+
+    Object.entries(DRUG_SYNTHESIS_RECIPES).forEach(([drugType, recipe]) => {
+        const ingredients = Object.entries(recipe.ingredients).map(([type, quantity]) => `${type} x${quantity}`).join(', ');
+        player.outputChatBox(`${drugType}: ${ingredients}`);
+    });
+    player.outputChatBox('Komandos: /hdrugs plant [1-10], /hdrugs harvest, /hdrugs synthesize [lsd|cocaine|meth|ecstasy] [kiekis], /hdrugs collect.');
+}
+
+function startHouseDrugSynthesis(player, property, drugType, quantity) {
+    const recipe = DRUG_SYNTHESIS_RECIPES[drugType];
+    if (!recipe) return player.outputChatBox('!{#f7dc6f}Galimi produktai: lsd, cocaine, meth, ecstasy.');
+    if (Number(property.settings.drugLabEnabled) !== 1) {
+        return player.outputChatBox(`!{#e74c3c}Namas neturi irengtos laboratorijos. Paprasykite admin: /allowhdrugs ${property.id}.`);
+    }
+    if (property.settings.drugBatch) {
+        return player.outputChatBox('!{#f7dc6f}Namu laboratorijoje jau vyksta sinteze. Pirma surinkite jos produkta.');
+    }
+
+    const ingredients = Object.fromEntries(Object.entries(recipe.ingredients).map(([type, amount]) => [type, amount * quantity]));
+    const nextInventory = consumeHouseDrugIngredients(player.inventory, ingredients);
+    if (!nextInventory) {
+        const missing = Object.entries(ingredients).map(([type, required]) => {
+            const available = (player.inventory || []).filter((item) => item && item.type === type)
+                .reduce((sum, item) => sum + (parseInt(item.quantity, 10) || 0), 0);
+            return available < required ? `${type}: truksta ${required - available}` : null;
+        }).filter(Boolean);
+        return player.outputChatBox(`!{#e74c3c}Truksta medziagu: ${missing.join(', ')}.`);
+    }
+
+    const now = Date.now();
+    const nextSettings = {
+        ...property.settings,
+        drugBatch: {
+            drugType,
+            quantity,
+            startedAt: now,
+            completesAt: now + DRUG_SYNTHESIS_DURATION_MS,
+        },
+    };
+    persistHouseDrugMutation(player, property, nextInventory, nextSettings, (err) => {
+        if (err) {
+            console.error('[DRUGS] Failed to start house synthesis:', err.message);
+            return player.outputChatBox('!{#e74c3c}Nepavyko pradeti sintezes; medziagos nepaimtos.');
+        }
+        sendInventoryUpdate(player, 'Sinteze pradeta.', true);
+        player.outputChatBox(`!{#7aa164}Pradeta ${recipe.label} x${quantity} sinteze. Baigsis po 5 minuciu.`);
+    });
+}
+
+mp.events.addCommand('hdrugs', (player, fullText) => {
+    if (!player.charName) return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
+    const property = getOwnedPropertyContext(player);
+    if (!property || !isPropertyOwner(player, property)) {
+        return player.outputChatBox('!{#f7dc6f}Namu gamyba galima tik prie savo namo arba jo viduje.');
+    }
+
+    const args = splitCommandText(fullText);
+    const action = String(args.shift() || 'status').toLowerCase();
+    const settings = property.settings || (property.settings = getDefaultPropertySettings());
+    settings.drugPlants = Array.isArray(settings.drugPlants) ? settings.drugPlants : [];
+
+    if (action === 'status' || action === 'help') {
+        showHouseDrugStatus(player, property);
+        return;
+    }
+
+    if (action === 'plant') {
+        const quantity = args.length ? Number(args[0]) : 1;
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > HOUSE_CANNABIS_PLANT_LIMIT) {
+            return player.outputChatBox('!{#f7dc6f}Naudojimas: /hdrugs plant [1-10].');
+        }
+        const freeSpots = HOUSE_CANNABIS_PLANT_LIMIT - settings.drugPlants.length;
+        if (quantity > freeSpots) return player.outputChatBox(`!{#f7dc6f}Laisvu vietu augalams: ${freeSpots}/${HOUSE_CANNABIS_PLANT_LIMIT}.`);
+        const nextInventory = consumeHouseDrugIngredients(player.inventory, { cannabis_seed: quantity });
+        if (!nextInventory) return player.outputChatBox(`!{#e74c3c}Truksta marihuanos seklu: reikia ${quantity}.`);
+
+        const plantedAt = Date.now();
+        const nextSettings = {
+            ...settings,
+            drugPlants: [...settings.drugPlants, ...Array.from({ length: quantity }, () => ({ plantedAt }))],
+        };
+        persistHouseDrugMutation(player, property, nextInventory, nextSettings, (err) => {
+            if (err) {
+                console.error('[DRUGS] Failed to plant cannabis:', err.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko pasodinti; seklos nepaimtos.');
+            }
+            sendInventoryUpdate(player, 'Seklos pasodintos.', true);
+            player.outputChatBox(`!{#7aa164}Pasodinote ${quantity} augala. Derlius bus paruostas po 3 realaus laiko dienu.`);
+        });
+        return;
+    }
+
+    if (action === 'harvest') {
+        const now = Date.now();
+        const ripePlants = settings.drugPlants.filter((plant) => now >= plant.plantedAt + CANNABIS_GROW_DURATION_MS);
+        if (ripePlants.length === 0) return player.outputChatBox('!{#f7dc6f}Nera paruostu augalu derliui nuimti.');
+        const remainingPlants = settings.drugPlants.filter((plant) => now < plant.plantedAt + CANNABIS_GROW_DURATION_MS);
+        const nextInventory = JSON.parse(JSON.stringify(player.inventory || []));
+        addInventoryItem({ inventory: nextInventory }, 'cannabis_grams', ripePlants.length * 30);
+        const nextSettings = { ...settings, drugPlants: remainingPlants };
+        persistHouseDrugMutation(player, property, nextInventory, nextSettings, (err) => {
+            if (err) {
+                console.error('[DRUGS] Failed to harvest cannabis:', err.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko nuimti derliaus; augalai liko nepaliesti.');
+            }
+            sendInventoryUpdate(player, 'Marihuanos derlius nuimtas.', true);
+            player.outputChatBox(`!{#7aa164}Surinkote ${ripePlants.length} augalu derliu: ${ripePlants.length * 30} g marihuanos.`);
+        });
+        return;
+    }
+
+    if (action === 'synthesize' || action === 'synth') {
+        const drugType = String(args[0] || '').toLowerCase() === 'extasy' ? 'ecstasy' : String(args[0] || '').toLowerCase();
+        const quantity = args.length > 1 ? Number(args[1]) : 1;
+        if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50) {
+            return player.outputChatBox('!{#f7dc6f}Naudojimas: /hdrugs synthesize [lsd|cocaine|meth|ecstasy] [1-50].');
+        }
+        return startHouseDrugSynthesis(player, property, drugType, quantity);
+    }
+
+    if (action === 'collect') {
+        const batch = settings.drugBatch;
+        if (!batch) return player.outputChatBox('!{#f7dc6f}Nera paruosu sintezes produktu.');
+        if (Date.now() < batch.completesAt) {
+            return player.outputChatBox(`!{#f7dc6f}Sinteze dar vyksta. Liko ${formatDrugTimeRemaining(batch.completesAt - Date.now())}.`);
+        }
+
+        const nextInventory = JSON.parse(JSON.stringify(player.inventory || []));
+        addInventoryItem({ inventory: nextInventory }, DRUG_SYNTHESIS_RECIPES[batch.drugType].outputType, batch.quantity);
+        const nextSettings = { ...settings, drugBatch: null };
+        persistHouseDrugMutation(player, property, nextInventory, nextSettings, (err) => {
+            if (err) {
+                console.error('[DRUGS] Failed to collect synthesis:', err.message);
+                return player.outputChatBox('!{#e74c3c}Nepavyko surinkti produkto; sinteze liko paruosta.');
+            }
+            sendInventoryUpdate(player, 'Sintezes produktas surinktas.', true);
+            player.outputChatBox(`!{#7aa164}Surinkote ${DRUG_SYNTHESIS_RECIPES[batch.drugType].label} x${batch.quantity}.`);
+        });
+        return;
+    }
+
+    player.outputChatBox('!{#f7dc6f}Naudojimas: /hdrugs [status|plant [kiekis]|harvest|synthesize [drug] [kiekis]|collect].');
+});
+
 mp.events.addCommand('houseinv', (player) => {
     if (!player.charId || !player.charName) {
         return player.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
@@ -7314,6 +9304,34 @@ mp.events.addCommand('rent', (player, _, subRaw, arg2Raw) => {
     if (ownerOnline && ownerOnline.id !== player.id) {
         ownerOnline.outputChatBox(`!{#7aa164}${player.charName} issinuomojo jusu busta ${property.name} uz $${rentAmount}/paycheck.`);
     }
+});
+
+mp.events.addCommand('allowhdrugs', (admin, fullText, propertyIdRaw, stateRaw) => {
+    if (!admin.charId || !admin.charName) return admin.outputChatBox('!{#e74c3c}Pirmiausia pasirinkite veikeja.');
+    if (!propertyIdRaw) return sendUsageInstructions(admin, 'allowhdrugs');
+    const propertyId = Number(propertyIdRaw);
+    const requestedState = String(stateRaw || 'on').toLowerCase();
+    if (!Number.isInteger(propertyId) || propertyId <= 0 || !['on', 'off'].includes(requestedState)) {
+        return sendUsageInstructions(admin, 'allowhdrugs');
+    }
+
+    isAdmin(admin, 1, (error, hasPermission) => {
+        if (error || !hasPermission) return admin.outputChatBox('!{#e74c3c}Neturite teises naudoti sios komandos.');
+        const property = getPropertyById(propertyId);
+        if (!property) return admin.outputChatBox('!{#f7dc6f}Namas nerastas.');
+        if (property.drugMutationPending) return admin.outputChatBox('!{#f7dc6f}Namo gamybos duomenys dar issaugomi. Bandykite veliau.');
+
+        const previousSettings = property.settings || getDefaultPropertySettings();
+        const nextSettings = { ...previousSettings, drugLabEnabled: requestedState === 'on' ? 1 : 0 };
+        db.query('UPDATE server_properties SET settings = ? WHERE id = ?', [getPropertySettingsJson({ settings: nextSettings }), property.id], (updateErr, result) => {
+            if (updateErr) {
+                console.error('[DRUGS] Failed to update house lab access:', updateErr && updateErr.message);
+                return admin.outputChatBox('!{#e74c3c}Nepavyko pakeisti laboratorijos leidimo.');
+            }
+            property.settings = nextSettings;
+            admin.outputChatBox(`!{#7aa164}Namo #${property.id} laboratorija ${requestedState === 'on' ? 'irengta' : 'isjungta'}.`);
+        });
+    });
 });
 
 mp.events.addCommand('aprop', (player, fullText) => {
@@ -7606,7 +9624,8 @@ mp.events.addCommand('abiz', (player, fullText) => {
 
         if (!action) {
             player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz list, /abiz reload, /abiz select');
-            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz create [shop|gasstation|restaurant|pawnshop] [pavadinimas(optional)]');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz create [shop|gasstation|restaurant|pawnshop|casino|bettinghouse] [pavadinimas(optional)]');
+            player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz setowner [business ID] [zaidejo ID/vardas/none]');
             player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz setentry [id], /abiz setinterior [interiorId|list], /abiz setexit [id(optional)], /abiz setradius [id(optional)] [metrai]');
             player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz delete [id], /abiz tpentry [id], /abiz tpinterior [id]');
             return;
@@ -7639,10 +9658,42 @@ mp.events.addCommand('abiz', (player, fullText) => {
             return player.outputChatBox(`!{#7aa164}Pasirinkote versla #${business.id}: ${business.name}.`);
         }
 
+        if (action === 'setowner') {
+            const businessId = Number(args[1]);
+            const ownerIdentifier = args.slice(2).join(' ').trim();
+            const business = Number.isInteger(businessId) ? businessesById.get(businessId) : null;
+            if (!business || !ownerIdentifier) {
+                return player.outputChatBox('!{#f7dc6f}Naudojimas: /abiz setowner [business ID] [zaidejo ID/vardas/none]');
+            }
+
+            const target = ['none', 'server'].includes(ownerIdentifier.toLowerCase())
+                ? null
+                : getPlayerByIDOrName(ownerIdentifier);
+            if (!target && !['none', 'server'].includes(ownerIdentifier.toLowerCase())) {
+                return player.outputChatBox('!{#e74c3c}Savininkas turi buti prisijunges arba nurodykite none.');
+            }
+            if (target && (!target.charId || !target.charName)) {
+                return player.outputChatBox('!{#e74c3c}Tik veikeja pasirinkes zaidejas gali buti verslo savininku.');
+            }
+
+            db.query('UPDATE server_businesses SET owner_char_id = ?, owner_char_name = ? WHERE id = ?', [target ? target.charId : null, target ? target.charName : null, business.id], (updateErr) => {
+                if (updateErr) {
+                    console.error('[BUSINESS] Failed to assign business owner:', updateErr.message);
+                    return player.outputChatBox('!{#e74c3c}Nepavyko pakeisti verslo savininko.');
+                }
+                business.ownerCharId = target ? Number(target.charId) : null;
+                business.ownerCharName = target ? target.charName : null;
+                refreshBusinessVisual(business);
+                player.outputChatBox(`!{#7aa164}Verslo #${business.id} savininkas: ${business.ownerCharName || 'Server'}.`);
+                if (target) target.outputChatBox(`!{#7aa164}Jums priskirtas verslas ${business.name} (#${business.id}).`);
+            });
+            return;
+        }
+
         if (action === 'create') {
             const type = normalizeBusinessType(args[1]);
             if (!type) {
-                return player.outputChatBox('!{#e74c3c}Naudojimas: /abiz create [shop|gasstation|restaurant|pawnshop] [pavadinimas(optional)]');
+                return player.outputChatBox('!{#e74c3c}Naudojimas: /abiz create [shop|gasstation|restaurant|pawnshop|casino|bettinghouse] [pavadinimas(optional)]');
             }
 
             const pos = player.position;
@@ -8316,15 +10367,29 @@ function sendUsageInstructions(player, command) {
         'buy': "[BUY] Naudojimas: /buy [item] [kiekis] arba /buy - atidaryti pirkimo UI versle.",
         'pawnstock': "[PAWNSTOCK] Naudojimas: /pawnstock - Parodo lombardo parduodamus daiktus.",
         'pawnsell': "[PAWNSELL] Naudojimas: /pawnsell [inventory ID/type] - Parduoti pawn daikta lombardui uz 30%.",
+        'pawninbox': "[PAWNINBOX] Naudojimas: /pawninbox - Perziureti laukiancius lombardo pasiulymus.",
+        'pawncollect': "[PAWNCOLLECT] Naudojimas: /pawncollect [offer ID] - Priimti pasiulyma i lombardo atsargas.",
+        'pawnlist': "[PAWNLIST] Naudojimas: /pawnlist [stock ID] - Paskelbti priimta preke pardavimui.",
+        'pawnunlist': "[PAWNUNLIST] Naudojimas: /pawnunlist [stock ID] - Paslepti preke nuo pirkeju.",
+        'pawngive': "[PAWNGIVE] Naudojimas: /pawngive [stock ID] [zaidejas] - Perduoti priimta preke salia esanciam zaidejui.",
         'pawnbuy': "[PAWNBUY] Naudojimas: /pawnbuy [stockId] - Pirkti daikta is lombardo.",
         'pawnprice': "[PAWNPRICE] Naudojimas: /pawnprice [stockId] [kaina] - Savininkui pakeisti lombardo prekes kaina.",
         'pawnrename': "[PAWNRENAME] Naudojimas: /pawnrename [inventory ID/type] [pavadinimas] - Pervadinti pawn daikta lombarde.",
         'pawnstockrename': "[PAWNSTOCKRENAME] Naudojimas: /pawnstockrename [stockId] [pavadinimas] - Savininkui pervadinti stock preke.",
+        'breakin': "[BREAKIN] Naudojimas: /breakin - Pradeti uzrakinto automobilio lockpick mini zaidima stovint salia.",
+        'hotwire': "[HOTWIRE] Naudojimas: /hotwire - Vairuotojo vietoje pradeti atrakinto automobilio uzvedimo mini zaidima.",
         'bizbank': "[BIZBANK] Naudojimas: /bizbank - Parodo jusu verslo banko likuti.",
         'bizbankdeposit': "[BIZBANKDEPOSIT] Naudojimas: /bizbankdeposit [suma] - Ideti grynuosius i verslo banka.",
         'bizbankwithdraw': "[BIZBANKWITHDRAW] Naudojimas: /bizbankwithdraw [suma] - Isimti pinigus is verslo banko.",
         'setbizname': "[SETBIZNAME] Naudojimas: /setbizname [pavadinimas] - Pervadinti savo versla.",
         'sellbiz': "[SELLBIZ] Naudojimas: /sellbiz [zaidejo ID/vardas] [kaina] - Parduoti savo versla.",
+        'casino': "[CASINO] Naudojimas: /casino - Atidaryti kazino roulette stala kazino viduje.",
+        'betopen': "[BETOPEN] Naudojimas: /betopen [pavadinimas] | [A pasirinkimas] | [B pasirinkimas] - Savininkui paskelbti rengini.",
+        'betlist': "[BETLIST] Naudojimas: /betlist - Perziureti atvirus lazymu namu renginius.",
+        'bet': `[BET] Naudojimas: /bet [renginio ID] [a|b] [${BETTING_MIN_STAKE}-${BETTING_MAX_STAKE}] - Deti grynuju statyma.`,
+        'betclose': "[BETCLOSE] Naudojimas: /betclose [renginio ID] - Uzrakinti statymus ir serverio atsitiktini A/B rezultata.",
+        'betsettle': "[BETSETTLE] Naudojimas: /betsettle [renginio ID] - Ismoketi tik serverio jau uztvirtinta rezultata.",
+        'betvoid': "[BETVOID] Naudojimas: /betvoid [renginio ID] - Atsaukti tik atvira rengini ir grazinti statymus.",
         'giveitem': "[GIVEITEM] Naudojimas: /giveitem [ID arba vardas] [item] [kiekis]",
         'giveweapon': "[GIVEWEAPON] Naudojimas: /giveweapon [zaidejo ID salia] - perduoda laikoma ginkla.",
         'dropweapon': "[DROPWEAPON] Naudojimas: /dropweapon - sunaikina dabar laikoma ginkla.",
@@ -8340,12 +10405,29 @@ function sendUsageInstructions(player, command) {
         'frank': "[FRANK] Naudojimas: /frank [ID arba vardas] [rank] - Pakeisti nario rank.",
         'frankname': "[FRANKNAME] Naudojimas: /frankname [rank] [pavadinimas] - Pervadinti rank.",
         'cuf': "[CUF] Naudojimas: /cuf [ID arba vardas] - Surakinti arba atrakinti salia esanti zaideja.",
-        'jail': "[JAIL] Naudojimas: /jail [ID arba vardas] [minutes] [reason] - Uzdaryti i PD kamera.",
+        'jail': "[JAIL] Naudojimas: /jail [ID arba vardas] [1-60 min] [priezastis] - Uzregistruoti sulaikyma PD kamerose.",
+        'arrest': "[ARREST] Naudojimas: /arrest [ID arba vardas] [1-60 min] - Arestuoti surakinta itariamaji su atviru warrant.",
         'fine': "[FINE] Naudojimas: /fine [ID arba vardas] [suma] [priezastis] - Israsyti bauda salia esanciam zaidejui.",
         'mdc': "[MDC] Naudojimas: /mdc person|plate|warrant|warrants|clear ... - Policijos duomenu bazes komandos.",
         'revive': "[REVIVE] Naudojimas: /revive [ID arba vardas] - Atgaivinti downed zaideja.",
+        'medhistory': "[MEDHISTORY] Naudojimas: /medhistory [ID arba vardas] - Perziureti paskutinius MD gydymo irasus.",
         '911': "[911] Naudojimas: /911 [pd|md|both] [aprasymas] - Issiusti pagalbos pranesima.",
         'respond': "[RESPOND] Naudojimas: /respond [911 ID] - Priimti pagalbos iskvietima.",
+        'dispatchstatus': "[DISPATCHSTATUS] Naudojimas: /dispatchstatus [ID] [enroute|onscene|close] [aprasymas] - Atnaujinti iskvietimo eiga.",
+        'case': "[CASE] Naudojimas: /case [911 ID] - Perziureti bylos istorija.",
+        'casenote': "[CASENOTE] Naudojimas: /casenote [911 ID] [irasas] - Prideti bylos irasa.",
+        'acceptdrive': "[ACCEPTDRIVE] Naudojimas: /acceptdrive [keleivio ID] - Priimti Drive uzklausa.",
+        'startdrive': "[STARTDRIVE] Naudojimas: /startdrive [keleivio ID] - Pradeti kelione su keleiviu transporto priemoneje.",
+        'drivefare': `[DRIVEFARE] Naudojimas: /drivefare [0-${DRIVE_MAX_FARE}] - Pasiulyti keliones kaina.`,
+        'acceptfare': "[ACCEPTFARE] Naudojimas: /acceptfare - Patvirtinti vairuotojo pasiulyta kaina.",
+        'enddrive': "[ENDDRIVE] Naudojimas: /enddrive - Uzbaigti kelione ir atsiskaityti.",
+        'cancelride': "[CANCELRIDE] Naudojimas: /cancelride - Atsaukti aktyvia kelione.",
+        'roll': "[ROLL] Naudojimas: /roll [d20|d100] [veiksmas] - Parodyti metimo rezultata, nesprendziant veiksmo baigties.",
+        'profile': "[PROFILE] Naudojimas: /profile - Perziureti savo veikejo profili.",
+        'profileedit': "[PROFILEEDIT] Naudojimas: /profileedit [age|gender|bio|appearance|height] [reiksme] - Atnaujinti profilio duomenis.",
+        'showid': "[SHOWID] Naudojimas: /showid [ID arba vardas] - Parodyti dokumenta salia esanciam veikejui.",
+        'hdrugs': "[HDRUGS] Naudojimas: /hdrugs [status|plant [kiekis]|harvest|synthesize [drug] [kiekis]|collect] - Namu gamyba.",
+        'allowhdrugs': "[ALLOWHDRUGS] Naudojimas: /allowhdrugs [property ID] [on|off] - Admin nustato namo laboratorija.",
     };
     player.outputChatBox(instructions[command] || "Netinkamas komandos pavadinimas.");
 }
@@ -8592,7 +10674,7 @@ mp.events.addCommand('giveitem', (admin, fullText, targetIdentifier, rawItemType
 
         const itemType = normalizeInventoryItemType(rawItemType);
         if (!itemType || !INVENTORY_ITEM_DEFS[itemType]) {
-            return admin.outputChatBox('!{#e74c3c}Nezinomas daiktas. Galimi: water, burger, bandage, medkit, cigarettes, beer, weed, cocaine, meth, crack, shrooms, codeine, percocet, heroin, ecstasy, lsd');
+            return admin.outputChatBox('!{#e74c3c}Nezinomas daiktas. Gamybai: cannabis_seed, cannabis_grams, lab_solvent, reagent_alpha, blotter_sheets, reagent_beta, purification_filter, crystal_vial, reagent_gamma, reagent_delta, cooling_pack, reagent_epsilon, binding_agent, tablet_matrix.');
         }
 
         const amount = Math.max(1, parseInt(amountStr, 10) || 1);
@@ -9252,6 +11334,12 @@ mp.events.add('dmvCheckpointReached', (player, checkpointIndexRaw) => {
 mp.events.add('playerExitVehicle', (player, vehicle) => {
     if (!player || !vehicle) return;
 
+    const securityAttempt = activeVehicleSecurityAttempts.get(player.id);
+    if (securityAttempt && securityAttempt.modeName === 'hotwire'
+        && Number(securityAttempt.vehicleId) === Number(vehicle.id)) {
+        cancelVehicleSecurityAttempt(player, 'Islipote is automobilio. Bandymas nutrauktas.', true);
+    }
+
     const state = activeDMVTests.get(player.id);
     if (!state || state.phase !== 'practical') return;
     if (state.vehicle !== vehicle && Number(state.vehicle?.id) !== Number(vehicle.id)) return;
@@ -9516,6 +11604,91 @@ function clearRidePickupBlip(ride) {
     ride.blip = null;
 }
 
+function arePlayersInSameVehicle(firstPlayer, secondPlayer) {
+    return Boolean(firstPlayer && secondPlayer
+        && firstPlayer.vehicle && secondPlayer.vehicle
+        && Number.isInteger(Number(firstPlayer.vehicle.id))
+        && Number(firstPlayer.vehicle.id) === Number(secondPlayer.vehicle.id));
+}
+
+function cancelDriveRide(ride, reason, excludedPlayerId = null, notifyParticipants = true) {
+    if (!ride || (ride.settling && notifyParticipants)) return false;
+    if (ride.interval) clearInterval(ride.interval);
+    if (ride.timeout) clearTimeout(ride.timeout);
+    clearRidePickupBlip(ride);
+    if (ride.requester && activeRides.get(ride.requester.id) === ride) {
+        activeRides.delete(ride.requester.id);
+    }
+    if (ride.driver && activeDrivers.has(ride.driver.id)) {
+        activeDrivers.get(ride.driver.id).status = 'available';
+    }
+    if (notifyParticipants) {
+        [ride.requester, ride.driver].forEach((participant) => {
+            if (participant && participant.id !== excludedPlayerId && participant.charName) {
+                participant.outputChatBox(`!{#f7dc6f}[Drive] Kelione atsaukta. ${reason}`);
+            }
+        });
+    }
+    return true;
+}
+
+function transferDriveFare(ride, callback) {
+    const amount = Number(ride && ride.fare);
+    if (!Number.isInteger(amount) || amount < 0 || amount > DRIVE_MAX_FARE) {
+        callback(new Error('Netinkama keliones kaina.'));
+        return;
+    }
+
+    const requester = ride.requester;
+    const driver = ride.driver;
+    const pickup = ride.pickupPosition;
+    const dropoff = ride.dropoffPosition;
+    if (!requester || !driver || !requester.charId || !driver.charId || !pickup || !dropoff) {
+        callback(new Error('Veikejo duomenys nepasiekiami.'));
+        return;
+    }
+
+    db.getConnection((connectionErr, connection) => {
+        if (connectionErr) return callback(connectionErr);
+        connection.beginTransaction((transactionErr) => {
+            if (transactionErr) {
+                connection.release();
+                return callback(transactionErr);
+            }
+
+            const rollback = (err) => connection.rollback(() => {
+                connection.release();
+                callback(err);
+            });
+
+            const insertTrip = () => connection.query(
+                'INSERT INTO drive_trips (driver_char_id, requester_char_id, driver_name, requester_name, fare, pickup_x, pickup_y, pickup_z, dropoff_x, dropoff_y, dropoff_z, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [driver.charId, requester.charId, driver.charName, requester.charName, amount, pickup.x, pickup.y, pickup.z, dropoff.x, dropoff.y, dropoff.z, new Date(ride.startedAt)],
+                (tripErr, result) => {
+                    if (tripErr) return rollback(tripErr);
+                    connection.commit((commitErr) => {
+                        if (commitErr) return rollback(commitErr);
+                        connection.release();
+                        callback(null, Number(result.insertId));
+                    });
+                }
+            );
+
+            if (amount === 0) return insertTrip();
+            connection.query('UPDATE characters SET money = money - ? WHERE id = ? AND money >= ?', [amount, requester.charId, amount], (debitErr, debitResult) => {
+                if (debitErr) return rollback(debitErr);
+                if (!debitResult.affectedRows) return rollback(new Error('Keleivis neturi pakankamai grynuju.'));
+
+                connection.query('UPDATE characters SET money = money + ? WHERE id = ?', [amount, driver.charId], (creditErr, creditResult) => {
+                    if (creditErr) return rollback(creditErr);
+                    if (!creditResult.affectedRows) return rollback(new Error('Vairuotojo veikejas nerastas.'));
+                    insertTrip();
+                });
+            });
+        });
+    });
+}
+
 function openPhone(player) {
     if (!player.charName) {
         return player.outputChatBox('!{#e74c3c}Prasome pasirinkti veikeja.');
@@ -9551,6 +11724,9 @@ mp.events.add('toggleDriverStatus', (player) => {
     if (!player.charName) return;
 
     if (activeDrivers.has(player.id)) {
+        if (activeDrivers.get(player.id).status === 'busy') {
+            return player.outputChatBox('!{#f7dc6f}Pirma uzbaikite arba atsaukite aktyvia Drive kelione.');
+        }
         activeDrivers.delete(player.id);
         player.outputChatBox('!{#cd5d3c}Jus nebesate Drive vairuotojas.');
         player.call('updateDriverStatus', [false]);
@@ -9571,18 +11747,26 @@ mp.events.add('requestRide', (player) => {
         return player.outputChatBox('!{#e74c3c}Jus jau turite aktyvia kelione!');
     }
 
-    if (activeDrivers.size === 0) {
+    const availableDrivers = [...activeDrivers.values()].filter((driver) => driver.status === 'available');
+    if (availableDrivers.length === 0) {
         return player.outputChatBox('!{#f7dc6f}Siuo metu nera laisvu vairuotoju.');
     }
 
-    activeRides.set(player.id, {
+    const ride = {
         requester: player,
         driver: null,
         blip: null,
-        interval: null
-    });
+        interval: null,
+        timeout: null,
+        stage: 'requested',
+        fare: null,
+        fareAccepted: false,
+        settling: false,
+    };
+    activeRides.set(player.id, ride);
+    ride.timeout = setTimeout(() => cancelDriveRide(ride, 'Vairuotojas neatsiliepe laiku.'), 300000);
 
-    activeDrivers.forEach((data) => {
+    availableDrivers.forEach((data) => {
         if (data.status === "available") {
             const dist = getDistanceBetweenPositions(player.position, data.player.position);
             if (dist < 700) {
@@ -9606,11 +11790,14 @@ mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
     }
 
     const ride = activeRides.get(reqId);
-    if (ride.driver) {
+    if (!ride || ride.stage !== 'requested' || ride.driver) {
         return driver.outputChatBox('!{#e74c3c}Sia uzklausa jau prieme kitas vairuotojas.');
     }
 
     ride.driver = driver;
+    ride.stage = 'pickup';
+    if (ride.timeout) clearTimeout(ride.timeout);
+    ride.timeout = null;
     activeDrivers.get(driver.id).status = "busy";
 
     ride.blip = mp.blips.new(1, ride.requester.position, {
@@ -9631,17 +11818,123 @@ mp.events.addCommand('acceptdrive', (driver, requesterIdStr) => {
         const dist = getDistanceBetweenPositions(ride.driver.position, ride.requester.position);
         if (dist <= 12) {
             clearInterval(ride.interval);
+            ride.interval = null;
             clearRidePickupBlip(ride);
-
-            if (activeDrivers.has(ride.driver.id)) {
-                activeDrivers.get(ride.driver.id).status = "available";
-            }
-
-            activeRides.delete(reqId);
+            ride.stage = 'arrived';
             ride.driver.outputChatBox('!{#7aa164} Jus pasiekete keleivi!');
-            ride.requester.outputChatBox('!{#7aa164} Vairuotojas atvyko pas jus!');
+            ride.requester.outputChatBox('!{#7aa164} Vairuotojas atvyko. Ikite i jo transporta; tada vairuotojas naudos /startdrive.');
         }
     }, 2000);
+});
+
+mp.events.addCommand('startdrive', (driver, fullText, requesterIdRaw) => {
+    if (!driver.charName || !activeDrivers.has(driver.id)) return driver.outputChatBox('!{#e74c3c}Jus nesate aktyvus Drive vairuotojas.');
+    const requesterId = parseInt(requesterIdRaw, 10);
+    const ride = activeRides.get(requesterId);
+    if (!ride || ride.driver !== driver || ride.stage !== 'arrived') return driver.outputChatBox('!{#f7dc6f}Si keleivio kelione nera pasirengusi pradeti.');
+    if (!arePlayersInSameVehicle(driver, ride.requester)) return driver.outputChatBox('!{#f7dc6f}Vairuotojas ir keleivis turi buti tame paciame transporte.');
+
+    ride.stage = 'in_trip';
+    ride.startedAt = Date.now();
+    ride.pickupPosition = {
+        x: ride.requester.position.x,
+        y: ride.requester.position.y,
+        z: ride.requester.position.z,
+    };
+    driver.outputChatBox(`!{#7aa164}Kelione su ${ride.requester.charName} pradeta. Susitarkite del kainos ir naudokite /drivefare.`);
+    ride.requester.outputChatBox(`!{#7aa164}Kelione su ${driver.charName} pradeta. Kaina turi buti pasiulyta ir jusu patvirtinta.`);
+});
+
+mp.events.addCommand('drivefare', (driver, fullText, amountRaw) => {
+    const ride = [...activeRides.values()].find((candidate) => candidate.driver === driver);
+    if (!ride || ride.stage !== 'in_trip' || !driver.charName) return driver.outputChatBox('!{#f7dc6f}Kaina gali buti pasiulyta tik vykstancios keliones metu.');
+    if (ride.fareAccepted) return driver.outputChatBox('!{#f7dc6f}Keleivis jau patvirtino keliones kaina.');
+    if (!arePlayersInSameVehicle(driver, ride.requester)) return driver.outputChatBox('!{#f7dc6f}Vairuotojas ir keleivis turi buti tame paciame transporte.');
+
+    const fare = Number(amountRaw);
+    if (!Number.isInteger(fare) || fare < 0 || fare > DRIVE_MAX_FARE) {
+        return driver.outputChatBox(`!{#f7dc6f}Kaina turi buti nuo $0 iki $${DRIVE_MAX_FARE}.`);
+    }
+    ride.fare = fare;
+    driver.outputChatBox(`!{#7aa164}Pasiulete ${ride.requester.charName} keliones kaina $${fare}.`);
+    ride.requester.outputChatBox(`!{#f7dc6f}${driver.charName} pasiule keliones kaina $${fare}. Patvirtinkite su /acceptfare.`);
+});
+
+mp.events.addCommand('acceptfare', (requester) => {
+    const ride = activeRides.get(requester.id);
+    if (!ride || ride.stage !== 'in_trip' || ride.fare === null) return requester.outputChatBox('!{#f7dc6f}Nera keliones kainos, kuria galetumete patvirtinti.');
+    if (!arePlayersInSameVehicle(requester, ride.driver)) return requester.outputChatBox('!{#f7dc6f}Kaina patvirtinama tik bunant tame paciame transporte su vairuotoju.');
+
+    ride.fareAccepted = true;
+    requester.outputChatBox(`!{#7aa164}Patvirtinote keliones kaina $${ride.fare}. Atvykus naudokite /enddrive.`);
+    ride.driver.outputChatBox(`!{#7aa164}${requester.charName} patvirtino $${ride.fare} keliones kaina.`);
+});
+
+mp.events.addCommand('enddrive', (requester) => {
+    const ride = activeRides.get(requester.id);
+    if (!ride || ride.stage !== 'in_trip') return requester.outputChatBox('!{#f7dc6f}Neturite vykstancios Drive keliones.');
+    if (!ride.fareAccepted) return requester.outputChatBox('!{#f7dc6f}Pries uzbaigiant kelione keleivis turi patvirtinti kaina.');
+    if (getDistanceBetweenPositions(requester.position, ride.driver.position) > 15) {
+        return requester.outputChatBox('!{#f7dc6f}Kelione uzbaigti galite tik budami prie vairuotojo.');
+    }
+    if (ride.settling) return requester.outputChatBox('!{#f7dc6f}Keliones atsiskaitymas jau vykdomas.');
+
+    ride.dropoffPosition = {
+        x: requester.position.x,
+        y: requester.position.y,
+        z: requester.position.z,
+    };
+    ride.settling = true;
+    transferDriveFare(ride, (err, tripId) => {
+        if (err) {
+            ride.settling = false;
+            console.error('[DRIVE] Fare settlement failed:', err.message);
+            return requester.outputChatBox(`!{#e74c3c}Nepavyko atsiskaityti: ${err.message}`);
+        }
+
+        requester.money = Math.max(0, (parseInt(requester.money, 10) || 0) - ride.fare);
+        ride.driver.money = (parseInt(ride.driver.money, 10) || 0) + ride.fare;
+        requester.call('updateMoneyHUD', [requester.money]);
+        ride.driver.call('updateMoneyHUD', [ride.driver.money]);
+        requester.outputChatBox(`!{#7aa164}Kelione uzbaigta. Sumokejote $${ride.fare} grynaisiais. Kvitas #${tripId}.`);
+        ride.driver.outputChatBox(`!{#7aa164}Kelione uzbaigta. Gavote $${ride.fare}. Kvitas #${tripId}.`);
+        ride.settling = false;
+        cancelDriveRide(ride, 'Kelione uzbaigta.', null, false);
+    });
+});
+
+mp.events.add('requestDriveTrips', (player) => {
+    if (!player.charName || !player.charId) return;
+    db.query(
+        'SELECT id, driver_char_id, driver_name, requester_name, fare, completed_at FROM drive_trips WHERE driver_char_id = ? OR requester_char_id = ? ORDER BY completed_at DESC LIMIT 10',
+        [player.charId, player.charId],
+        (err, rows) => {
+            if (err) {
+                console.error('[DRIVE] Failed to load trip history:', err.message);
+                return player.call('loadDriveTrips', [JSON.stringify({ error: true, trips: [] })]);
+            }
+            const trips = (rows || []).map((trip) => {
+                const wasDriver = Number(trip.driver_char_id) === Number(player.charId);
+                return {
+                    id: Number(trip.id),
+                    wasDriver,
+                    partner: wasDriver ? trip.requester_name : trip.driver_name,
+                    fare: Number(trip.fare) || 0,
+                    completedAt: trip.completed_at,
+                };
+            });
+            player.call('loadDriveTrips', [JSON.stringify({ error: false, trips })]);
+        }
+    );
+});
+
+mp.events.addCommand('cancelride', (player) => {
+    const ride = activeRides.get(player.id)
+        || [...activeRides.values()].find((candidate) => candidate.driver === player);
+    if (!ride) return player.outputChatBox('!{#f7dc6f}Neturite aktyvios Drive keliones.');
+    if (!cancelDriveRide(ride, `${player.charName || 'Zaidejas'} atsauke kelione.`)) {
+        return player.outputChatBox('!{#f7dc6f}Atsiskaitymas jau vyksta.');
+    }
 });
 
 // Tracks ongoing calls: { callerId: { caller, target, status } }
@@ -9718,6 +12011,12 @@ mp.events.addCommand('decline', (player) => {
 
 // Handle player disconnect
 mp.events.add('playerQuit', (player) => {
+    cancelVehicleSecurityAttempt(player, '', false);
+    vehicleSecurityCooldowns.delete(player.id);
+    casinoBetCooldowns.delete(player.id);
+    for (const [reportId, report] of activeEmergencyReports.entries()) {
+        if (report && report.caller === player) activeEmergencyReports.delete(reportId);
+    }
     cleanupDMVTest(player, false);
     clearPlayerDrugEffectTimers(player);
 
@@ -9774,12 +12073,10 @@ mp.events.add('playerQuit', (player) => {
         activeDrivers.delete(player.id);
     }
 
-    for (const [requesterId, ride] of activeRides.entries()) {
+    for (const ride of activeRides.values()) {
         if (!ride) continue;
         if ((ride.requester && ride.requester.id === player.id) || (ride.driver && ride.driver.id === player.id)) {
-            if (ride.interval) clearInterval(ride.interval);
-            clearRidePickupBlip(ride);
-            activeRides.delete(requesterId);
+            cancelDriveRide(ride, 'Keliones dalyvis atsijunge.', player.id);
         }
     }
 
@@ -9831,6 +12128,11 @@ mp.events.add('playerQuit', (player) => {
 
 mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
     if (!player || !vehicle || !player.charId) return;
+
+    const securityAttempt = activeVehicleSecurityAttempts.get(player.id);
+    if (securityAttempt && securityAttempt.modeName === 'breakin') {
+        cancelVehicleSecurityAttempt(player, 'Pradejote judeti. Lauzimas nutrauktas.', true);
+    }
 
     const pendingPassengerSeatRaw = player.pendingPassengerSeat;
     const pendingPassengerSeat = Number.isFinite(Number(pendingPassengerSeatRaw)) ? Number(pendingPassengerSeatRaw) : null;
@@ -9896,10 +12198,11 @@ mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
 
     // Turn off engine when driver enters vehicle
     if ((seat === -1 || seat === 0) && !vehicle.isDMVTestVehicle) {
+        const engineShouldRun = Number(vehicle.getVariable('hotwireActive')) === 1;
         // Set immediately
         try {
-            vehicle.engine = false;
-            vehicle.setVariable('manualEngineOn', 0);
+            vehicle.engine = engineShouldRun;
+            vehicle.setVariable('manualEngineOn', engineShouldRun ? 1 : 0);
         } catch (e) {
             console.error('[VEHICLES] Error turning off engine:', e.message);
         }
@@ -9907,16 +12210,16 @@ mp.events.add('playerEnterVehicle', (player, vehicle, seat) => {
         // Set after 50ms
         setTimeout(() => {
             try {
-                vehicle.engine = false;
-                vehicle.setVariable('manualEngineOn', 0);
+                vehicle.engine = engineShouldRun;
+                vehicle.setVariable('manualEngineOn', engineShouldRun ? 1 : 0);
             } catch (e) { }
         }, 50);
 
         // Set after 150ms to really ensure it sticks
         setTimeout(() => {
             try {
-                vehicle.engine = false;
-                vehicle.setVariable('manualEngineOn', 0);
+                vehicle.engine = engineShouldRun;
+                vehicle.setVariable('manualEngineOn', engineShouldRun ? 1 : 0);
             } catch (e) { }
         }, 150);
     }
@@ -10038,6 +12341,40 @@ mp.events.addCommand('sharenumber', (player, fullText, targetId, contactName) =>
                 target.outputChatBox(`!{#7aa164}${player.charName} pridejo jus i kontaktus kaip ${contactName} (${player.phoneNumber})`);
             });
     });
+});
+
+mp.events.add('callFromUI', (player, phoneNumberRaw) => {
+    if (!player.charName) {
+        player.call('callFailed', ['Prasome pasirinkti veikeja.']);
+        return;
+    }
+
+    const phoneNumber = String(phoneNumberRaw || '').trim();
+    if (!/^\d{6,15}$/.test(phoneNumber)) {
+        player.call('callFailed', ['Iveskite galiojanti telefono numeri.']);
+        return;
+    }
+    if (!hasPhoneSim(player)) {
+        player.call('callFailed', ['Jums reikia aktyvios SIM korteles.']);
+        return;
+    }
+    if (phoneNumber === '911') {
+        player.call('callFailed', ['Skubiai pagalbai naudokite /911 [pd|md|both] [aprasymas].']);
+        return;
+    }
+
+    const target = mp.players.toArray().find((candidate) => candidate.phoneNumber === phoneNumber && candidate.charName);
+    if (!target) {
+        player.call('callFailed', ['Numeris nerastas arba neprisijunges.']);
+        return;
+    }
+    if (target.id === player.id) {
+        player.call('callFailed', ['Negalite skambinti sau.']);
+        return;
+    }
+    if (!startCall(player, target)) {
+        player.call('callFailed', ['Numeris uzimtas arba skambutis negali buti pradetas.']);
+    }
 });
 
 mp.events.add('call', (player, number) => {
@@ -10972,6 +13309,10 @@ mp.events.add('approveCharacter', (player, pendingId) => {
             if (sErr || !rows || rows.length === 0) return player.outputChatBox('!{#e74c3c}Paraiska nerasta.');
             const req = rows[0];
             const charName = `${req.first_name} ${req.last_name}`;
+            const age = Number.parseInt(req.age, 10);
+            const profileAge = Number.isInteger(age) && age > 0 && age <= 120 ? age : null;
+            const profileGender = String(req.gender || '').trim().slice(0, 16) || null;
+            const profileBio = String(req.bio || '').trim().slice(0, 1000) || null;
 
             // Compute a safe next ID and insert
             db.query('SELECT MAX(id) AS maxId FROM characters', (mErr, mRows) => {
@@ -10982,7 +13323,7 @@ mp.events.add('approveCharacter', (player, pendingId) => {
                 const maxId = (mRows && mRows[0] && mRows[0].maxId) ? Number(mRows[0].maxId) : 0;
                 const newIdToUse = maxId + 1;
 
-                db.query('INSERT INTO characters (id, char_name, ucp_username, money, bank_balance, playtime, health, is_approved) VALUES (?, ?, ?, 0, 0, 0, 100, 1)', [newIdToUse, charName, req.ucp_username], (iErr) => {
+                db.query('INSERT INTO characters (id, char_name, ucp_username, age, gender, bio, money, bank_balance, playtime, health, is_approved) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 100, 1)', [newIdToUse, charName, req.ucp_username, profileAge, profileGender, profileBio], (iErr) => {
                     if (iErr) {
                         console.error('[CHAR] Failed to insert approved character:', iErr);
                         return player.outputChatBox('!{#e74c3c}Klaida patvirtinant veikeja.');

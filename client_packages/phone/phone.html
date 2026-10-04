@@ -877,6 +877,96 @@
             background: #f2f2f7;
         }
 
+        .drive-content {
+            flex: 1;
+            min-height: 0;
+            padding: 12px 18px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow: hidden;
+        }
+
+        .drive-tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            padding: 4px;
+            background: #e5e5ea;
+            border-radius: 10px;
+            flex-shrink: 0;
+        }
+
+        .drive-tab {
+            min-height: 36px;
+            border: 0;
+            border-radius: 7px;
+            background: transparent;
+            color: #636366;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .drive-tab.active {
+            background: #ffffff;
+            color: #1c1c1e;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+        }
+
+        .drive-panel {
+            display: none;
+            flex: 1;
+            min-height: 0;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .drive-panel.active {
+            display: flex;
+        }
+
+        .drive-history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            color: #636366;
+            font-size: 12px;
+        }
+
+        .drive-refresh {
+            border: 0;
+            background: transparent;
+            color: #007aff;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .drive-trip-list {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+        }
+
+        .drive-trip {
+            padding: 12px 2px;
+            border-bottom: 1px solid #d1d1d6;
+        }
+
+        .drive-trip-title {
+            color: #1c1c1e;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .drive-trip-detail,
+        .drive-trip-empty {
+            margin-top: 5px;
+            color: #636366;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
         /* ---- SCROLLBARS ---- */
         ::-webkit-scrollbar {
             width: 3px;
@@ -1019,8 +1109,12 @@
                     <span class="app-header-title">Drive</span>
                     <span style="min-width:48px;"></span>
                 </div>
-                <div
-                    style="flex:1; padding:20px 20px; display:flex; flex-direction:column; justify-content:space-between; overflow-y:auto;">
+                <div class="drive-content">
+                    <div class="drive-tabs" role="tablist" aria-label="Drive">
+                        <button id="driveRideTab" class="drive-tab active" type="button" role="tab" aria-selected="true" onclick="showDriveTab('ride')">Kelionė</button>
+                        <button id="driveHistoryTab" class="drive-tab" type="button" role="tab" aria-selected="false" onclick="showDriveTab('history')">Istorija</button>
+                    </div>
+                    <section id="driveRidePanel" class="drive-panel active" role="tabpanel" aria-labelledby="driveRideTab">
                     <div style="text-align:center; margin-top:20px;">
                         <img src="https://i.imgur.com/UMp6tcH.png" alt="Drive"
                             style="max-width:140px; margin-bottom:30px;">
@@ -1033,6 +1127,16 @@
                             Iškviesti pavežėją
                         </button>
                     </div>
+                    </section>
+                    <section id="driveHistoryPanel" class="drive-panel" role="tabpanel" aria-labelledby="driveHistoryTab">
+                        <div class="drive-history-header">
+                            <span>Paskutinės kelionės</span>
+                            <button class="drive-refresh" type="button" onclick="requestDriveTrips()">Atnaujinti</button>
+                        </div>
+                        <div id="driveTripList" class="drive-trip-list" aria-live="polite">
+                            <p class="drive-trip-empty">Kraunama...</p>
+                        </div>
+                    </section>
                 </div>
             </div>
 
@@ -1197,6 +1301,7 @@
                     driveEl.style.display = 'flex';
                 }
                 updateDriveApp();
+                showDriveTab('ride');
                 return;
             }
             if (appName === 'call') {
@@ -1381,10 +1486,12 @@
 
         function updateDriverStatus(status) {
             isDriver = status;
+            updateDriveApp();
         }
 
         function updateDriveApp() {
-            // Drive UI is simple — no dynamic elements to update
+            const driverButton = document.getElementById('toggleDriverBtn');
+            if (driverButton) driverButton.textContent = isDriver ? 'Išjungti pavežėjo statusą' : 'Įjungti pavežėjo statusą';
         }
 
         function openDriveApp(driverStatus) {
@@ -1398,6 +1505,72 @@
 
         function requestRide() {
             mp.trigger('requestRide');
+        }
+
+        function showDriveTab(tabName) {
+            const showHistory = tabName === 'history';
+            document.getElementById('driveRideTab').classList.toggle('active', !showHistory);
+            document.getElementById('driveRideTab').setAttribute('aria-selected', String(!showHistory));
+            document.getElementById('driveHistoryTab').classList.toggle('active', showHistory);
+            document.getElementById('driveHistoryTab').setAttribute('aria-selected', String(showHistory));
+            document.getElementById('driveRidePanel').classList.toggle('active', !showHistory);
+            document.getElementById('driveHistoryPanel').classList.toggle('active', showHistory);
+            if (showHistory) requestDriveTrips();
+        }
+
+        function requestDriveTrips() {
+            const list = document.getElementById('driveTripList');
+            list.replaceChildren();
+            const loading = document.createElement('p');
+            loading.className = 'drive-trip-empty';
+            loading.textContent = 'Kraunama...';
+            list.appendChild(loading);
+            mp.trigger('requestDriveTrips');
+        }
+
+        function renderDriveTrips(payloadJson) {
+            const list = document.getElementById('driveTripList');
+            if (!list) return;
+            list.replaceChildren();
+
+            let payload;
+            try {
+                payload = JSON.parse(payloadJson);
+            } catch (error) {
+                payload = { error: true, trips: [] };
+            }
+
+            if (!payload || payload.error) {
+                const errorMessage = document.createElement('p');
+                errorMessage.className = 'drive-trip-empty';
+                errorMessage.textContent = 'Nepavyko gauti kelionių istorijos. Bandykite atnaujinti.';
+                list.appendChild(errorMessage);
+                return;
+            }
+
+            const trips = Array.isArray(payload.trips) ? payload.trips : [];
+            if (trips.length === 0) {
+                const emptyMessage = document.createElement('p');
+                emptyMessage.className = 'drive-trip-empty';
+                emptyMessage.textContent = 'Kelionių istorijos dar nėra.';
+                list.appendChild(emptyMessage);
+                return;
+            }
+
+            trips.forEach((trip) => {
+                const row = document.createElement('article');
+                row.className = 'drive-trip';
+                const title = document.createElement('div');
+                title.className = 'drive-trip-title';
+                title.textContent = `${trip.wasDriver ? 'Vairuotojas' : 'Keleivis'}: ${trip.partner || 'Nežinomas'}`;
+
+                const detail = document.createElement('div');
+                detail.className = 'drive-trip-detail';
+                const completedAt = trip.completedAt ? new Date(trip.completedAt).toLocaleString('lt-LT') : '';
+                detail.textContent = `Kvitas #${Number(trip.id) || 0} · $${(Number(trip.fare) || 0).toLocaleString('lt-LT')} · ${completedAt}`;
+                row.append(title, detail);
+                list.appendChild(row);
+            });
         }
 
         function addDigit(digit) {
@@ -1435,16 +1608,6 @@
 
         function updatePhoneNumber(number) {
             document.getElementById('phone-number').innerText = number;
-        }
-
-        function incomingCall(callerName, callerNumber) {
-            document.getElementById('incomingCallOverlay').classList.add('active');
-            document.getElementById('homeScreen').classList.remove('active');
-            document.getElementById('callApp').classList.remove('active');
-            document.getElementById('contactsApp').classList.remove('active');
-            document.getElementById('driveApp').classList.remove('active');
-            document.getElementById('incomingCallText').innerText = `Gaunamas skambutis nuo ${callerName} (${callerNumber})`;
-            console.log(`[DEBUG] JS - Showing incoming call from ${callerName} (${callerNumber})`);
         }
 
         function callStarted(partnerName, partnerNumber) {
@@ -1501,17 +1664,35 @@
                 contacts.forEach(contact => {
                     const contactItem = document.createElement('div');
                     contactItem.className = 'contactItem';
-                    contactItem.innerHTML = `
-                        <div class="contactInfo">
-                            <div class="contactName" style="font-weight:600;font-size:15px;">${contact.name}</div>
-                            <div class="contactNumber" style="color:#8e8e93;font-size:13px;margin-top:2px;">${contact.number}</div>
-                        </div>
-                        <div class="contactActions">
-                            <button class="actionBtn callContactBtn" onclick="callContact('${contact.number}')">📞 Skambinti</button>
-                            <button class="actionBtn messageContactBtn" onclick="messageContact('${contact.number}')">💬 Žinutė</button>
-                            <button class="actionBtn removeContactBtn" onclick="removeContact('${contact.number}')">🗑️ Ištrinti</button>
-                        </div>
-                    `;
+                    const contactInfo = document.createElement('div');
+                    contactInfo.className = 'contactInfo';
+
+                    const name = document.createElement('div');
+                    name.className = 'contactName';
+                    name.style.cssText = 'font-weight:600;font-size:15px;';
+                    name.textContent = contact.name || '';
+
+                    const number = document.createElement('div');
+                    number.className = 'contactNumber';
+                    number.style.cssText = 'color:#8e8e93;font-size:13px;margin-top:2px;';
+                    number.textContent = contact.number || '';
+                    contactInfo.append(name, number);
+
+                    const actions = document.createElement('div');
+                    actions.className = 'contactActions';
+                    [
+                        ['callContactBtn', '📞 Skambinti', callContact],
+                        ['messageContactBtn', '💬 Žinutė', messageContact],
+                        ['removeContactBtn', '🗑️ Ištrinti', removeContact],
+                    ].forEach(([className, label, handler]) => {
+                        const button = document.createElement('button');
+                        button.className = `actionBtn ${className}`;
+                        button.textContent = label;
+                        button.addEventListener('click', () => handler(contact.number));
+                        actions.appendChild(button);
+                    });
+
+                    contactItem.append(contactInfo, actions);
                     contactsList.appendChild(contactItem);
                 });
             }
@@ -1542,11 +1723,6 @@
             document.getElementById('phoneInput').value = `Skambinama ${number}...`;
         }
 
-        // Update existing messageContact to open Messages app
-        function messageContact(number) {
-            openApp('messages');
-            openConversation(number);
-        }
         function updateCallUI() {
             console.log(`[DEBUG] JS - Updating call UI: status=${currentCallStatus}, partner=${currentCallPartner}`);
         }
@@ -1688,28 +1864,6 @@
             mp.trigger('openConversation', number);
         }
 
-        function updateConversationsUI(conversationsJson) {
-            console.log('[DEBUG] JS - Received updateConversationsUI');
-            const conversations = JSON.parse(conversationsJson);
-            const conversationsList = document.getElementById('conversationsList');
-            conversationsList.innerHTML = conversations.length === 0 ? '<p style="text-align: center; color: #666;">Nėra pokalbių</p>' : '';
-            conversations.forEach(conv => {
-                const item = document.createElement('div');
-                item.className = 'conversationItem';
-                if (!conv.isRead && conv.number !== myPhoneNumber) item.classList.add('unread');
-                const date = new Date(conv.timestamp);
-                const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                item.innerHTML = `
-                    <div class="conversationInfo" onclick="openConversation('${conv.number}')">
-                        <div class="conversationName">${conv.contactName}</div>
-                        <div class="conversationPreview">${conv.lastMessage}</div>
-                    </div>
-                    <div class="conversationTime">${timeString}</div>
-                `;
-                conversationsList.appendChild(item);
-            });
-        }
-
         function openConversation(number) {
             console.log(`[DEBUG] JS - Opening conversation with ${number}`);
             currentConversationNumber = number;
@@ -1738,7 +1892,12 @@
                     item.className = `messageItem ${msg.sender === myPhoneNumber ? 'sent' : 'received'}`;
                     const date = new Date(msg.timestamp);
                     const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    item.innerHTML = `<div>${msg.text}</div><div class="messageTime">${timeString}</div>`;
+                    const messageText = document.createElement('div');
+                    messageText.textContent = msg.text || '';
+                    const messageTime = document.createElement('div');
+                    messageTime.className = 'messageTime';
+                    messageTime.textContent = timeString;
+                    item.append(messageText, messageTime);
                     messagesList.appendChild(item);
                 });
                 messagesList.scrollTop = messagesList.scrollHeight;
@@ -1767,13 +1926,23 @@
                     if (!conv.isRead && conv.number !== myPhoneNumber) item.classList.add('unread');
                     const date = new Date(conv.timestamp);
                     const timeString = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    item.innerHTML = `
-                        <div class="conversationInfo" onclick="openConversation('${conv.number}')">
-                            <div class="conversationName">${conv.contactName}</div>
-                            <div class="conversationPreview">${conv.lastMessage}</div>
-                        </div>
-                        <div class="conversationTime">${timeString}</div>
-                    `;
+                    const info = document.createElement('div');
+                    info.className = 'conversationInfo';
+                    info.addEventListener('click', () => openConversation(conv.number));
+
+                    const name = document.createElement('div');
+                    name.className = 'conversationName';
+                    name.textContent = conv.contactName || '';
+
+                    const preview = document.createElement('div');
+                    preview.className = 'conversationPreview';
+                    preview.textContent = conv.lastMessage || '';
+                    info.append(name, preview);
+
+                    const time = document.createElement('div');
+                    time.className = 'conversationTime';
+                    time.textContent = timeString;
+                    item.append(info, time);
                     conversationsList.appendChild(item);
                 });
             } catch (e) {
@@ -1831,11 +2000,14 @@
             notif.style.transition = 'all 0.3s ease';
 
             const displayName = senderName || senderNumber;
-            notif.innerHTML = `
-        <strong>Nauja žinutė</strong><br>
-        <span style="opacity:0.9">${displayName}</span><br>
-        <small>${messageText.substring(0, 60)}${messageText.length > 60 ? '...' : ''}</small>
-    `;
+            const title = document.createElement('strong');
+            title.textContent = 'Nauja žinutė';
+            const name = document.createElement('span');
+            name.style.opacity = '0.9';
+            name.textContent = displayName;
+            const preview = document.createElement('small');
+            preview.textContent = `${messageText.substring(0, 60)}${messageText.length > 60 ? '...' : ''}`;
+            notif.append(title, document.createElement('br'), name, document.createElement('br'), preview);
 
             document.getElementById('screen').appendChild(notif);
 
@@ -1855,7 +2027,6 @@
 
         // ==================== IMPROVED INCOMING CALL ====================
 
-        // Make sure this replaces any old incomingCall function if conflicting
         function incomingCall(callerName, callerNumber) {
             console.log(`[PHONE] Showing incoming call UI: ${callerName} (${callerNumber})`);
 
@@ -1870,11 +2041,13 @@
             const overlay = document.getElementById('incomingCallOverlay');
             overlay.classList.add('active');
 
-            document.getElementById('incomingCallText').innerHTML = `
-        Gaunamas skambutis<br>
-        <strong>${callerName}</strong><br>
-        <span style="font-size:18px; opacity:0.9">${callerNumber}</span>
-    `;
+            const callText = document.getElementById('incomingCallText');
+            const name = document.createElement('strong');
+            name.textContent = callerName;
+            const number = document.createElement('span');
+            number.style.cssText = 'font-size:18px; opacity:0.9';
+            number.textContent = callerNumber;
+            callText.replaceChildren('Gaunamas skambutis', document.createElement('br'), name, document.createElement('br'), number);
         }
 
         // Optional: Add vibration effect (visual)

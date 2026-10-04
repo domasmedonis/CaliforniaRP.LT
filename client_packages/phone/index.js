@@ -54,12 +54,12 @@ mp.events.add('incomingCall', (callerName, callerNumber) => {
         isPhoneOpen = true;
         globalThis.__isPhoneOpen = true;
     }
-    browser.execute(`incomingCall('${callerName}', '${callerNumber}');`);
+    browser.execute(`incomingCall(${JSON.stringify(callerName || '')}, ${JSON.stringify(callerNumber || '')});`);
     playFaceTimeRingtone();
 });
 
 mp.events.add('callStarted', (partnerName, partnerNumber) => {
-    browser.execute(`callStarted('${partnerName}', '${partnerNumber}');`);
+    browser.execute(`callStarted(${JSON.stringify(partnerName || '')}, ${JSON.stringify(partnerNumber || '')});`);
 });
 
 mp.events.add('callEnded', () => browser.execute(`callEnded();`));
@@ -68,7 +68,7 @@ mp.events.add('newMessageNotification', (senderNumber, senderName, messageText) 
     if (!isPhoneOpen) {
         mp.gui.chat.push(`!{#00ff00}[Žinutė] !{#ffffff}Nauja žinutė nuo ${senderName || senderNumber}`);
     }
-    browser.execute(`showMessageNotification('${senderNumber}', '${senderName || ''}', '${messageText.replace(/'/g, "\\'")}');`);
+    browser.execute(`showMessageNotification(${JSON.stringify(senderNumber || '')}, ${JSON.stringify(senderName || '')}, ${JSON.stringify(messageText || '')});`);
 });
 
 mp.events.add('callFailed', (message) => {
@@ -86,11 +86,11 @@ mp.events.add('callFailed', (message) => {
     }
 });
 
-mp.events.add('updateMessagesUI', (number, messagesJson) => browser.execute(`updateMessagesUI('${number}', '${messagesJson}');`));
-mp.events.add('updateConversationsUI', (conversationsJson) => browser.execute(`updateConversationsUI('${conversationsJson}');`));
+mp.events.add('updateMessagesUI', (number, messagesJson) => browser.execute(`updateMessagesUI(${JSON.stringify(number || '')}, ${JSON.stringify(messagesJson || '[]')});`));
+mp.events.add('updateConversationsUI', (conversationsJson) => browser.execute(`updateConversationsUI(${JSON.stringify(conversationsJson || '[]')});`));
 
 mp.events.add('updateContactsUI', (contactsJson) => {
-    if (isPhoneOpen) browser.execute(`updateContacts('${contactsJson}');`);
+    if (isPhoneOpen) browser.execute(`updateContacts(${JSON.stringify(contactsJson || '[]')});`);
 });
 
 mp.events.add('loadContacts', (contactsJson, isDriver, phoneNumber) => {
@@ -101,7 +101,7 @@ mp.events.add('loadContacts', (contactsJson, isDriver, phoneNumber) => {
         isPhoneOpen = true;
         globalThis.__isPhoneOpen = true;
     }
-    browser.execute(`loadContacts('${contactsJson}', '${phoneNumber}');`);
+    browser.execute(`loadContacts(${JSON.stringify(contactsJson || '[]')}, ${JSON.stringify(phoneNumber || '')});`);
 });
 
 mp.events.add('addContact', (name, number) => mp.events.callRemote('addContact', name, number));
@@ -115,6 +115,13 @@ mp.events.add('openConversation', (number) => mp.events.callRemote('openConversa
 // Drive control CEF -> client -> server bridge
 mp.events.add('toggleDriverStatus', () => mp.events.callRemote('toggleDriverStatus'));
 mp.events.add('requestRide', () => mp.events.callRemote('requestRide'));
+mp.events.add('requestDriveTrips', () => mp.events.callRemote('requestDriveTrips'));
+
+mp.events.add('loadDriveTrips', (payloadJson) => {
+    if (browser && browser.active) {
+        browser.execute(`renderDriveTrips(${JSON.stringify(payloadJson || '{"error":false,"trips":[]}')});`);
+    }
+});
 
 let currentRingtone = null;
 
